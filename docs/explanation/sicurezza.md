@@ -20,3 +20,7 @@ La VM dell'injector non ha accesso diretto al filesystem (`io`, `os`, `dofile`, 
 ## Segnalare un problema
 
 Il repository è privato. Segnala problemi direttamente a chi lo gestisce.
+
+## Il canale di ritorno
+
+Il canale `host` permette al PC di rispondere al dongle sulla seriale CDC. È limitato di proposito: il dongle accetta una sola forma di riga (`@G<nonce>:<codice>`), con il nonce che lo script ha atteso, e scarta tutto il resto; lo script riceve solo un codice di uscita numerico. Non esiste un modo per leggere l'output di un comando o un valore dal PC. Il comando che scrive la risposta è digitato dallo script, quindi dipende da ciò che lo script fa già sul PC: il canale non aggiunge permessi.

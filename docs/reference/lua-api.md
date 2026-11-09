@@ -93,6 +93,7 @@ Non disponibile mentre il disco USB è collegato (`disk.attach`): errore `no mou
 - `sys.sleep(ms)`: pausa interrompibile.
 - `sys.wait_host([ms])`: attende che il PC abbia montato la tastiera; `true`, oppure `false` allo scadere (default: all'infinito).
 - `sys.log(testo)`: scrive nel log, anche sulla microSD.
+- `sys.serial()`: numero di serie USB del dongle (12 cifre esadecimali, il MAC); identifica la sua porta seriale sul PC.
 
 ## `led`
 
@@ -118,6 +119,30 @@ Mentre il disco è collegato, il dongle espone tastiera e disco insieme (profilo
 - `disk.detach()`: torna al solo profilo tastiera.
 
 Se lo script termina con il disco ancora collegato, il dongle lo scollega comunque. I comandi per copiare ed espellere sul PC li digita lo script con `kb.type`: vedi [Copiare file sul PC](../how-to/copiare-file.md).
+
+## `host`: risposta dal PC (primitive)
+
+Il PC può rispondere al dongle con una riga `@G<nonce>:<codice>` scritta sulla porta seriale CDC. Il dongle accetta solo quella riga, con il nonce atteso: dal PC arrivano "finito" e un numero, mai l'output dei comandi. Ogni altra riga è scartata. Di solito si usa la libreria `host` qui sotto, non queste primitive.
+
+- `host.expect(nonce)`: si aspetta una risposta con questo nonce (1..15 lettere o cifre). Va chiamata **prima** di digitare il comando, altrimenti una risposta rapida andrebbe persa.
+- `host.wait([timeout_ms])`: attende la risposta (default 60000 ms). Restituisce il codice di uscita, o `nil` allo scadere. Errore `call host.expect() first` se manca `expect`.
+
+## Libreria `host`
+
+In `sd-template/payloads/lib/host.lua`. Digita un comando nel terminale del PC e dice quando è finito e con quale codice di uscita.
+
+```lua
+local host = require("host")
+host.shell("powershell")      -- o "sh"; una volta, con il terminale in primo piano
+local code = host.run([[Start-Process notepad -Wait]])
+if code ~= 0 then error("notepad: " .. tostring(code)) end
+```
+
+- `host.shell(tipo)`: `"powershell"` o `"sh"` (bash, zsh). Digita una volta il codice che trova la porta seriale del dongle dal suo numero di serie e verifica il canale; errore se il PC non risponde. `cmd.exe` non è supportato (vedi sotto).
+- `host.run(comando [, {timeout = ms}])`: digita il comando seguito da una coda che invia il codice di uscita. Restituisce il codice, o `nil` allo scadere (default 60000 ms).
+- `host.sync([opzioni])`: attende che la shell abbia eseguito tutto ciò che è stato digitato prima.
+
+Il comando deve essere bloccante: con `Start-Process` senza `-Wait`, o `open` su macOS, il codice arriva appena il programma parte. Non scrivere `${` nel comando. La porta si trova così: su Windows dal dispositivo padre della COM (che contiene il numero di serie), su Linux in `/dev/serial/by-id/*<serie>*`, su macOS in `/dev/cu.usbmodem<serie><n>`. Funziona anche con più dongle collegati. Su Windows e Linux non è stato verificato su un PC reale; il canale lato dongle sì (risposta con nonce giusto accettata, con nonce sbagliato scartata).
 
 ## Libreria `pcdisk`
 

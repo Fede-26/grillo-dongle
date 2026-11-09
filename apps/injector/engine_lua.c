@@ -10,6 +10,7 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include "config.h"
+#include "devcon.h"
 #include "engine.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -418,6 +419,12 @@ static int sys_wait_host(lua_State *L)
     return 1;
 }
 
+static int sys_serial(lua_State *L)
+{
+    lua_pushstring(L, usbdev_serial());
+    return 1;
+}
+
 static int sys_log(lua_State *L)
 {
     ESP_LOGI("script", "%s", luaL_checkstring(L, 1));
@@ -426,7 +433,7 @@ static int sys_log(lua_State *L)
 
 static void open_sys(lua_State *L)
 {
-    static const luaL_Reg fns[] = {{"sleep", sys_sleep}, {"wait_host", sys_wait_host}, {"log", sys_log}, {NULL, NULL}};
+    static const luaL_Reg fns[] = {{"sleep", sys_sleep}, {"wait_host", sys_wait_host}, {"log", sys_log}, {"serial", sys_serial}, {NULL, NULL}};
     luaL_newlib(L, fns);
     lua_setglobal(L, "sys");
 }
@@ -541,6 +548,85 @@ static void open_fs(lua_State *L)
     };
     luaL_newlib(L, fns);
     lua_setglobal(L, "fs");
+}
+
+// ---------------------------------------------------------------------------
+// host: canale di ritorno dal PC sulla seriale CDC.
+//
+// Il PC scrive una riga "@G<nonce>:<codice>" sulla porta seriale del dongle
+// (lo fa il comando che lo script ha digitato, vedi lib/host.lua). Passa solo
+// "finito" e un codice di uscita numerico: nient'altro del PC arriva allo
+// script, e ogni altra riga è scartata dal filtro. Il nonce lega la risposta
+// al comando atteso, così una risposta vecchia non viene scambiata per nuova.
+
+static struct {
+    char nonce[16];
+    volatile bool armed; // il filtro accetta una risposta con questo nonce
+    bool pending;        // expect() chiamata e wait() non ancora
+    volatile int code;
+    SemaphoreHandle_t sem;
+} s_host;
+
+// Chiamato dal task della console per ogni riga ricevuta sulla CDC.
+static bool host_filter(const char *line)
+{
+    if (strncmp(line, "@G", 2) != 0) return false;
+    const char *colon = strchr(line, ':');
+    if (!s_host.armed || !colon) return true;
+    size_t n = colon - (line + 2);
+    if (n != strlen(s_host.nonce) || strncmp(line + 2, s_host.nonce, n) != 0) return true;
+    s_host.code = atoi(colon + 1);
+    s_host.armed = false; // vale la prima risposta
+    xSemaphoreGive(s_host.sem);
+    return true;
+}
+
+// host.expect(nonce): da chiamare PRIMA di digitare il comando; se la risposta
+// arrivasse mentre lo script sta ancora digitando andrebbe persa.
+static int host_expect(lua_State *L)
+{
+    const char *nonce = luaL_checkstring(L, 1);
+    size_t n = strlen(nonce);
+    luaL_argcheck(L, n > 0 && n < sizeof(s_host.nonce), 1, "1..15 characters");
+    for (size_t i = 0; i < n; i++) luaL_argcheck(L, isalnum((unsigned char)nonce[i]), 1, "letters and digits only");
+    s_host.armed = false;
+    xSemaphoreTake(s_host.sem, 0); // scarta una risposta rimasta in sospeso
+    strlcpy(s_host.nonce, nonce, sizeof(s_host.nonce));
+    s_host.pending = true;
+    s_host.armed = true;
+    return 0;
+}
+
+// host.wait([timeout_ms]) -> codice di uscita, oppure nil allo scadere (default 60 s).
+static int host_wait(lua_State *L)
+{
+    if (!s_host.pending) return luaL_error(L, "call host.expect() first");
+    int64_t end = esp_timer_get_time() + luaL_optinteger(L, 1, 60000) * 1000LL;
+    for (;;) {
+        if (xSemaphoreTake(s_host.sem, pdMS_TO_TICKS(20)) == pdTRUE) {
+            s_host.pending = false;
+            lua_pushinteger(L, s_host.code);
+            return 1;
+        }
+        if (!inj_pump(s_run)) {
+            s_host.armed = s_host.pending = false;
+            luaL_error(L, "aborted");
+        }
+        if (esp_timer_get_time() >= end) {
+            s_host.armed = s_host.pending = false;
+            lua_pushnil(L);
+            return 1;
+        }
+    }
+}
+
+static void open_host(lua_State *L)
+{
+    if (!s_host.sem) s_host.sem = xSemaphoreCreateBinary();
+    s_host.armed = s_host.pending = false;
+    static const luaL_Reg fns[] = {{"expect", host_expect}, {"wait", host_wait}, {NULL, NULL}};
+    luaL_newlib(L, fns);
+    lua_setglobal(L, "host");
 }
 
 // ---------------------------------------------------------------------------
@@ -726,6 +812,8 @@ static void lua_run(inj_run_t *r)
             open_sys(L);
             open_fs(L);
             open_disk(L);
+            open_host(L);
+            devcon_set_line_filter(host_filter);
             lua_register(L, "cfg", l_cfg);
             lua_newtable(L);
             lua_setfield(L, LUA_REGISTRYINDEX, "inj.loaded");
@@ -741,6 +829,7 @@ static void lua_run(inj_run_t *r)
         esp_timer_delete(timer);
     }
     if (!r->ok && (r->timed_out || r->ctx->exit_requested)) r->aborted = true;
+    devcon_set_line_filter(NULL);
     hid_set_poll(NULL, NULL);
     hid_release_all();
     disk_release(); // script finito o interrotto con il disco ancora collegato
