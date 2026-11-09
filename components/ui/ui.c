@@ -308,6 +308,39 @@ int ui_draw_wrapped(const gfx_font_t *f, int x, int y, int w, int max_lines, con
     return lines;
 }
 
+int ui_draw_wrapped_scroll(const gfx_font_t *f, int x, int y, int w, int max_lines, int skip, const char *text,
+                           uint32_t rgb)
+{
+    char line[64];
+    int lines = 0;
+    const char *p = text;
+    while (*p) {
+        // Stessa spezzatura di ui_draw_wrapped
+        int len = 0, last_space = -1;
+        while (p[len] && p[len] != '\n' && len < (int)sizeof(line) - 1) {
+            memcpy(line, p, len + 1);
+            line[len + 1] = 0;
+            if (gfx_text_width(f, line) > w) break;
+            if (p[len] == ' ') last_space = len;
+            len++;
+        }
+        int take = len;
+        bool at_end = !p[len] || p[len] == '\n';
+        if (!at_end && last_space > 0) take = last_space;
+        if (take == 0) take = 1;
+        if (lines >= skip && lines < skip + max_lines) {
+            memcpy(line, p, take);
+            line[take] = 0;
+            gfx_text(f, x, y + (lines - skip) * (f->height + 2), line, rgb);
+        }
+        p += take;
+        while (*p == ' ') p++;
+        if (*p == '\n') p++;
+        lines++;
+    }
+    return lines;
+}
+
 void ui_draw_hint(const char *hint)
 {
     gfx_fill_rect(0, UI_H - 9, UI_W, 9, UI_BG);

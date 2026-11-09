@@ -106,9 +106,18 @@ static void run_payload(app_ctx_t *ctx, const payload_meta_t *m)
     free(r);
 }
 
+// Righe di descrizione visibili insieme. Se la descrizione è più lunga si
+// scorre a pagine: da sola ogni PAGE_MS, o subito con un click.
+#define DESC_LINES 3
+#define PAGE_MS    3500
+
 // Scheda dello script: lungo = esegui, doppio = indietro. true se va eseguito.
 static bool show_card(app_ctx_t *ctx, const payload_meta_t *m)
 {
+    int total = ui_draw_wrapped_scroll(&gfx_font_small, 0, 0, UI_W - 12, 0, 0, m->desc, UI_TEXT);
+    int pages = (total + DESC_LINES - 1) / DESC_LINES;
+    int page = 0;
+    int64_t flip_at = esp_timer_get_time() + PAGE_MS * 1000LL;
     for (;;) {
         ui_begin();
         gfx_text_fit(&gfx_font_small, 6, UI_CONTENT_Y + 1, UI_W - 12, m->name[0] ? m->name : "(no @name)", ACCENT);
@@ -116,15 +125,32 @@ static bool show_card(app_ctx_t *ctx, const payload_meta_t *m)
         snprintf(info, sizeof(info), "%s · %s", m->layout[0] ? m->layout : config_str("keyboard.layout", "us"),
                  m->os[0] ? m->os : config_str("keyboard.os", "windows"));
         gfx_text(&gfx_font_small, 6, UI_CONTENT_Y + 12, info, UI_DIM);
-        ui_draw_wrapped(&gfx_font_small, 6, UI_CONTENT_Y + 23, UI_W - 12, 3, m->desc, UI_TEXT);
-        ui_draw_hint("hold: run · 2x: back");
+        if (pages > 1) {
+            char pg[24];
+            snprintf(pg, sizeof(pg), "%d/%d", page + 1, pages);
+            gfx_text_aligned(&gfx_font_small, 0, UI_CONTENT_Y + 12, UI_W - 6, GFX_ALIGN_RIGHT, pg, UI_FAINT);
+        }
+        ui_draw_wrapped_scroll(&gfx_font_small, 6, UI_CONTENT_Y + 23, UI_W - 12, DESC_LINES, page * DESC_LINES, m->desc,
+                               UI_TEXT);
+        ui_draw_hint(pages > 1 ? "click: more · hold: run" : "hold: run · 2x: back");
         ui_end();
 
         app_event_t ev;
-        if (!app_next_event(ctx, &ev, portMAX_DELAY)) continue;
+        // Con più pagine ci si sveglia anche senza eventi, per girare pagina da soli
+        if (!app_next_event(ctx, &ev, pages > 1 ? 250 : portMAX_DELAY)) {
+            if (esp_timer_get_time() >= flip_at) {
+                page = (page + 1) % pages;
+                flip_at = esp_timer_get_time() + PAGE_MS * 1000LL;
+            }
+            continue;
+        }
         if (ev.type == APP_EV_EXIT) return false;
         if (ev.type == APP_EV_DOUBLE) return false;
         if (ev.type == APP_EV_LONG) return true;
+        if (ev.type == APP_EV_CLICK && pages > 1) {
+            page = (page + 1) % pages;
+            flip_at = esp_timer_get_time() + PAGE_MS * 1000LL; // chi legge a mano ha più tempo
+        }
     }
 }
 

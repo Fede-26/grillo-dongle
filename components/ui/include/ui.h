@@ -82,5 +82,10 @@ void ui_draw_progress(int x, int y, int w, int h, int value, int max, uint32_t c
 void ui_draw_pager(int y, int count, int current, uint32_t color);
 // Testo su più righe con a capo automatico; restituisce le righe usate.
 int ui_draw_wrapped(const gfx_font_t *f, int x, int y, int w, int max_lines, const char *text, uint32_t rgb);
+// Come ui_draw_wrapped ma senza troncare: salta le prime `skip` righe, disegna al
+// massimo `max_lines` righe intere e restituisce il numero TOTALE di righe del
+// testo (con max_lines = 0 non disegna nulla: serve a contare, per scorrere).
+int ui_draw_wrapped_scroll(const gfx_font_t *f, int x, int y, int w, int max_lines, int skip, const char *text,
+                           uint32_t rgb);
 // Barra in basso con suggerimenti per i gesti, es. "click next · hold back"
 void ui_draw_hint(const char *hint);

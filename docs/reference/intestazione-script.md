@@ -23,7 +23,7 @@ Ogni script `.lua` in `/payloads` può iniziare con un blocco di commenti che lo
 | Chiave | Valore | Effetto |
 | --- | --- | --- |
 | `name` | testo | Titolo nell'elenco. Se manca: nome del file senza `.lua`. |
-| `desc` | testo | Descrizione mostrata nell'anteprima. |
+| `desc` | testo (max 160 caratteri) | Descrizione mostrata nell'anteprima. Se non entra in 3 righe si gira a pagine, da sola ogni 3,5 secondi o subito con un click (la pagina corrente, `1/3`, è a destra). |
 | `tags` | parole separate da virgole o spazi | Gruppi nella vista "per tag" dell'injector. |
 | `layout` | `us`, `it`, `colemak` | Layout della tastiera del PC di destinazione. |
 | `os` | `windows`, `linux`, `mac` | Sistema operativo del PC: sceglie livelli AltGr/Option, tasti morti e ripieghi. |
