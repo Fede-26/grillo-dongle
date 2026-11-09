@@ -16,6 +16,10 @@ uint16_t *display_fb(void);
 // Invia l'intero framebuffer al pannello. Bloccante (~8 ms a 27 MHz).
 void display_flush(void);
 
+// Rotazione dello schermo: 0 o 180 gradi. 90 e 270 non sono supportati (la UI è
+// progettata per 160x80 orizzontale); qualunque altro valore vale 0.
+void display_set_rotation(int degrees);
+
 // 0..100. 0 spegne la retroilluminazione.
 void display_set_brightness(uint8_t percent);
 

@@ -79,6 +79,15 @@ static void backlight_init(void)
     ledc_channel_config(&c);
 }
 
+void display_set_rotation(int degrees)
+{
+    // MADCTL (0x36), base: MV (0x20, orizzontale) | BGR (0x08). A 0° si
+    // aggiunge MY (0x80), a 180° MX (0x40). Gli offset della finestra (gap)
+    // restano uguali perché la RAM del controller è centrata sul pannello.
+    uint8_t madctl = degrees == 180 ? 0x68 : 0xA8;
+    esp_lcd_panel_io_tx_param(s_io, 0x36, &madctl, 1);
+}
+
 void display_set_brightness(uint8_t percent)
 {
     if (percent > 100) percent = 100;

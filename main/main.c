@@ -54,6 +54,7 @@ static void reload_config(void)
     last_lend = storage_lend_count();
     if (storage_state() != STORAGE_MOUNTED) return;
     if (config_load(CONFIG_PATH) == ESP_FAIL) ui_toast("config.lua error", UI_ERR, 3000);
+    display_set_rotation(config_int("ui.rotation", 0));
     display_set_brightness(config_int("ui.brightness", 80));
     led_set_brightness(config_int("led.brightness", 30));
 }
@@ -75,6 +76,7 @@ void app_main(void)
     if (storage_state() == STORAGE_MOUNTED && config_load(CONFIG_PATH) == ESP_FAIL) {
         show_config_error(config_error());
     }
+    display_set_rotation(config_int("ui.rotation", 0));
     display_set_brightness(config_int("ui.brightness", 80));
     led_set_brightness(config_int("led.brightness", 30));
 

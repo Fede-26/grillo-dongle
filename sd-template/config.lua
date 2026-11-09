@@ -21,6 +21,11 @@ return {
   -- mai come stringa. Credenziali in chiaro sulla SD: rischio accettato.
   -- secrets = { admin = "..." },
 
-  ui = { brightness = 80 },
+  -- rotation: 0 oppure 180 (90 e 270 non supportati)
+  ui = { brightness = 80, rotation = 0 },
+
+  -- pin = false: il Web HID non chiede il PIN. Chiunque sulla stessa rete
+  -- (o sull'hotspot) potrebbe comandare il PC: usalo solo su reti fidate.
+  webhid = { pin = true },
   led = { brightness = 30 },
 }
