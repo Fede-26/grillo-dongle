@@ -26,4 +26,8 @@ const char *storage_state_name(storage_state_t s);
 sdmmc_card_t *storage_lend(void);
 esp_err_t storage_reclaim(void);
 
+// Quante volte la scheda è stata prestata: permette di capire se nel
+// frattempo il PC può averne modificato il contenuto.
+uint32_t storage_lend_count(void);
+
 bool storage_info(uint64_t *total_bytes, uint64_t *free_bytes);

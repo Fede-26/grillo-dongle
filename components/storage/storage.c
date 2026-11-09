@@ -18,6 +18,7 @@ static bool s_card_ok;
 static FATFS *s_fs;
 static BYTE s_pdrv = 0xFF;
 static storage_state_t s_state = STORAGE_ABSENT;
+static uint32_t s_lend_count;
 
 const char *storage_state_name(storage_state_t s)
 {
@@ -132,6 +133,7 @@ sdmmc_card_t *storage_lend(void)
     if (!s_card_ok || s_state == STORAGE_LENT) return NULL;
     unmount();
     s_state = STORAGE_LENT;
+    s_lend_count++;
     return &s_card;
 }
 
@@ -147,4 +149,9 @@ bool storage_info(uint64_t *total, uint64_t *free_b)
 {
     if (s_state != STORAGE_MOUNTED) return false;
     return esp_vfs_fat_info(STORAGE_ROOT, total, free_b) == ESP_OK;
+}
+
+uint32_t storage_lend_count(void)
+{
+    return s_lend_count;
 }

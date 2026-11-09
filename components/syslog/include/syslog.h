@@ -1,0 +1,10 @@
+#pragma once
+
+// Copia su SD (/sd/logs/grillo.log) i log di livello warning ed error,
+// oltre alla console normale. Serve quando la USB è occupata da HID/MSC e
+// la seriale non è disponibile. Rotazione semplice: oltre 256 KB il file
+// diventa grillo.1.log.
+void syslog_init(void);
+
+// Scrive subito su SD le righe in coda (es. prima di prestare la SD all'host).
+void syslog_flush(void);

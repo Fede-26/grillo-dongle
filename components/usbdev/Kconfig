@@ -1,0 +1,10 @@
+menu "Grillo USB"
+    config GRILLO_USB_DEBUG_CDC
+        bool "Add a CDC-ACM debug console to every USB profile"
+        default y
+        help
+            When TinyUSB owns the USB PHY the USB-Serial-JTAG console is gone.
+            With this option every profile (HID, MSC) also exposes a CDC-ACM
+            serial port carrying stdout and the ESP-IDF logs. Disable it for
+            release builds to present only the functional interfaces.
+endmenu
