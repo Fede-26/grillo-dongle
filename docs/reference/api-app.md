@@ -61,9 +61,12 @@ Primitive: `gfx_text`, `gfx_text_aligned`, `gfx_text_scaled`, `gfx_text_fit`; `u
 ## Rete
 
 ```c
-esp_err_t net_acquire(net_mode_t mode, uint32_t timeout_ms);   // NET_AUTO | NET_STA | NET_AP
+esp_err_t net_acquire(net_mode_t mode, uint32_t timeout_ms);   // NET_AUTO | NET_STA | NET_AP | NET_SCAN
 void net_release(void);
 void net_get_info(net_info_t *info);
+esp_netif_t *net_sta_netif(void);                              // interfaccia STA: IP, gateway, DNS, MAC
+int net_scan(net_ap_t *out, int max);                          // reti visibili, la più forte per prima
+const char *net_auth_name(uint8_t auth);                       // "WPA2", "open"...
 ```
 
-Le richieste sono a conteggio di riferimenti (lease): il WiFi resta acceso finché c'è almeno un'app che l'ha richiesto. `NET_AUTO` sceglie la migliore rete nota, altrimenti crea l'hotspot.
+Le richieste sono a conteggio di riferimenti (lease): il WiFi resta acceso finché c'è almeno un'app che l'ha richiesto. `NET_AUTO` sceglie la migliore rete nota, altrimenti crea l'hotspot. `NET_SCAN` accende la radio in modalità STA senza connettersi: basta per `net_scan()` (circa 2 secondi, al massimo 40 reti). `net_scan()` funziona con un lease `NET_SCAN` o `NET_STA`, non con l'hotspot. Un lease `NET_SCAN` è compatibile con una connessione STA già attiva, non viceversa.

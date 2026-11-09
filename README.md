@@ -65,8 +65,9 @@ docs/         documentazione
 
 ## Strumenti
 
-- `make -C test/host` esegue sul PC i test di layout e gesti del pulsante.
+- `make -C test/host` esegue sul PC i test di layout, gesti del pulsante e logica pura di Netscan.
 - `python3 tools/gen_layouts.py` rigenera `components/hid/layouts_data.c`.
+- `python3 tools/make_oui.py oui.csv oui.bin` converte la lista OUI dell'IEEE per Netscan (vedi [Usare Netscan](docs/how-to/netscan.md)).
 - `python3 tools/grillo.py cmd state` parla con la console di debug (vedi [riferimento](docs/reference/console-debug.md)).
 - `python3 tools/serial_log.py /dev/cu.usbmodemXXXX 10` mostra il log per 10 secondi.
 

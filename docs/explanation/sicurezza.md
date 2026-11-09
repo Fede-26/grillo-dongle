@@ -17,6 +17,12 @@ Una volta collegato, il PC lo tratta come una tastiera e un mouse fidati. Può e
 
 La VM dell'injector non ha accesso diretto al filesystem (`io`, `os`, `dofile`, `loadfile` assenti), legge solo `/payloads` e `/data` con `fs.*`, ha un limite di memoria di 96 KB, rifiuta il bytecode precompilato e si interrompe con la pressione di 3 secondi. Non limita ciò che lo script digita sul PC.
 
+## Netscan
+
+Netscan emette traffico sulla rete a cui è collegato: richieste ARP a ogni indirizzo della /24, query NBNS (UDP 137) e mDNS (UDP 5353) agli host trovati, un ping al gateway, una query DNS e una `GET /generate_204` a `connectivitycheck.gstatic.com` (cambiabile con `netscan.probe_host`). Su reti di altri usalo con il loro consenso: lo sweep può comparire nei log di un firewall o di un sistema di rilevamento. Non fa scansioni di porte.
+
+SSID e nomi host li sceglie chi è sulla rete: sul display vengono ripuliti (solo ASCII stampabile) e nei CSV in `/scans/` i valori non numerici che iniziano con `=`, `+`, `-` o `@` hanno un apice davanti, così non diventano formule aprendoli con un foglio di calcolo. I CSV contengono i MAC e i nomi degli host della rete scansionata: trattali come dati del cliente.
+
 ## Segnalare un problema
 
 Il repository è privato. Segnala problemi direttamente a chi lo gestisce.

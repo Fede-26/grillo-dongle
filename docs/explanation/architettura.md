@@ -41,4 +41,4 @@ Il gestore WiFi (`net`) è a lease: ogni app che ne ha bisogno lo richiede e lo 
 
 ## Test
 
-La logica pura (tabelle dei layout, gesti del pulsante) gira sul PC: `make -C test/host`. Il resto si verifica sul dispositivo con la console di debug e gli screenshot (`tools/grillo.py shot`).
+La logica pura (tabelle dei layout, gesti del pulsante, parsing di NBNS e mDNS, ricerca OUI, CSV di Netscan) gira sul PC: `make -C test/host`. Il resto si verifica sul dispositivo con la console di debug e gli screenshot (`tools/grillo.py shot`).
