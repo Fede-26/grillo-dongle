@@ -85,8 +85,17 @@ static void test_layouts(void)
           "colemak/mac à n=%d key0=0x%02X mods0=0x%02X", n, n ? s[0].key : 0, n ? s[0].mods : 0);
     n = hid_translate(hid_layout_find("colemak"), HID_OS_MAC, 0x00E9, s, 8, &np);
     CHECK(n == 2 && s[0].key == 0x0E && s[0].mods == HID_MOD_LALT && s[1].key == 0x0E, "colemak/mac é n=%d", n);
-    // macOS non ha ripieghi
-    n = hid_translate(hid_layout_find("it"), HID_OS_MAC, '~', s, 8, &np);
+    // macOS "Italian - Pro" (da UCKeyTranslate): ~ = Option+5, ` = Option+\ (tasto ISO a sinistra dell'1),
+    // @ e € come su Windows (Option vale AltGr), à diretta, À = Option+Shift+w
+    expect_key("it", HID_OS_MAC, '~', 0x22, HID_MOD_LALT);
+    expect_key("it", HID_OS_MAC, '`', 0x35, HID_MOD_LALT);
+    expect_key("it", HID_OS_MAC, '\\', 0x35, 0);
+    expect_key("it", HID_OS_MAC, '<', 0x64, 0);
+    expect_key("it", HID_OS_MAC, '@', 0x33, HID_MOD_RALT);
+    expect_key("it", HID_OS_MAC, 0x00E0, 0x34, 0);
+    expect_key("it", HID_OS_MAC, 0x00C0, 0x1A, HID_MOD_LALT | HID_MOD_LSHIFT); // À = Option+Shift+w
+    // macOS non ha ripieghi per ciò che il layout non produce
+    n = hid_translate(hid_layout_find("it"), HID_OS_MAC, 0x4E2D, s, 8, &np);
     CHECK(n == 0, "mac senza ripiego");
 
     // Ogni carattere ASCII stampabile è digitabile su US

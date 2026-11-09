@@ -45,6 +45,11 @@ IT = {
     ],
     # Solo Linux (xkb "it"): AltGr+' = `, AltGr+ì = ~ (non presenti su Windows)
     "linux_extra": {"`": (0x2D, MOD_ALTGR), "~": (0x2E, MOD_ALTGR)},
+    # macOS "Italian - Pro", letto con tools/dump_mac_layout.c. Il dump assume una
+    # tastiera ANSI (HID 0x35 -> `<`, 0x64 -> `\`); una tastiera ISO ha i due tasti
+    # scambiati, come la tabella Windows qui sopra, quindi si scambiano anche nel dump.
+    "mac_dump": Path(__file__).resolve().parent / "layouts" / "macos_italian-pro.tsv",
+    "mac_iso": True,
 }
 
 # Colemak: variante del layout US con le lettere spostate
@@ -201,15 +206,17 @@ def mac_option(spec, base):
     Restituisce (extra, dead) come linux_altgr().
     """
     extra, composed = {}, []
+    swap = {0x35: 0x64, 0x64: 0x35} if spec.get("mac_iso") else {}
     for line in spec["mac_dump"].read_text().splitlines():
         cols = line.split("\t")
         if cols[0] == "C":
             _, hid, level, letter, result = cols
             mods = MOD_OPTION | (MOD_SHIFT if level == "3" else 0)
-            composed.append((result, (int(hid, 16), mods), base[ord(letter)]))
+            hid = int(hid, 16)
+            composed.append((result, (swap.get(hid, hid), mods), base[ord(letter)]))
             continue
-        hid = int(cols[0], 16)
-        if hid == 0x64:  # tasto ISO: non esiste sulle tastiere ANSI dei Mac
+        hid = swap.get(int(cols[0], 16), int(cols[0], 16))
+        if hid == 0x64 and not swap:  # tasto ISO: non esiste sulle tastiere ANSI dei Mac
             continue
         for ch, mods in ((cols[3], MOD_OPTION), (cols[4], MOD_OPTION | MOD_SHIFT)):
             if ch == "-" or ch.startswith("DEAD:") or ord(ch) in base:

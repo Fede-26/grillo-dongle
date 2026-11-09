@@ -14,3 +14,9 @@ AltGr/Option e i tasti morti del Colemak. Non vanno modificati a mano.
   (comando nell'intestazione del file C) se Apple cambia il layout.
 - Linux: la mappa è scritta in `gen_layouts.py` (`linux_altgr`), copiata da
   xkeyboard-config, `symbols/us`, sezione `colemak_base`.
+- `macos_italian-pro.tsv`: come sopra, per il layout "Italian - Pro" di macOS
+  (`./dump_mac_layout com.apple.keylayout.Italian-Pro`). Il dump presuppone una
+  tastiera ANSI; `gen_layouts.py` scambia i tasti HID 0x35 e 0x64 (`mac_iso`) perché
+  il dongle simula una tastiera ISO, come quella dei Mac italiani. Se su un Mac
+  `<` e `\` escono scambiati, il tipo di tastiera riconosciuto da macOS è ANSI:
+  togli `mac_iso` da `IT` e rigenera.
