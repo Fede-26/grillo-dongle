@@ -564,8 +564,29 @@ static struct {
     volatile bool armed; // il filtro accetta una risposta con questo nonce
     bool pending;        // expect() chiamata e wait() non ancora
     volatile int code;
+    char text[72]; // testo ripulito dopo i due punti (get/log)
     SemaphoreHandle_t sem;
 } s_host;
+
+#define HOST_TEXT_MAX 64
+
+// Ripulisce un testo arrivato dal PC: solo caratteri innocui per CSV e per
+// essere ridigitati (A-Z a-z 0-9 . _ : - e spazio), il resto diventa '_'.
+// strict = solo A-Z a-z 0-9 _ - (nomi di file). Spazi ai bordi tolti.
+static void host_clean(char *dst, size_t dstlen, const char *src, size_t max, bool strict)
+{
+    size_t n = 0;
+    for (; *src && n < max && n < dstlen - 1; src++) {
+        unsigned char c = *src;
+        bool ok = isalnum(c) || c == '_' || c == '-' || (!strict && (c == '.' || c == ':' || c == ' '));
+        dst[n++] = ok ? c : '_';
+    }
+    while (n && dst[n - 1] == ' ') n--;
+    dst[n] = 0;
+    char *p = dst;
+    while (*p == ' ') p++;
+    if (p != dst) memmove(dst, p, strlen(p) + 1);
+}
 
 // Chiamato dal task della console per ogni riga ricevuta sulla CDC.
 static bool host_filter(const char *line)
@@ -576,6 +597,7 @@ static bool host_filter(const char *line)
     size_t n = colon - (line + 2);
     if (n != strlen(s_host.nonce) || strncmp(line + 2, s_host.nonce, n) != 0) return true;
     s_host.code = atoi(colon + 1);
+    host_clean(s_host.text, sizeof(s_host.text), colon + 1, HOST_TEXT_MAX, false);
     s_host.armed = false; // vale la prima risposta
     xSemaphoreGive(s_host.sem);
     return true;
@@ -597,7 +619,8 @@ static int host_expect(lua_State *L)
     return 0;
 }
 
-// host.wait([timeout_ms]) -> codice di uscita, oppure nil allo scadere (default 60 s).
+// host.wait([timeout_ms]) -> codice di uscita, testo; nil allo scadere (default 60 s).
+// Il testo (max 64 caratteri ripuliti) serve a host.get; con host.run è il codice in cifre.
 static int host_wait(lua_State *L)
 {
     if (!s_host.pending) return luaL_error(L, "call host.expect() first");
@@ -606,7 +629,8 @@ static int host_wait(lua_State *L)
         if (xSemaphoreTake(s_host.sem, pdMS_TO_TICKS(20)) == pdTRUE) {
             s_host.pending = false;
             lua_pushinteger(L, s_host.code);
-            return 1;
+            lua_pushstring(L, s_host.text);
+            return 2;
         }
         if (!inj_pump(s_run)) {
             s_host.armed = s_host.pending = false;
@@ -620,11 +644,15 @@ static int host_wait(lua_State *L)
     }
 }
 
+static int host_append(lua_State *L);
+
 static void open_host(lua_State *L)
 {
     if (!s_host.sem) s_host.sem = xSemaphoreCreateBinary();
     s_host.armed = s_host.pending = false;
-    static const luaL_Reg fns[] = {{"expect", host_expect}, {"wait", host_wait}, {NULL, NULL}};
+    static const luaL_Reg fns[] = {
+        {"expect", host_expect}, {"wait", host_wait}, {"append", host_append}, {NULL, NULL},
+    };
     luaL_newlib(L, fns);
     lua_setglobal(L, "host");
 }
@@ -636,12 +664,15 @@ static void open_host(lua_State *L)
 
 static bool s_attached;
 
+static void hlog_flush(void);
+
 static void disk_release(void)
 {
     if (!s_attached) return;
     usbdev_apply(USB_PROFILE_HID, NULL);
     storage_unshare();
     s_attached = false;
+    hlog_flush(); // dopo il detach la SD è di nuovo solo del dongle
 }
 
 // disk.attach([timeout_ms]): il dongle si ri-enumera, quindi attende che
@@ -689,6 +720,84 @@ static int disk_detach(lua_State *L)
 {
     disk_release();
     check_hid(L, hid_wait_host(15000), 0);
+    return 0;
+}
+
+
+// ---------------------------------------------------------------------------
+// Log per macchina: /logs/host/<id>.csv, una riga "data,script,etichetta,valore".
+// Il firmware compone il percorso da un id ripulito, mai da testo del PC.
+// Con il disco collegato la SD è condivisa col PC: scriverci rischia di
+// lasciargli una FAT incoerente, quindi le righe aspettano in RAM fino al detach.
+
+#define HLOG_DIR      "/sd/logs/host"
+#define HLOG_MAX_FILE (256 * 1024)
+#define HLOG_MAX_IDS  64
+#define HLOG_QUEUE    16
+
+typedef struct {
+    char id[28], line[192];
+} hlog_t;
+
+static hlog_t *s_hlog_q; // allocata solo se serve
+static int s_hlog_n;
+
+static esp_err_t hlog_write(const char *id, const char *line)
+{
+    char path[64];
+    snprintf(path, sizeof(path), HLOG_DIR "/%s.csv", id);
+    struct stat st;
+    if (stat(path, &st) != 0) {
+        // File nuovo: tetto al numero di macchine, così un PC non riempie la SD di file
+        mkdir("/sd/logs", 0777);
+        mkdir(HLOG_DIR, 0777);
+        int count = 0;
+        DIR *d = opendir(HLOG_DIR);
+        for (struct dirent *e; d && (e = readdir(d));) count += e->d_name[0] != '.';
+        if (d) closedir(d);
+        if (count >= HLOG_MAX_IDS) return ESP_ERR_NO_MEM;
+    } else if (st.st_size > HLOG_MAX_FILE) {
+        return ESP_ERR_NO_MEM;
+    }
+    FILE *f = fopen(path, "a");
+    if (!f) return ESP_FAIL;
+    fputs(line, f);
+    fclose(f);
+    return ESP_OK;
+}
+
+static void hlog_flush(void)
+{
+    for (int i = 0; i < s_hlog_n; i++) {
+        if (hlog_write(s_hlog_q[i].id, s_hlog_q[i].line) != ESP_OK) ESP_LOGW(TAG, "log host: riga persa");
+    }
+    s_hlog_n = 0;
+    free(s_hlog_q);
+    s_hlog_q = NULL;
+}
+
+// host.append(id, data, etichetta, valore): usata da lib/host.lua.
+static int host_append(lua_State *L)
+{
+    char id[28], date[32], label[28], value[HOST_TEXT_MAX + 1], script[48];
+    host_clean(id, sizeof(id), luaL_checkstring(L, 1), 24, true);
+    host_clean(date, sizeof(date), luaL_checkstring(L, 2), 30, false);
+    host_clean(label, sizeof(label), luaL_checkstring(L, 3), 24, true);
+    host_clean(value, sizeof(value), luaL_checkstring(L, 4), HOST_TEXT_MAX, false);
+    host_clean(script, sizeof(script), s_run->meta->name[0] ? s_run->meta->name : "script", 40, false);
+    if (!id[0]) strlcpy(id, "unknown", sizeof(id));
+    char line[192];
+    snprintf(line, sizeof(line), "%s,%s,%s,%s\n", date, script, label, value);
+    if (s_attached) {
+        if (!s_hlog_q) s_hlog_q = calloc(HLOG_QUEUE, sizeof(hlog_t));
+        if (!s_hlog_q || s_hlog_n >= HLOG_QUEUE) return luaL_error(L, "host log queue full while the disk is attached");
+        strlcpy(s_hlog_q[s_hlog_n].id, id, sizeof(s_hlog_q[0].id));
+        strlcpy(s_hlog_q[s_hlog_n].line, line, sizeof(s_hlog_q[0].line));
+        s_hlog_n++;
+        return 0;
+    }
+    esp_err_t err = hlog_write(id, line);
+    if (err != ESP_OK) return luaL_error(L, "host log: cannot write (full or SD error)");
     return 0;
 }
 

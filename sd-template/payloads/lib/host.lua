@@ -12,6 +12,15 @@
 -- La porta si trova dal numero di serie USB del dongle (sys.serial()), quindi
 -- funziona anche con più dongle collegati.
 --
+-- Leggere e registrare valori (inventario):
+--   local mac = host.machine()                       -- id della macchina: MAC di una scheda fisica
+--   host.log("seriale", [[(Get-CimInstance Win32_BIOS).SerialNumber]])
+--   local model = host.get([[(Get-CimInstance Win32_ComputerSystem).Model]])
+-- Il valore è al massimo di 64 caratteri; il dongle sostituisce con "_" tutto ciò
+-- che non è lettera, cifra, ". _ : -" o spazio. Non ridigitare mai un valore letto
+-- dal PC dentro un comando di shell senza controllarlo: può contenere ciò che ha
+-- scelto chi ha configurato la macchina.
+--
 -- Il comando deve essere bloccante: con un programma che si stacca subito
 -- (es. `Start-Process` senza `-Wait`, `open` su macOS) il codice arriva appena
 -- parte, non quando finisce. Non scrivere `${` nel comando: kb.type lo legge
@@ -52,6 +61,55 @@ function M.run(cmd, opts)
     host.expect(n)
     kb.type(line .. "\n")
     return host.wait((opts and opts.timeout) or 60000)
+end
+
+-- Valore (stringa ripulita, max 64 caratteri) dell'espressione `expr` valutata nella
+-- shell del PC, o nil se non arriva entro opts.timeout (default 60000 ms).
+-- Un'espressione che restituisce più righe è unita con spazi.
+function M.get(expr, opts)
+    if not kind then error("host.get: chiama prima host.shell()") end
+    local n = nonce()
+    local line
+    if kind == "powershell" then
+        line = [[Send-G ]] .. n .. [[ ((]] .. expr .. [[) -join ' ' -replace '\s+',' ')]]
+    else
+        line = [[printf '@G%s:%s\n' ]] .. n .. [[ "$( (]] .. expr .. [[) | tr '\n' ' ')" > "$G"]]
+    end
+    host.expect(n)
+    kb.type(line .. "\n")
+    local _, text = host.wait((opts and opts.timeout) or 60000)
+    return text
+end
+
+local machine_id, machine_date
+
+local function default_machine_expr()
+    if kind == "powershell" then
+        return [[(Get-NetAdapter -Physical | Sort-Object MacAddress | Select-Object -First 1).MacAddress]]
+    elseif kb.os() == "mac" then
+        return [[ifconfig en0 | awk '/ether/{print $2}']]
+    end
+    return [[for d in /sys/class/net/*/device; do cat "$(dirname "$d")/address"; done | sort | head -1]]
+end
+
+-- Imposta l'id della macchina (da cui il nome di /logs/host/<id>.csv) e la data del
+-- PC usata nelle righe di log. Senza argomenti usa il MAC della prima scheda di rete
+-- fisica (in ordine di indirizzo): è dell'hardware, quindi diverso anche tra due PC
+-- clonati con Clonezilla, mentre MachineGuid e nome host si copiano con il disco.
+function M.machine(expr)
+    machine_id = M.get(expr or default_machine_expr())
+    if not machine_id or machine_id == "" then error("host.machine: nessun valore dal PC") end
+    machine_date = M.get(kind == "powershell" and [[Get-Date -Format s]] or [[date +%Y-%m-%dT%H:%M:%S]])
+    return machine_id
+end
+
+-- Valuta `expr` sul PC come host.get e aggiunge una riga a /logs/host/<id>.csv sulla
+-- SD del dongle (con il disco collegato la riga aspetta il detach). Restituisce il valore.
+function M.log(label, expr, opts)
+    local value = M.get(expr, opts)
+    if value == nil then error("host.log: nessuna risposta per '" .. label .. "'") end
+    host.append(machine_id or "unknown", machine_date or "", label, value)
+    return value
 end
 
 -- Attende che la shell abbia eseguito tutto ciò che è stato digitato prima.
