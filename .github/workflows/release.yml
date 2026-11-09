@@ -1,0 +1,40 @@
+name: release
+
+# Una release si crea pushando un tag di versione, es.:
+#   git tag v0.1.0 && git push origin v0.1.0
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    container: espressif/idf:v6.1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Serve la storia completa: la versione del firmware viene da `git describe`.
+          fetch-depth: 0
+
+      - name: Build
+        shell: bash
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          . $IDF_PATH/export.sh
+          idf.py set-target esp32s3
+          idf.py build
+          cd build
+          esptool --chip esp32s3 merge-bin -o grillo-${GITHUB_REF_NAME}-merged.bin @flash_args
+          cp grillo.bin grillo-${GITHUB_REF_NAME}-app.bin
+          cp grillo.elf grillo-${GITHUB_REF_NAME}.elf
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            build/grillo-${{ github.ref_name }}-merged.bin
+            build/grillo-${{ github.ref_name }}-app.bin
+            build/grillo-${{ github.ref_name }}.elf

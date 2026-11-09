@@ -1,0 +1,45 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # Stessa versione di ESP-IDF usata in locale (~/esp/esp-idf, tag v6.1).
+    container: espressif/idf:v6.1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build
+        shell: bash
+        run: |
+          # Il container gira come root su una checkout di un altro utente
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          . $IDF_PATH/export.sh
+          idf.py set-target esp32s3
+          idf.py build
+
+      - name: Merged image
+        shell: bash
+        run: |
+          . $IDF_PATH/export.sh
+          cd build
+          # Un'unica immagine da flashare a 0x0 (bootloader + partizioni + app)
+          esptool --chip esp32s3 merge-bin -o grillo-merged.bin @flash_args
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: grillo-${{ github.sha }}
+          path: |
+            build/grillo.bin
+            build/grillo.elf
+            build/grillo-merged.bin
+            build/bootloader/bootloader.bin
+            build/partition_table/partition-table.bin
+            build/flash_args

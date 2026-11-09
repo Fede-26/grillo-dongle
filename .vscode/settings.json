@@ -1,0 +1,16 @@
+{
+    // Il progetto si configura con idf.py, non con CMake Tools: se CMake Tools
+    // configurasse da solo userebbe il compilatore host e i target sbagliati.
+    "cmake.configureOnOpen": false,
+    "cmake.automaticReconfigure": false,
+    "C_Cpp.default.configurationProvider": "",
+    "C_Cpp.errorSquiggles": "enabledIfIncludesResolve",
+    "files.associations": {
+        "*.h": "c",
+        "sdkconfig*": "properties"
+    },
+    "files.exclude": {
+        "build/": true,
+        "managed_components/": true
+    }
+}

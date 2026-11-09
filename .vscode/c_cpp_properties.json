@@ -1,0 +1,13 @@
+{
+    "version": 4,
+    "configurations": [
+        {
+            "name": "ESP-IDF (esp32s3)",
+            // Include, define e compilatore vengono presi dal database generato
+            // da `idf.py build` (o `idf.py reconfigure`): finché build/ non
+            // esiste, IntelliSense segnala gli include come mancanti.
+            "compileCommands": "${workspaceFolder}/build/compile_commands.json",
+            "cStandard": "gnu17"
+        }
+    ]
+}
