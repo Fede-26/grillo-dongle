@@ -6,17 +6,26 @@
 
 typedef struct {
     const char *const *items;
+    const char *const *rights;
 } menu_t;
 
 static const char *menu_label(int i, void *arg, const char **right, bool *enabled)
 {
-    return ((menu_t *)arg)->items[i];
+    const menu_t *m = arg;
+    if (m->rights) *right = m->rights[i];
+    return m->items[i];
 }
 
 int app_menu(app_ctx_t *ctx, const char *title, const char *const *items, int count, int sel)
 {
+    return app_menu_ex(ctx, title, items, NULL, count, sel);
+}
+
+int app_menu_ex(app_ctx_t *ctx, const char *title, const char *const *items, const char *const *rights, int count,
+                int sel)
+{
     if (count <= 0) return -1;
-    menu_t m = {items};
+    menu_t m = {items, rights};
     int top = 0;
     char saved[24];
     // Il titolo del menu va nella status bar; poi si ripristina il nome dell'app

@@ -76,6 +76,10 @@ void app_post(app_ctx_t *ctx, app_ev_type_t type, int32_t arg);
 // Menu a lista: click = giù, doppio = su, lungo = scegli.
 // Restituisce l'indice scelto o -1 se l'app deve uscire.
 int app_menu(app_ctx_t *ctx, const char *title, const char *const *items, int count, int selected);
+// Come app_menu, con una colonna di testo a destra di ogni riga (rights può
+// essere NULL, e ogni elemento può essere NULL).
+int app_menu_ex(app_ctx_t *ctx, const char *title, const char *const *items, const char *const *rights, int count,
+                int selected);
 // Domanda sì/no: click alterna, lungo conferma. false anche in caso di uscita.
 bool app_confirm(app_ctx_t *ctx, const char *title, const char *text, bool default_yes);
 // Messaggio: attende click o lungo.

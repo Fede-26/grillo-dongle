@@ -18,8 +18,10 @@ OUT = ROOT / "components" / "gfx" / "font_data.c"
 # l'indice del glifo: gfx_text decodifica UTF-8 e cerca qui il codepoint.
 EXTRA = [0x2022, 0x2713, 0x2717, 0x2190, 0x2192, 0x2191, 0x2193, 0x25B8,
          0x2026, 0x00B0, 0x2039, 0x203A, 0x00E0, 0x00E8, 0x00E9, 0x00EC,
-         0x00F2, 0x00F9]
+         0x00F2, 0x00F9, 0x00B7]
 CODEPOINTS = list(range(0x20, 0x7F)) + EXTRA
+# unscii non ha questi glifi (uscirebbe '?'): si usa il simbolo ASCII più vicino.
+ALIAS = {0x2039: ord("<"), 0x203A: ord(">"), 0x00B7: 0x2022}
 
 
 def load(name):
@@ -33,7 +35,7 @@ def load(name):
 def emit(f, name, glyphs, height):
     rows_out, metrics = [], []
     for cp in CODEPOINTS:
-        rows = glyphs.get(cp, glyphs[ord("?")])
+        rows = glyphs.get(ALIAS.get(cp, cp), glyphs[ord("?")])
         assert len(rows) == height, (hex(cp), len(rows))
         used = 0
         for r in rows:
