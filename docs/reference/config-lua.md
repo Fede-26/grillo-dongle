@@ -23,7 +23,8 @@ Il modello è `sd-template/config.lua`.
 | `keyboard.jitter` | ms | 0 | Variazione casuale della pausa. |
 | `keyboard.line_delay` | ms | 0 | Pausa in più dopo ogni `\n`. |
 | `keyboard.start_delay` | ms | 1000 | Attesa prima di far partire uno script. |
-| `secrets` | tabella nome → testo | vuota | Password per `kb.type_secret`. Vedi [Password](../how-to/password.md). |
+| `secrets` | tabella nome → testo | vuota | Password per `kb.type_secret` (`secrets.sudo` è quella usata da `pcdisk` con `mount = "sudo"`). Vedi [Password](../how-to/password.md). |
+| `pcdisk.mount` | `auto`/`sudo` | `auto` | Come la libreria `pcdisk` monta la SD sul PC Linux. Vedi [API Lua](lua-api.md#libreria-pcdisk). |
 | `ui.brightness` | 0..100 | 80 | Luminosità del display. |
 | `ui.rotation` | 0 o 180 | 0 | Rotazione del display (90 e 270 non sono supportati). |
 | `webhid.pin` | booleano | `true` | `false`: il Web HID non chiede il PIN. Vedi [Sicurezza](../explanation/sicurezza.md). |

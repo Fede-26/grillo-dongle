@@ -19,7 +19,10 @@ return {
 
   -- Password digitabili da kb.type_secret("nome"): lo script non le legge
   -- mai come stringa. Credenziali in chiaro sulla SD: rischio accettato.
-  -- secrets = { admin = "..." },
+  -- secrets = { admin = "...", sudo = "..." },  -- sudo: usata da pcdisk con mount = "sudo"
+
+  -- Come lib/pcdisk.lua monta la SD sul PC Linux: "auto" (automount) o "sudo" (mount a mano)
+  -- pcdisk = { mount = "auto" },
 
   -- rotation: 0 oppure 180 (90 e 270 non supportati)
   ui = { brightness = 80, rotation = 0 },

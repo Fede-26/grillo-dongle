@@ -126,6 +126,8 @@ Non è nel firmware ma in `sd-template/payloads/lib/pcdisk.lua`: `require("pcdis
 - `pcdisk.run(corpo [, {timeout = ms}])`: collega la SD al PC, digita nel terminale aperto sul PC una riga che trova il disco, esegue `corpo` ed espelle; poi attende l'espulsione (default 180000 ms) e scollega. Restituisce `"eject"` o `"click"`, errore se scade il tempo.
 - `corpo` è una riga di PowerShell (`kb.os()` = `windows`) o di shell POSIX (`linux`, `mac`); `$d` è la radice della SD senza barra finale. Non usare `${` nel corpo.
 - Il disco si riconosce dal file `.grillo` nella radice. Il supporto Linux (percorsi di automount di udisks) non è verificato.
+- `opzioni.mount`: `"auto"` (default) usa il montaggio automatico del sistema; `"sudo"` (solo Linux) monta la SD a mano in `/mnt/grillo`, in sola lettura, e la smonta ed espelle alla fine. Il default si può impostare in `config.lua` con `pcdisk = { mount = "sudo" }`.
+- Con `mount = "sudo"` la password è presa da `secrets.sudo` di `config.lua` (altro nome con `opzioni.secret`) e digitata con `kb.type_secret`. Prima il dongle esegue `sudo -k; sudo -v`, così il prompt compare sempre. Il volume si riconosce dall'etichetta `GRILLO-SD`, non da `.grillo`, che prima del mount non si può leggere. Se la password è sbagliata, i comandi successivi finiscono nel prompt di sudo: controlla `secrets.sudo`. Non verificato su una distribuzione reale.
 
 ## `cfg(chiave [, predefinito])`
 
