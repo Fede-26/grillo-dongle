@@ -360,8 +360,10 @@ static int ui_menu(lua_State *L)
 static int ui_confirm(lua_State *L)
 {
     const char *text = luaL_checkstring(L, 1);
-    bool yes = app_confirm(s_run->ctx, s_run->meta->name[0] ? s_run->meta->name : "Confirm", text,
-                           lua_isnoneornil(L, 2) || lua_toboolean(L, 2));
+    lua_Integer ms = luaL_optinteger(L, 3, 0);
+    luaL_argcheck(L, ms >= 0 && ms <= 3600000, 3, "0..3600000 ms");
+    bool yes = app_confirm_timeout(s_run->ctx, s_run->meta->name[0] ? s_run->meta->name : "Confirm", text,
+                                   lua_isnoneornil(L, 2) || lua_toboolean(L, 2), (uint32_t)ms);
     if (s_run->ctx->exit_requested) luaL_error(L, "aborted");
     inj_redraw(s_run);
     lua_pushboolean(L, yes);

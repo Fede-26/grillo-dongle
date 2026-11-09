@@ -82,5 +82,8 @@ int app_menu_ex(app_ctx_t *ctx, const char *title, const char *const *items, con
                 int selected);
 // Domanda sì/no: click alterna, lungo conferma. false anche in caso di uscita.
 bool app_confirm(app_ctx_t *ctx, const char *title, const char *text, bool default_yes);
+// Come app_confirm; se non c'è alcun gesto entro timeout_ms (0 = mai) restituisce
+// default_yes. Un click disattiva la scadenza.
+bool app_confirm_timeout(app_ctx_t *ctx, const char *title, const char *text, bool default_yes, uint32_t timeout_ms);
 // Messaggio: attende click o lungo.
 void app_message(app_ctx_t *ctx, const char *title, const char *text, uint32_t color);

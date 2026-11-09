@@ -85,7 +85,7 @@ Non disponibile mentre il disco USB è collegato (`disk.attach`): errore `no mou
 - `ui.status(testo)`: riga di stato nella schermata dell'esecuzione.
 - `ui.progress(valore [, massimo])`: barra di avanzamento, massimo 100 se omesso.
 - `ui.menu(titolo, voci)`: menu a lista (da 1 a 32 stringhe); click = giù, doppio click = su, pressione lunga = scegli. Restituisce l'indice scelto (da 1). Se l'utente esce (hold 3 s) lo script termina con `aborted`.
-- `ui.confirm(testo [, predefinito_sì])`: domanda sì/no, restituisce un booleano. Predefinito `true`.
+- `ui.confirm(testo [, predefinito_sì [, timeout_ms]])`: domanda sì/no, restituisce un booleano. Predefinito `true`. Con `timeout_ms` (fino a 3600000) il display mostra i secondi residui e, se non c'è alcun gesto entro la scadenza, la risposta è quella predefinita: serve con l'autorun, dove nessuno potrebbe premere nulla. Un click disattiva la scadenza.
 - `ui.wait_button()`: attende un gesto e restituisce `"click"`, `"double"` o `"long"`.
 
 ## `sys`
@@ -118,6 +118,14 @@ Mentre il disco è collegato, il dongle espone tastiera e disco insieme (profilo
 - `disk.detach()`: torna al solo profilo tastiera.
 
 Se lo script termina con il disco ancora collegato, il dongle lo scollega comunque. I comandi per copiare ed espellere sul PC li digita lo script con `kb.type`: vedi [Copiare file sul PC](../how-to/copiare-file.md).
+
+## Libreria `pcdisk`
+
+Non è nel firmware ma in `sd-template/payloads/lib/pcdisk.lua`: `require("pcdisk")` dopo averla copiata sulla SD.
+
+- `pcdisk.run(corpo [, {timeout = ms}])`: collega la SD al PC, digita nel terminale aperto sul PC una riga che trova il disco, esegue `corpo` ed espelle; poi attende l'espulsione (default 180000 ms) e scollega. Restituisce `"eject"` o `"click"`, errore se scade il tempo.
+- `corpo` è una riga di PowerShell (`kb.os()` = `windows`) o di shell POSIX (`linux`, `mac`); `$d` è la radice della SD senza barra finale. Non usare `${` nel corpo.
+- Il disco si riconosce dal file `.grillo` nella radice. Il supporto Linux (percorsi di automount di udisks) non è verificato.
 
 ## `cfg(chiave [, predefinito])`
 

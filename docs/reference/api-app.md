@@ -43,6 +43,7 @@ Tipi: `APP_EV_CLICK`, `APP_EV_DOUBLE`, `APP_EV_LONG`, `APP_EV_EXIT` (hold 3 s: t
 - `app_menu(ctx, titolo, voci, n, selezionata)`: click = giù, doppio = su, lungo = scegli; restituisce l'indice o -1 se l'app deve uscire.
 - `app_menu_ex(...)`: come sopra, con una colonna di testo a destra di ogni riga.
 - `app_confirm(ctx, titolo, testo, predefinito_sì)`.
+- `app_confirm_timeout(ctx, titolo, testo, predefinito_sì, timeout_ms)`: come sopra; se non c'è alcun gesto entro `timeout_ms` (0 = mai) restituisce il predefinito. Un click disattiva la scadenza.
 - `app_message(ctx, titolo, testo, colore)`: attende click o lungo.
 
 ## Disegno

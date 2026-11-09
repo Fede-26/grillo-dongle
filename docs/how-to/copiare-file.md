@@ -2,7 +2,7 @@
 
 Uno script può far apparire la microSD come disco sul PC (in sola lettura), digitare i comandi che copiano i file, e poi scollegarla. Il PC deve avere una shell raggiungibile da tastiera.
 
-Schema (il modello completo è `sd-template/payloads/examples/copy-installer.lua`, con i comandi da scrivere per il tuo sistema):
+Usa la libreria `pcdisk` (`sd-template/payloads/lib/pcdisk.lua`, da copiare in `/payloads/lib` sulla SD). Fa lei i passi ripetitivi: collega il disco, trova l'unità sul PC dal file `.grillo`, esegue il tuo comando, espelle, attende l'espulsione e scollega.
 
 ```lua
 --- @name Copia installer
@@ -15,20 +15,13 @@ sys.sleep(500)
 kb.type("powershell\n")
 sys.sleep(1500)
 
-ui.status("Collego la SD")
-disk.attach()                  -- il dongle si ri-enumera: attende la tastiera
-
-ui.status("Copio")
--- kb.type("comando che copia i file dal volume Grillo\n")
-
-ui.status("Espello")
--- kb.type("comando che espelle il volume\n")
-
-local how = disk.wait_eject(60000)   -- "eject", "click" o nil
-if not how then error("SD non espulsa entro 60 s") end
-
-disk.detach()
+local pcdisk = require("pcdisk")
+pcdisk.run([[Copy-Item "$d\data\setup.exe" C:\Temp -Force]])
 ```
+
+`$d` è la radice della SD senza barra finale (`E:`). Il corpo è una sola riga: concatena più comandi con `;`, perché i comandi digitati mentre un altro è in corso si accodano e il dongle non sa quando finiscono. Un esempio è in `sd-template/payloads/copy-installer.lua`.
+
+Senza la libreria si possono usare direttamente `disk.attach`, `disk.wait_eject` e `disk.detach` ([API Lua](../reference/lua-api.md#disk-la-microsd-come-disco-sul-pc)).
 
 ## Cose da sapere
 

@@ -1,6 +1,8 @@
 // Dialoghi bloccanti comuni a tutte le app: menu, conferma, messaggio.
 
+#include <stdio.h>
 #include <string.h>
+#include "esp_timer.h"
 #include "app.h"
 #include "ui.h"
 
@@ -61,20 +63,36 @@ static void draw_button(int x, int y, int w, const char *label, bool selected, u
 
 bool app_confirm(app_ctx_t *ctx, const char *title, const char *text, bool yes)
 {
+    return app_confirm_timeout(ctx, title, text, yes, 0);
+}
+
+bool app_confirm_timeout(app_ctx_t *ctx, const char *title, const char *text, bool yes, uint32_t timeout_ms)
+{
     uint32_t accent = ctx->app->accent;
+    int64_t deadline = timeout_ms ? esp_timer_get_time() + timeout_ms * 1000LL : 0;
     for (;;) {
         ui_begin();
-        gfx_text_fit(&gfx_font_small, 6, UI_CONTENT_Y + 2, UI_W - 12, title, accent);
+        char left[8] = "";
+        if (deadline) snprintf(left, sizeof(left), "%ds", (int)((deadline - esp_timer_get_time() + 999999) / 1000000));
+        // Il conto alla rovescia sta a destra del titolo, che cede lo spazio
+        gfx_text_fit(&gfx_font_small, 6, UI_CONTENT_Y + 2, UI_W - 12 - (deadline ? 30 : 0), title, accent);
+        if (deadline) gfx_text_aligned(&gfx_font_small, 0, UI_CONTENT_Y + 2, UI_W - 6, GFX_ALIGN_RIGHT, left, UI_DIM);
         ui_draw_wrapped(&gfx_font_small, 6, UI_CONTENT_Y + 13, UI_W - 12, 3, text, UI_TEXT);
         draw_button(24, UI_H - 16, 50, "No", !yes, accent);
         draw_button(86, UI_H - 16, 50, "Yes", yes, accent);
         ui_end();
 
         app_event_t ev;
-        if (!app_next_event(ctx, &ev, portMAX_DELAY)) continue;
+        // Scatto di 250 ms per aggiornare i secondi residui
+        if (!app_next_event(ctx, &ev, deadline ? 250 : portMAX_DELAY)) {
+            if (deadline && esp_timer_get_time() >= deadline) return yes; // scaduto: vale la scelta predefinita
+            continue;
+        }
         if (ev.type == APP_EV_EXIT) return false;
-        if (ev.type == APP_EV_CLICK || ev.type == APP_EV_DOUBLE) yes = !yes;
-        else if (ev.type == APP_EV_LONG) return yes;
+        if (ev.type == APP_EV_CLICK || ev.type == APP_EV_DOUBLE) {
+            yes = !yes;
+            deadline = 0; // l'utente è presente: niente più scadenza
+        } else if (ev.type == APP_EV_LONG) return yes;
     }
 }
 
