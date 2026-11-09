@@ -50,6 +50,9 @@ void gfx_reset_clip(void);
 // Testo UTF-8 proporzionale. Restituisce la larghezza disegnata.
 int gfx_text(const gfx_font_t *f, int x, int y, const char *s, uint32_t rgb);
 int gfx_text_width(const gfx_font_t *f, const char *s);
+// Come gfx_text, con ogni pixel del glifo ingrandito `scale` volte (interi). Restituisce la larghezza disegnata.
+int gfx_text_scaled(const gfx_font_t *f, int x, int y, const char *s, uint32_t rgb, int scale);
+int gfx_text_scaled_width(const gfx_font_t *f, const char *s, int scale);
 void gfx_text_aligned(const gfx_font_t *f, int x, int y, int w, gfx_align_t a, const char *s, uint32_t rgb);
 // Disegna il testo troncandolo con "…" se supera max_w.
 void gfx_text_fit(const gfx_font_t *f, int x, int y, int max_w, const char *s, uint32_t rgb);

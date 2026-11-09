@@ -186,6 +186,34 @@ int gfx_text(const gfx_font_t *f, int x, int y, const char *s, uint32_t rgb)
     return x - x0;
 }
 
+int gfx_text_scaled(const gfx_font_t *f, int x, int y, const char *s, uint32_t rgb, int scale)
+{
+    uint16_t c = gfx_rgb(rgb);
+    int x0 = x;
+    while (*s) {
+        int gi = glyph_index(f, utf8_next(&s));
+        const uint8_t *rows = f->bits + gi * f->height;
+        int left = f->metrics[gi * 2], w = f->metrics[gi * 2 + 1];
+        for (int r = 0; r < f->height; r++) {
+            uint8_t bits = rows[r] << left;
+            for (int col = 0; col < w; col++) {
+                if (!(bits & (0x80 >> col))) continue;
+                for (int dy = 0; dy < scale; dy++) {
+                    for (int dx = 0; dx < scale; dx++) gfx_pixel(x + col * scale + dx, y + r * scale + dy, c);
+                }
+            }
+        }
+        x += (w + 1) * scale;
+    }
+    return x - x0;
+}
+
+int gfx_text_scaled_width(const gfx_font_t *f, const char *s, int scale)
+{
+    int w = gfx_text_width(f, s);
+    return w > 0 ? (w + 1) * scale - 1 : 0;
+}
+
 int gfx_text_width(const gfx_font_t *f, const char *s)
 {
     int w = 0;

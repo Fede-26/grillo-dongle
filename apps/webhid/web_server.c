@@ -33,9 +33,11 @@ const char *web_client_ip(void)
 }
 
 // Confronto a tempo costante: il PIN protegge da altri dispositivi sulla rete.
+// Con PIN vuoto (webhid.pin = false in config.lua) qualunque client entra.
 static bool pin_ok(const char *given)
 {
     size_t n = strlen(s_pin);
+    if (n == 0) return true;
     if (strlen(given) != n) return false;
     uint8_t diff = 0;
     for (size_t i = 0; i < n; i++) diff |= given[i] ^ s_pin[i];
@@ -60,6 +62,13 @@ static esp_err_t index_get(httpd_req_t *req)
     httpd_resp_set_hdr(req, "Content-Encoding", "gzip");
     httpd_resp_set_hdr(req, "Cache-Control", "no-store");
     return httpd_resp_send(req, (const char *)index_html_gz_start, index_html_gz_end - index_html_gz_start);
+}
+
+// Dice alla pagina se serve il PIN, senza consumare tentativi.
+static esp_err_t cfg_get(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "text/plain");
+    return httpd_resp_sendstr(req, s_pin[0] ? "pin" : "nopin");
 }
 
 static void reply(httpd_req_t *req, const char *msg)
@@ -100,12 +109,28 @@ static void authenticate(httpd_req_t *req, int fd, const char *given)
     }
     s_tries = 0;
     s_client_fd = fd;
-    struct sockaddr_in addr;
+    // lwIP con IPv6 attivo restituisce un sockaddr_in6 anche per i client IPv4
+    // (indirizzo "mapped": gli ultimi 4 byte sono l'IPv4). Leggerlo come
+    // sockaddr_in dava 0.0.0.0.
+    struct sockaddr_storage addr;
     socklen_t len = sizeof(addr);
     s_client_ip[0] = 0;
-    if (getpeername(fd, (struct sockaddr *)&addr, &len) == 0) inet_ntoa_r(addr.sin_addr, s_client_ip, sizeof(s_client_ip));
+    if (getpeername(fd, (struct sockaddr *)&addr, &len) == 0) {
+        struct in_addr v4 = {0};
+        if (addr.ss_family == AF_INET6) {
+            memcpy(&v4, &((struct sockaddr_in6 *)&addr)->sin6_addr.s6_addr[12], 4);
+        } else {
+            v4 = ((struct sockaddr_in *)&addr)->sin_addr;
+        }
+        inet_ntoa_r(v4, s_client_ip, sizeof(s_client_ip));
+    }
     ESP_LOGI(TAG, "client autenticato: %s", s_client_ip);
     reply(req, "ok");
+    // Layout e OS correnti, per allineare i selettori della pagina
+    static const char *const os_names[] = {"windows", "linux", "mac"};
+    char st[48];
+    snprintf(st, sizeof(st), "L%s %s", hid_get_layout()->name, os_names[hid_get_os()]);
+    reply(req, st);
 }
 
 // Comandi (testo, un carattere di tipo + argomenti):
@@ -114,6 +139,9 @@ static void authenticate(httpd_req_t *req, int fd, const char *given)
 //   t testo     digita il testo nel layout dell'host
 //   c mods ch   combinazione: modificatori + carattere (es. Ctrl+C)
 //   k mods key  combinazione con usage HID grezzo (tasti speciali, F-key)
+//   e n         n backspace di seguito (il live typing cancella così)
+//   l nome      layout dell'host (it, us, colemak)
+//   o nome      OS dell'host (windows, linux, mac): sceglie i ripieghi per i caratteri mancanti
 static hid_result_t command(const char *m)
 {
     int a = 0, b = 0;
@@ -135,6 +163,25 @@ static hid_result_t command(const char *m)
             if (ch && ch[1] && hid_char_key(utf8_first(ch + 1), &key, &mods)) return hid_chord(a | mods, &key, 1);
         }
         break;
+    case 'e':
+        if (sscanf(m + 1, "%d", &a) == 1 && a > 0 && a <= 200) {
+            uint8_t bs = 0x2A; // Backspace
+            for (int i = 0; i < a; i++) {
+                hid_result_t r = hid_chord(0, &bs, 1);
+                if (r != HID_OK) return r;
+            }
+        }
+        break;
+    case 'l': {
+        const hid_layout_t *l = hid_layout_find(m + 1);
+        if (l) hid_set_layout(l);
+        break;
+    }
+    case 'o': {
+        hid_os_t os;
+        if (hid_os_parse(m + 1, &os)) hid_set_os(os);
+        break;
+    }
     case 'k':
         if (sscanf(m + 1, "%d %d", &a, &b) == 2) {
             uint8_t key = b;
@@ -190,6 +237,8 @@ esp_err_t web_start(const char *pin)
 
     httpd_uri_t idx = {.uri = "/", .method = HTTP_GET, .handler = index_get};
     httpd_uri_t ws = {.uri = "/ws", .method = HTTP_GET, .handler = ws_handler, .is_websocket = true};
+    httpd_uri_t cfg_uri = {.uri = "/cfg", .method = HTTP_GET, .handler = cfg_get};
+    httpd_register_uri_handler(s_server, &cfg_uri);
     httpd_register_uri_handler(s_server, &idx);
     httpd_register_uri_handler(s_server, &ws);
     return ESP_OK;

@@ -232,6 +232,10 @@ static esp_err_t start_sta(uint32_t timeout_ms)
     EventBits_t bits = xEventGroupWaitBits(s_ev, BIT_GOT_IP | BIT_FAILED, pdFALSE, pdFALSE, pdMS_TO_TICKS(timeout_ms));
     s_connecting = false;
     if (bits & BIT_GOT_IP) {
+        // Il risparmio energetico di default (WIFI_PS_MIN_MODEM) fa dormire la
+        // radio tra i beacon: ping a 120-180 ms, pagine lente e mouse a scatti.
+        // Il dongle è alimentato da USB, quindi non serve.
+        esp_wifi_set_ps(WIFI_PS_NONE);
         s_mode = NET_STA;
         s_started = true;
         return ESP_OK;
