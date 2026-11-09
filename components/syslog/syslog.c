@@ -58,7 +58,9 @@ static void syslog_task(void *arg)
     for (;;) {
         xQueueReceive(s_q, line, portMAX_DELAY);
         bool flush_req = line[0] == FLUSH_MARK[0];
-        if (storage_state() == STORAGE_MOUNTED) {
+        // Con la SD condivisa in sola lettura con il PC non si scrive: le
+        // righe in coda vengono scartate.
+        if (storage_state() == STORAGE_MOUNTED && !storage_is_shared()) {
             mkdir(LOG_DIR, 0777);
             struct stat st;
             if (stat(LOG_FILE, &st) == 0 && st.st_size > LOG_MAX) {

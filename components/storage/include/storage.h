@@ -30,4 +30,14 @@ esp_err_t storage_reclaim(void);
 // frattempo il PC può averne modificato il contenuto.
 uint32_t storage_lend_count(void);
 
+// Condivisione in sola lettura con l'host (profilo USB HID_DISK): la FAT
+// resta montata, ma finché è condivisa il firmware non deve scriverci
+// (l'host non vedrebbe le modifiche e la sua cache diventerebbe incoerente).
+sdmmc_card_t *storage_share_ro(void);
+void storage_unshare(void);
+bool storage_is_shared(void);
+
+// File marcatore che gli script usano per trovare la SD sul PC.
+#define STORAGE_MARKER STORAGE_ROOT "/.grillo"
+
 bool storage_info(uint64_t *total_bytes, uint64_t *free_bytes);

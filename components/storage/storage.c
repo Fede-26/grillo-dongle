@@ -19,6 +19,7 @@ static FATFS *s_fs;
 static BYTE s_pdrv = 0xFF;
 static storage_state_t s_state = STORAGE_ABSENT;
 static uint32_t s_lend_count;
+static volatile bool s_shared;
 
 const char *storage_state_name(storage_state_t s)
 {
@@ -93,6 +94,15 @@ static esp_err_t mount(void)
         goto fail;
     }
     s_state = STORAGE_MOUNTED;
+    // Il marcatore permette agli script dell'injector di riconoscere questa
+    // SD tra le unità del PC, qualunque sia l'etichetta del volume.
+    FILE *m = fopen(STORAGE_MARKER, "r");
+    if (m) {
+        fclose(m);
+    } else if ((m = fopen(STORAGE_MARKER, "w"))) {
+        fputs("Grillo SD marker: used by scripts to find this disk. Do not delete.\n", m);
+        fclose(m);
+    }
     return ESP_OK;
 fail:
     ff_diskio_unregister(s_pdrv);
@@ -154,4 +164,21 @@ bool storage_info(uint64_t *total, uint64_t *free_b)
 uint32_t storage_lend_count(void)
 {
     return s_lend_count;
+}
+
+sdmmc_card_t *storage_share_ro(void)
+{
+    if (s_state != STORAGE_MOUNTED) return NULL;
+    s_shared = true;
+    return &s_card;
+}
+
+void storage_unshare(void)
+{
+    s_shared = false;
+}
+
+bool storage_is_shared(void)
+{
+    return s_shared;
 }

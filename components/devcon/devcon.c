@@ -9,7 +9,12 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
+#include "sdkconfig.h"
 #include "usbdev.h"
+
+// In release la CDC appartiene solo al canale con l'host: niente log né
+// comandi di debug, che finirebbero mescolati alle risposte di host.ask.
+#define CDC_CONSOLE CONFIG_GRILLO_USB_DEBUG_CDC
 
 #define MAX_CMDS 32
 #define LINE_LEN 192
@@ -24,6 +29,17 @@ typedef struct {
 static cmd_t s_cmds[MAX_CMDS];
 static int s_ncmds;
 static SemaphoreHandle_t s_wlock;
+static devcon_line_filter_t s_filter;
+
+void devcon_set_line_filter(devcon_line_filter_t filter)
+{
+    s_filter = filter;
+}
+
+void devcon_cdc_write(const char *buf, int len)
+{
+    if (len > 0) usbdev_cdc_write((const uint8_t *)buf, len);
+}
 
 void devcon_write(const char *buf, int len)
 {
@@ -32,7 +48,7 @@ void devcon_write(const char *buf, int len)
     // mescolerebbero a metà riga.
     if (s_wlock && xSemaphoreTake(s_wlock, pdMS_TO_TICKS(50)) != pdTRUE) return;
     if (usbdev_cdc_active()) {
-        usbdev_cdc_write((const uint8_t *)buf, len);
+        if (CDC_CONSOLE) usbdev_cdc_write((const uint8_t *)buf, len);
     } else if (usb_serial_jtag_is_connected()) {
         usb_serial_jtag_write_bytes(buf, len, pdMS_TO_TICKS(20));
     }
@@ -127,7 +143,10 @@ static void devcon_task(void *arg)
             char c = buf[i];
             if (c == '\r' || c == '\n') {
                 line[len] = 0;
-                if (len) execute(line);
+                if (len && !(s_filter && s_filter(line))) {
+                    // Sulla CDC in release si accettano solo le righe del filtro
+                    if (CDC_CONSOLE || !usbdev_cdc_active()) execute(line);
+                }
                 len = 0;
             } else if (len < LINE_LEN - 1) {
                 line[len++] = c;

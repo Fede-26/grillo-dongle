@@ -32,7 +32,7 @@
 
 typedef enum {
     UI_IND_SD,   // 0 assente, 1 montata, 2 non FAT, 3 prestata all'host
-    UI_IND_USB,  // 0 nessun profilo, 1 HID, 2 MSC
+    UI_IND_USB,  // 0 nessun profilo, 1 HID, 2 MSC, 3 HID + disco
     UI_IND_WIFI, // 0 spento, 1 connessione in corso, 2..5 RSSI a barre, 6 hotspot
     UI_IND_COUNT,
 } ui_indicator_t;

@@ -17,3 +17,10 @@ void devcon_init(void);
 void devcon_register(const char *name, const char *usage, devcon_cmd_fn fn);
 int devcon_printf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 void devcon_write(const char *buf, int len);
+
+// Filtro per le righe in arrivo: se restituisce true la riga è consumata
+// e non viene interpretata come comando (usato dal canale host.ask).
+typedef bool (*devcon_line_filter_t)(const char *line);
+void devcon_set_line_filter(devcon_line_filter_t filter);
+// Scrive sulla seriale CDC indipendentemente dalla console di debug.
+void devcon_cdc_write(const char *buf, int len);

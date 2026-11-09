@@ -77,7 +77,7 @@ static void draw_bar(void)
     }
     uint8_t usb = s_ind[UI_IND_USB];
     if (usb) {
-        const char *t = usb == 1 ? "HID" : "MSC";
+        const char *t = usb == 1 ? "HID" : (usb == 2 ? "MSC" : "HID+D");
         int w = gfx_text_width(&gfx_font_small, t);
         x -= w;
         gfx_text(&gfx_font_small, x, 2, t, UI_DIM);

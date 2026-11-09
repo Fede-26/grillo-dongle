@@ -172,6 +172,26 @@ static int cmd_log(int argc, char **argv)
     return 1;
 }
 
+// Cambia profilo USB senza passare da un'app (diagnosi). L'app manager lo
+// riporta a quello dell'app al prossimo cambio app.
+static int cmd_usb(int argc, char **argv)
+{
+    static const char *const names[] = {"none", "hid", "hiddisk", "msc"};
+    for (int p = 0; argc > 1 && p < 4; p++) {
+        if (strcmp(argv[1], names[p]) != 0) continue;
+        sdmmc_card_t *card = NULL;
+        if (p == USB_PROFILE_HID_DISK) card = storage_share_ro();
+        if (p == USB_PROFILE_MSC) card = storage_lend();
+        esp_err_t e = usbdev_apply(p, card);
+        if (p != USB_PROFILE_HID_DISK) storage_unshare();
+        if (p != USB_PROFILE_MSC && storage_state() == STORAGE_LENT) storage_reclaim();
+        devcon_printf("%s\n", esp_err_to_name(e));
+        return e == ESP_OK ? 0 : 1;
+    }
+    devcon_printf("usage: usb none|hid|hiddisk|msc\n");
+    return 1;
+}
+
 static int cmd_reboot(int argc, char **argv)
 {
     esp_restart();
@@ -190,5 +210,6 @@ void console_cmds_register(void)
     devcon_register("cat", "<path>: print file (max 16 KB)", cmd_cat);
     devcon_register("config", "reload | get <key>", cmd_config);
     devcon_register("log", "<tag|*> <level>: set log level", cmd_log);
+    devcon_register("usb", "none|hid|hiddisk|msc: switch USB profile", cmd_usb);
     devcon_register("reboot", "restart the device", cmd_reboot);
 }
