@@ -23,10 +23,22 @@ bool hid_os_parse(const char *name, hid_os_t *os)
     return true;
 }
 
+// Tabelle specifiche dell'OS (livelli AltGr/Option e tasti morti), NULL se il layout non ne ha
+static const hid_map_t *os_extra(const hid_layout_t *l, hid_os_t os)
+{
+    return os == HID_OS_LINUX ? l->linux_extra : (os == HID_OS_MAC ? l->mac_extra : l->win_extra);
+}
+
+static const hid_dead_t *os_dead(const hid_layout_t *l, hid_os_t os)
+{
+    return os == HID_OS_LINUX ? l->linux_dead : (os == HID_OS_MAC ? l->mac_dead : l->win_dead);
+}
+
 static const hid_map_t *lookup(const hid_layout_t *l, hid_os_t os, uint32_t cp)
 {
-    if (os == HID_OS_LINUX && l->linux_extra) {
-        for (const hid_map_t *m = l->linux_extra; m->cp; m++) {
+    const hid_map_t *extra = os_extra(l, os);
+    if (extra) {
+        for (const hid_map_t *m = extra; m->cp; m++) {
             if (m->cp == cp) return m;
         }
     }
@@ -61,6 +73,16 @@ int hid_translate(const hid_layout_t *l, hid_os_t os, uint32_t cp, hid_stroke_t 
         if (max < 1) return 0;
         out[0] = (hid_stroke_t){m->key, m->mods};
         return 1;
+    }
+    const hid_dead_t *dead = os_dead(l, os);
+    if (dead) {
+        for (const hid_dead_t *d = dead; d->cp; d++) {
+            if (d->cp != cp) continue;
+            if (max < 2) return 0;
+            out[0] = (hid_stroke_t){d->key1, d->mods1};
+            out[1] = (hid_stroke_t){d->key2, d->mods2};
+            return 2;
+        }
     }
     if (os == HID_OS_WINDOWS) {
         // Alt tenuto premuto + "0" + codice decimale sul tastierino:

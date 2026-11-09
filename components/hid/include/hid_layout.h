@@ -23,11 +23,24 @@ typedef struct {
     uint8_t mods;
 } hid_map_t;
 
+// Carattere composto da un tasto morto seguito da una lettera (es. à =
+// AltGr+r, poi a sul Colemak di Linux). Primo stroke: tasto morto, secondo: lettera.
+typedef struct {
+    uint16_t cp;
+    uint8_t key1, mods1;
+    uint8_t key2, mods2;
+} hid_dead_t;
+
 typedef struct {
     const char *name;
     const hid_map_t *map; // ordinata per cp
     int count;
     const hid_map_t *linux_extra; // caratteri in più su Linux, terminata da cp 0
+    const hid_dead_t *linux_dead; // sequenze con tasto morto su Linux, terminata da cp 0
+    const hid_map_t *mac_extra;   // livelli Option su macOS, terminata da cp 0
+    const hid_dead_t *mac_dead;   // sequenze con tasto morto su macOS, terminata da cp 0
+    const hid_map_t *win_extra;   // livelli AltGr su Windows, terminata da cp 0
+    const hid_dead_t *win_dead;   // sequenze con tasto morto su Windows, terminata da cp 0
 } hid_layout_t;
 
 extern const hid_layout_t hid_layouts[];
