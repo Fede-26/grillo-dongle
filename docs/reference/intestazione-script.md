@@ -33,9 +33,10 @@ Ogni script `.lua` in `/payloads` può iniziare con un blocco di commenti che lo
 | `line_delay` | ms | Pausa in più dopo ogni `\n` (default 0). |
 | `start_delay` | ms | Attesa dopo che il PC ha montato la tastiera, prima di partire (default 1000). |
 | `timeout` | secondi | Interrompe lo script se dura di più. |
-| `confirm` | `yes` / `no` | Accettata ma oggi senza effetto: l'injector mostra sempre una scheda con nome, layout e OS e chiede di avviare con una pressione lunga (doppio click per tornare indietro); con l'autorun la scheda non compare. |
 | `led` | `effetto [RRGGBB]` | Effetto del LED durante l'esecuzione: `off`, `solid`, `pulse`, `blink`, `rainbow`, con colore esadecimale facoltativo. |
 
 ## Viste dell'injector
 
 L'elenco può essere navigato per cartella, per sistema operativo o per tag. Nelle righe, il layout è abbreviato (`cmk` per Colemak) e separato dal sistema operativo da `/`. Cartelle e script sono cercati fino a 3 livelli sotto `/payloads`; la cartella `lib` e i file nascosti o AppleDouble (`._*`) sono saltati.
+
+Prima di avviare uno script, l'injector mostra sempre una scheda con nome, layout e OS: pressione lunga per avviare, doppio click per tornare indietro. Con l'autorun la scheda non compare.

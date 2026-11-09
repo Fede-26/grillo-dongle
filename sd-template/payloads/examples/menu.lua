@@ -1,6 +1,5 @@
 --- @name Menu and progress
 --- @desc Asks which site to configure, then shows a progress bar. Types nothing.
---- @confirm yes
 
 local sites = {"Site A", "Site B", "Site C"}
 local i = ui.menu("Which site?", sites)

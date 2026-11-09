@@ -152,7 +152,7 @@ bool payload_read_meta(const char *path, payload_meta_t *m)
 {
     memset(m, 0, sizeof(*m));
     strlcpy(m->path, path, sizeof(m->path));
-    m->key_delay = m->hold = m->jitter = m->line_delay = m->start_delay = m->timeout = m->confirm = -1;
+    m->key_delay = m->hold = m->jitter = m->line_delay = m->start_delay = m->timeout = -1;
     FILE *f = fopen(path, "r");
     if (!f) return false;
     char line[200];
@@ -176,7 +176,6 @@ bool payload_read_meta(const char *path, payload_meta_t *m)
         else if (!strcmp(key, "os")) strlcpy(m->os, val, sizeof(m->os));
         else if (!strcmp(key, "led")) strlcpy(m->led, val, sizeof(m->led));
         else if (!strcmp(key, "tags")) strlcpy(m->tags, val, sizeof(m->tags));
-        else if (!strcmp(key, "confirm")) m->confirm = strcasecmp(val, "no") && strcasecmp(val, "false");
         else {
             bool known = false;
             for (size_t i = 0; i < sizeof(s_int_keys) / sizeof(s_int_keys[0]); i++) {

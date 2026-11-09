@@ -17,7 +17,6 @@ typedef struct {
     char led[32];
     char tags[40]; // @tags: parole separate da virgole o spazi
     int key_delay, hold, jitter, line_delay, start_delay, timeout;
-    int confirm; // -1 assente, 0 no, 1 sì
     char error[96]; // intestazione non valida: messaggio con numero di riga
 } payload_meta_t;
 
