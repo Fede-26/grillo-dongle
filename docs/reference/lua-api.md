@@ -125,7 +125,7 @@ Se lo script termina con il disco ancora collegato, il dongle lo scollega comunq
 Il PC può rispondere al dongle con una riga `@G<nonce>:<codice>` scritta sulla porta seriale CDC. Il dongle accetta solo quella riga, con il nonce atteso: dal PC arrivano "finito" e un numero, mai l'output dei comandi. Ogni altra riga è scartata. Di solito si usa la libreria `host` qui sotto, non queste primitive.
 
 - `host.expect(nonce)`: si aspetta una risposta con questo nonce (1..15 lettere o cifre). Va chiamata **prima** di digitare il comando, altrimenti una risposta rapida andrebbe persa.
-- `host.wait([timeout_ms])`: attende la risposta (default 60000 ms). Restituisce il codice di uscita e il testo ricevuto (max 64 caratteri; il dongle sostituisce con `_` tutto ciò che non è lettera, cifra, `. _ : -` o spazio), oppure `nil` allo scadere. Errore `call host.expect() first` se manca `expect`.
+- `host.wait([timeout_ms])`: attende la risposta (default 60000 ms). Restituisce il codice di uscita e il testo ricevuto (max 256 caratteri; il dongle sostituisce con `_` tutto ciò che non è lettera, cifra, `. _ : -` o spazio), oppure `nil` allo scadere. Errore `call host.expect() first` se manca `expect`.
 - `host.append(id, data, etichetta, valore)`: aggiunge una riga `data,script,etichetta,valore` a `/logs/host/<id>.csv` sulla SD. `id` e `etichetta` sono ripuliti (solo `A-Z a-z 0-9 _ -`, 24 caratteri); massimo 64 file e 256 KB per file. Con il disco collegato (`disk.attach`) la riga aspetta in RAM (massimo 16) e viene scritta al `disk.detach`.
 
 ## Libreria `host`
@@ -142,7 +142,7 @@ if code ~= 0 then error("notepad: " .. tostring(code)) end
 - `host.shell(tipo)`: `"powershell"` o `"sh"` (bash, zsh). Digita una volta il codice che trova la porta seriale del dongle dal suo numero di serie e verifica il canale; errore se il PC non risponde. `cmd.exe` non è supportato (vedi sotto).
 - `host.run(comando [, {timeout = ms}])`: digita il comando seguito da una coda che invia il codice di uscita. Restituisce il codice, o `nil` allo scadere (default 60000 ms).
 - `host.sync([opzioni])`: attende che la shell abbia eseguito tutto ciò che è stato digitato prima.
-- `host.get(espressione [, {timeout}])`: valuta l'espressione nella shell del PC e restituisce il risultato come stringa (max 64 caratteri ripuliti), o `nil`. Più righe sono unite con spazi.
+- `host.get(espressione [, {timeout}])`: valuta l'espressione nella shell del PC e restituisce il risultato come stringa (max 256 caratteri ripuliti), o `nil`. Più righe sono unite con spazi.
 - `host.machine([espressione])`: imposta l'id della macchina per i log e la data del PC. Senza argomento usa il MAC della prima scheda di rete fisica (in ordine di indirizzo): è dell'hardware, quindi diverso anche tra PC clonati con Clonezilla, mentre `MachineGuid` e nome host si copiano con il disco. Restituisce l'id.
 - `host.log(etichetta, espressione)`: come `host.get`, poi aggiunge la riga a `/logs/host/<id>.csv` e restituisce il valore. Senza `host.machine` il file è `unknown.csv`.
 

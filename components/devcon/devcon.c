@@ -17,7 +17,8 @@
 #define CDC_CONSOLE CONFIG_GRILLO_USB_DEBUG_CDC
 
 #define MAX_CMDS 32
-#define LINE_LEN 192
+// Anche le righe "@G<nonce>:<valore>" del canale host (valore fino a 256 caratteri)
+#define LINE_LEN 320
 #define MAX_ARGS 8
 
 typedef struct {

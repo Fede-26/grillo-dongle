@@ -564,11 +564,12 @@ static struct {
     volatile bool armed; // il filtro accetta una risposta con questo nonce
     bool pending;        // expect() chiamata e wait() non ancora
     volatile int code;
-    char text[72]; // testo ripulito dopo i due punti (get/log)
+    char text[264]; // testo ripulito dopo i due punti (get/log)
     SemaphoreHandle_t sem;
 } s_host;
 
-#define HOST_TEXT_MAX 64
+// Deve stare in una riga della console (devcon LINE_LEN) insieme a "@G<nonce>:"
+#define HOST_TEXT_MAX 256
 
 // Ripulisce un testo arrivato dal PC: solo caratteri innocui per CSV e per
 // essere ridigitati (A-Z a-z 0-9 . _ : - e spazio), il resto diventa '_'.
@@ -620,7 +621,7 @@ static int host_expect(lua_State *L)
 }
 
 // host.wait([timeout_ms]) -> codice di uscita, testo; nil allo scadere (default 60 s).
-// Il testo (max 64 caratteri ripuliti) serve a host.get; con host.run è il codice in cifre.
+// Il testo (max 256 caratteri ripuliti) serve a host.get; con host.run è il codice in cifre.
 static int host_wait(lua_State *L)
 {
     if (!s_host.pending) return luaL_error(L, "call host.expect() first");
@@ -736,7 +737,7 @@ static int disk_detach(lua_State *L)
 #define HLOG_QUEUE    16
 
 typedef struct {
-    char id[28], line[192];
+    char id[28], line[384];
 } hlog_t;
 
 static hlog_t *s_hlog_q; // allocata solo se serve
@@ -786,7 +787,7 @@ static int host_append(lua_State *L)
     host_clean(value, sizeof(value), luaL_checkstring(L, 4), HOST_TEXT_MAX, false);
     host_clean(script, sizeof(script), s_run->meta->name[0] ? s_run->meta->name : "script", 40, false);
     if (!id[0]) strlcpy(id, "unknown", sizeof(id));
-    char line[192];
+    char line[384];
     snprintf(line, sizeof(line), "%s,%s,%s,%s\n", date, script, label, value);
     if (s_attached) {
         if (!s_hlog_q) s_hlog_q = calloc(HLOG_QUEUE, sizeof(hlog_t));

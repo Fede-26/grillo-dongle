@@ -16,7 +16,7 @@
 --   local mac = host.machine()                       -- id della macchina: MAC di una scheda fisica
 --   host.log("seriale", [[(Get-CimInstance Win32_BIOS).SerialNumber]])
 --   local model = host.get([[(Get-CimInstance Win32_ComputerSystem).Model]])
--- Il valore è al massimo di 64 caratteri; il dongle sostituisce con "_" tutto ciò
+-- Il valore è al massimo di 256 caratteri; il dongle sostituisce con "_" tutto ciò
 -- che non è lettera, cifra, ". _ : -" o spazio. Non ridigitare mai un valore letto
 -- dal PC dentro un comando di shell senza controllarlo: può contenere ciò che ha
 -- scelto chi ha configurato la macchina.
@@ -63,7 +63,7 @@ function M.run(cmd, opts)
     return host.wait((opts and opts.timeout) or 60000)
 end
 
--- Valore (stringa ripulita, max 64 caratteri) dell'espressione `expr` valutata nella
+-- Valore (stringa ripulita, max 256 caratteri) dell'espressione `expr` valutata nella
 -- shell del PC, o nil se non arriva entro opts.timeout (default 60000 ms).
 -- Un'espressione che restituisce più righe è unita con spazi.
 function M.get(expr, opts)
