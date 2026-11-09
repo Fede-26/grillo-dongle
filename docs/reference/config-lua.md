@@ -28,6 +28,9 @@ Il modello è `sd-template/config.lua`.
 | `ui.brightness` | 0..100 | 80 | Luminosità del display. |
 | `ui.rotation` | 0 o 180 | 0 | Rotazione del display (90 e 270 non sono supportati). |
 | `webhid.pin` | booleano | `true` | `false`: il Web HID non chiede il PIN. Vedi [Sicurezza](../explanation/sicurezza.md). |
+| `timezone` | stringa POSIX | `CET-1CEST,M3.5.0,M10.5.0/3` | Fuso orario per le date nei nomi dei file di Netscan. |
+| `netscan.ntp` | host | `pool.ntp.org` | Server NTP da cui Netscan prende l'ora. |
+| `netscan.probe_host` | host | `connectivitycheck.gstatic.com` | Host contattato dal controllo "Web" di Network info (deve rispondere 204 a `/generate_204`). |
 | `led.brightness` | 0..100 | 30 | Luminosità del LED. |
 
 Le impostazioni `keyboard.*` sono i default degli script dell'injector e del Web HID; un'[intestazione di script](intestazione-script.md) le sovrascrive per quello script.

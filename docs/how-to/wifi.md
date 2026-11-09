@@ -1,6 +1,6 @@
 # Collegare il dongle al WiFi
 
-L'app Web HID (e in futuro Netscan) usa il WiFi. Il dongle sceglie da solo la rete.
+Le app Web HID e Netscan usano il WiFi (Netscan: Network info e LAN hosts; la scansione delle reti non richiede una rete nota). Il dongle sceglie da solo la rete.
 
 ## Aggiungere una rete nota
 

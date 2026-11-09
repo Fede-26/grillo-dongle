@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "esp_err.h"
+#include "esp_netif.h"
 
 // Gestore WiFi condiviso, con lease a conteggio di riferimenti.
 //
@@ -18,6 +19,7 @@ typedef enum {
     NET_AUTO, // reti note per RSSI, in mancanza hotspot
     NET_STA,  // solo rete nota: errore se nessuna è raggiungibile
     NET_AP,   // solo hotspot
+    NET_SCAN, // radio STA accesa senza connettersi: serve solo a net_scan()
 } net_mode_t;
 
 typedef enum {
@@ -29,7 +31,7 @@ typedef enum {
 
 typedef struct {
     bool up;
-    net_mode_t mode;   // NET_STA o NET_AP quando up (mai NET_AUTO)
+    net_mode_t mode;   // NET_STA o NET_AP quando up (mai NET_AUTO né NET_SCAN)
     char ssid[33];
     char ip[16];
     int8_t rssi;       // solo STA
@@ -49,6 +51,23 @@ void net_release(void);
 void net_release_all(void);
 
 void net_get_info(net_info_t *info);
+// Interfaccia STA, per leggere gateway, maschera e DNS o inviare pacchetti.
+esp_netif_t *net_sta_netif(void);
+
+// Una rete vista da net_scan().
+typedef struct {
+    char ssid[33]; // vuoto = rete nascosta
+    uint8_t bssid[6];
+    int8_t rssi;
+    uint8_t channel;
+    uint8_t auth;  // vedi net_auth_name()
+} net_ap_t;
+
+// Scansione bloccante (circa 2 s) delle reti visibili, la più forte per prima.
+// Richiede un lease NET_SCAN o NET_STA. Restituisce il numero di reti scritte in
+// `out` (al massimo `max`), o un numero negativo (esp_err_t cambiato di segno).
+int net_scan(net_ap_t *out, int max);
+const char *net_auth_name(uint8_t auth);
 // Nome dell'hotspot (config o "Grillo-XXXX") e relativa password, per il QR.
 const char *net_ap_ssid(void);
 const char *net_ap_pass(void);

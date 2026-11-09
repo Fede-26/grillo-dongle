@@ -31,4 +31,8 @@ return {
   -- (o sull'hotspot) potrebbe comandare il PC: usalo solo su reti fidate.
   webhid = { pin = true },
   led = { brightness = 30 },
+
+  -- Netscan: fuso orario POSIX per i nomi dei CSV, server NTP e host del controllo "Web"
+  -- timezone = "CET-1CEST,M3.5.0,M10.5.0/3",
+  -- netscan = { ntp = "pool.ntp.org", probe_host = "connectivitycheck.gstatic.com" },
 }

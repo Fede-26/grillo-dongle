@@ -271,6 +271,21 @@ static esp_err_t start_ap(void)
     return ESP_OK;
 }
 
+// Solo radio accesa: nessuna connessione, quindi nessun tentativo né attesa.
+static esp_err_t start_scan_only(void)
+{
+    esp_err_t err = wifi_begin(WIFI_MODE_STA);
+    if (err != ESP_OK) return err;
+    err = esp_wifi_start();
+    if (err != ESP_OK) {
+        esp_wifi_deinit();
+        return err;
+    }
+    s_mode = NET_SCAN;
+    s_started = true;
+    return ESP_OK;
+}
+
 esp_err_t net_acquire(net_mode_t mode, uint32_t timeout_ms)
 {
     esp_err_t err = net_init_once();
@@ -278,7 +293,8 @@ esp_err_t net_acquire(net_mode_t mode, uint32_t timeout_ms)
     xSemaphoreTake(s_lock, portMAX_DELAY);
 
     if (s_started) {
-        bool ok = mode == NET_AUTO || (mode == NET_STA && s_mode == NET_STA) || (mode == NET_AP && s_mode == NET_AP);
+        bool ok = mode == NET_AUTO || (mode == NET_STA && s_mode == NET_STA) || (mode == NET_AP && s_mode == NET_AP) ||
+                  (mode == NET_SCAN && (s_mode == NET_SCAN || s_mode == NET_STA));
         if (!ok) {
             xSemaphoreGive(s_lock);
             return ESP_ERR_INVALID_STATE;
@@ -298,11 +314,15 @@ esp_err_t net_acquire(net_mode_t mode, uint32_t timeout_ms)
         handlers = true;
     }
 
-    err = ESP_ERR_NOT_FOUND;
-    if (mode != NET_AP) err = start_sta(timeout_ms);
-    if (err != ESP_OK && mode != NET_STA) {
-        if (mode == NET_AUTO) ESP_LOGW(TAG, "nessuna rete nota (%s): avvio l'hotspot", esp_err_to_name(err));
-        err = start_ap();
+    if (mode == NET_SCAN) {
+        err = start_scan_only();
+    } else {
+        err = ESP_ERR_NOT_FOUND;
+        if (mode != NET_AP) err = start_sta(timeout_ms);
+        if (err != ESP_OK && mode != NET_STA) {
+            if (mode == NET_AUTO) ESP_LOGW(TAG, "nessuna rete nota (%s): avvio l'hotspot", esp_err_to_name(err));
+            err = start_ap();
+        }
     }
     if (err == ESP_OK) s_leases = 1;
     else ESP_LOGE(TAG, "WiFi non avviato: %s", esp_err_to_name(err));
@@ -344,5 +364,56 @@ void net_get_info(net_info_t *info)
         strlcpy(info->ssid, s_ssid, sizeof(info->ssid));
         wifi_ap_record_t ap;
         if (esp_wifi_sta_get_ap_info(&ap) == ESP_OK) info->rssi = ap.rssi;
+    }
+}
+
+esp_netif_t *net_sta_netif(void)
+{
+    return s_sta_netif;
+}
+
+static int cmp_rssi(const void *a, const void *b)
+{
+    return ((const net_ap_t *)b)->rssi - ((const net_ap_t *)a)->rssi;
+}
+
+int net_scan(net_ap_t *out, int max)
+{
+    if (!s_started || s_mode == NET_AP) return -ESP_ERR_INVALID_STATE;
+    // Con show_hidden le reti nascoste compaiono con SSID vuoto
+    wifi_scan_config_t sc = {.show_hidden = true};
+    esp_err_t err = esp_wifi_scan_start(&sc, true);
+    if (err != ESP_OK) return -err;
+    uint16_t n = 0;
+    esp_wifi_scan_get_ap_num(&n);
+    if (n > 40) n = 40; // ogni record pesa circa 100 byte: il limite protegge l'heap
+    wifi_ap_record_t *recs = calloc(n ? n : 1, sizeof(*recs));
+    if (!recs) return -ESP_ERR_NO_MEM;
+    esp_wifi_scan_get_ap_records(&n, recs);
+    int count = n < max ? n : max;
+    for (int i = 0; i < count; i++) {
+        strlcpy(out[i].ssid, (const char *)recs[i].ssid, sizeof(out[i].ssid));
+        memcpy(out[i].bssid, recs[i].bssid, 6);
+        out[i].rssi = recs[i].rssi;
+        out[i].channel = recs[i].primary;
+        out[i].auth = recs[i].authmode;
+    }
+    free(recs);
+    qsort(out, count, sizeof(*out), cmp_rssi);
+    return count;
+}
+
+const char *net_auth_name(uint8_t auth)
+{
+    switch (auth) {
+    case WIFI_AUTH_OPEN: return "open";
+    case WIFI_AUTH_WEP: return "WEP";
+    case WIFI_AUTH_WPA_PSK: return "WPA";
+    case WIFI_AUTH_WPA2_PSK: return "WPA2";
+    case WIFI_AUTH_WPA_WPA2_PSK: return "WPA/WPA2";
+    case WIFI_AUTH_ENTERPRISE: return "WPA2-Ent";
+    case WIFI_AUTH_WPA3_PSK: return "WPA3";
+    case WIFI_AUTH_WPA2_WPA3_PSK: return "WPA2/WPA3";
+    default: return "?";
     }
 }

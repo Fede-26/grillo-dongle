@@ -11,7 +11,7 @@ Il nome viene dal grillo parlante: un piccolo aiutante da tenere in tasca. Il pr
 | Injector | Esegue script Lua dalla microSD che digitano testo, premono combinazioni di tasti e muovono il mouse. Ogni script dichiara layout della tastiera e sistema operativo del PC di destinazione. | funzionante |
 | Web HID | Tastiera e touchpad comandati da una pagina web (PC o telefono), protetta da PIN. Layout e OS si scelgono dalla pagina. | funzionante |
 | USB disk | Espone la microSD al PC come disco. | funzionante |
-| Netscan | Scanner di rete: SSID, host della LAN, informazioni sulla rete. Nessun port scan. | da fare |
+| Netscan | Scanner di rete: reti WiFi, controlli di connettività, host della LAN con produttore e nome. Nessun port scan. Salva i risultati in CSV. | funzionante |
 
 Il pulsante del dongle è l'unico ingresso: click, doppio click, pressione lunga; tenuto premuto 3 secondi esce da qualunque app.
 
@@ -41,6 +41,7 @@ La documentazione in `docs/` segue il modello [Diátaxis](https://diataxis.fr/).
 - **Guide pratiche**:
   - [Collegare il dongle al WiFi](docs/how-to/wifi.md)
   - [Usare il Web HID](docs/how-to/web-hid.md)
+  - [Usare Netscan](docs/how-to/netscan.md)
   - [Scegliere layout e sistema operativo](docs/how-to/layout-e-os.md)
   - [Avviare uno script all'accensione](docs/how-to/autorun.md)
   - [Digitare una password senza scriverla negli script](docs/how-to/password.md)

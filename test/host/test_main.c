@@ -5,6 +5,7 @@
 #include <string.h>
 #include "gesture.h"
 #include "hid_layout.h"
+#include "netscan_util.h"
 
 static int s_fail;
 #define CHECK(cond, ...)                                  \
@@ -108,6 +109,91 @@ static void test_layouts(void)
     CHECK(hid_key_by_name("ctrl", &key, &mods) && key == 0 && mods == HID_MOD_LCTRL, "ctrl");
 }
 
+
+static void test_netscan(void)
+{
+    // oui.bin: intestazione + record da 32 byte ordinati per OUI
+    FILE *f = tmpfile();
+    uint8_t rec[32];
+    fwrite("OUI1\2\0\0\0", 1, 8, f);
+    memset(rec, 0, 32);
+    memcpy(rec, "\x00\x1B\x63", 3);
+    strcpy((char *)rec + 3, "Apple");
+    fwrite(rec, 1, 32, f);
+    memset(rec, 0, 32);
+    memcpy(rec, "\xF4\x12\xFA", 3);
+    strcpy((char *)rec + 3, "Espressif");
+    fwrite(rec, 1, 32, f);
+    char v[32];
+    const uint8_t esp[6] = {0xF4, 0x12, 0xFA, 1, 2, 3}, none[6] = {0x00, 0x1C, 0x00, 0, 0, 0};
+    CHECK(ns_oui_lookup(f, esp, v, sizeof(v)) && !strcmp(v, "Espressif"), "oui esp");
+    CHECK(ns_oui_lookup(f, (const uint8_t[6]){0x00, 0x1B, 0x63}, v, 4) && !strcmp(v, "App"), "oui troncato");
+    CHECK(!ns_oui_lookup(f, none, v, sizeof(v)), "oui assente");
+    fclose(f);
+    CHECK(ns_mac_is_private((const uint8_t[6]){0x02, 0, 0, 0, 0, 0}) && !ns_mac_is_private(esp), "mac privato");
+
+    // NBNS: risposta con due nomi, il primo di gruppo (dominio), il secondo è la macchina
+    uint8_t q[50];
+    CHECK(ns_nbns_query(q) == 50 && q[13] == 'C' && q[14] == 'K', "nbns query");
+    uint8_t r[128] = {0x47, 0x52, 0x84, 0, 0, 0, 0, 1};
+    int p = 12;
+    r[p++] = 0x20;
+    memset(r + p, 'A', 32);
+    p += 32;
+    r[p++] = 0;
+    p += 10; // tipo, classe, ttl, rdlen (non controllati)
+    r[p++] = 2;
+    memcpy(r + p, "WORKGROUP      ", 15), r[p + 15] = 0x00, r[p + 16] = 0x80, p += 18;
+    memcpy(r + p, "PC-TEST1       ", 15), r[p + 15] = 0x00, r[p + 16] = 0x04, p += 18;
+    char name[32];
+    CHECK(ns_nbns_parse(r, p, name, sizeof(name)) && !strcmp(name, "PC-TEST1"), "nbns parse '%s'", name);
+    CHECK(!ns_nbns_parse(r, 20, name, sizeof(name)), "nbns troncato");
+
+    // mDNS: la query per 192.168.1.7 e una risposta con compressione
+    uint8_t m[96];
+    int ml = ns_mdns_ptr_query(m, sizeof(m), (const uint8_t[4]){192, 168, 1, 7});
+    CHECK(ml == 42 && m[12] == 1 && m[13] == '7', "mdns query len %d", ml);
+    uint8_t a[128] = {0x47, 0x52, 0x84, 0, 0, 1, 0, 1};
+    memcpy(a + 12, m + 12, ml - 12);
+    int ap = ml;
+    a[ap++] = 0xC0, a[ap++] = 12; // nome = puntatore alla domanda
+    a[ap++] = 0, a[ap++] = 12, a[ap++] = 0, a[ap++] = 1;
+    a[ap++] = 0, a[ap++] = 0, a[ap++] = 0, a[ap++] = 120;
+    const char host[] = "\x0Bmacbook-pro\5local";
+    a[ap++] = 0, a[ap++] = sizeof(host);
+    memcpy(a + ap, host, sizeof(host));
+    ap += sizeof(host);
+    CHECK(ns_mdns_ptr_parse(a, ap, name, sizeof(name)) && !strcmp(name, "macbook-pro"), "mdns parse '%s'", name);
+    // Puntatore di compressione che rimanda a se stesso: deve fallire, non girare
+    uint8_t loop[32] = {0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0xC0, 12};
+    CHECK(!ns_mdns_ptr_parse(loop, 14, name, sizeof(name)), "mdns loop");
+
+    // Testo
+    char t[40];
+    ns_display_text(t, sizeof(t), "Caff\xC3\xA8 \x01WiFi");
+    CHECK(!strcmp(t, "Caff? ?WiFi"), "display '%s'", t);
+    ns_csv_field(t, sizeof(t), "Casa, \"mia\"");
+    CHECK(!strcmp(t, "\"Casa, \"\"mia\"\"\""), "csv quote '%s'", t);
+    ns_csv_field(t, sizeof(t), "=HYPERLINK(1)");
+    CHECK(!strcmp(t, "'=HYPERLINK(1)"), "csv formula '%s'", t);
+    ns_csv_field(t, sizeof(t), "-77");
+    CHECK(!strcmp(t, "-77"), "csv numero '%s'", t);
+    ns_csv_field(t, sizeof(t), "-1+cmd");
+    CHECK(!strcmp(t, "'-1+cmd"), "csv formula con cifre '%s'", t);
+    ns_csv_field(t, sizeof(t), "a\nb");
+    CHECK(!strcmp(t, "ab"), "csv newline");
+    ns_csv_field(t, 6, "abcdefghij");
+    CHECK(strlen(t) < 6, "csv troncato");
+    ns_file_slug(t, 6, "Casa Mia!");
+    CHECK(!strcmp(t, "Casa_"), "slug '%s'", t);
+
+    // Sweep: la /22 si limita alla /24; la /26 resta com'è; /31 e /32 niente
+    uint32_t lo, hi;
+    CHECK(ns_sweep_range(0xC0A80A17, 0xFFFFFC00, &lo, &hi) && lo == 0xC0A80A01 && hi == 0xC0A80AFE, "sweep /22");
+    CHECK(ns_sweep_range(0xC0A80A45, 0xFFFFFFC0, &lo, &hi) && lo == 0xC0A80A41 && hi == 0xC0A80A7E, "sweep /26");
+    CHECK(!ns_sweep_range(0xC0A80A01, 0xFFFFFFFE, &lo, &hi), "sweep /31");
+}
+
 static gesture_t run(gesture_ctx_t *g, bool pressed, uint32_t *t, uint32_t ms)
 {
     gesture_t last = GESTURE_NONE;
@@ -142,6 +228,7 @@ int main(void)
 {
     test_layouts();
     test_gestures();
+    test_netscan();
     printf(s_fail ? "%d test falliti\n" : "tutti i test passati\n", s_fail);
     return s_fail != 0;
 }

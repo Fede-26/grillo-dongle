@@ -5,7 +5,7 @@ Grillo è un firmware ESP-IDF v6.1 (C, FreeRTOS) per un dispositivo con vincoli 
 ## Strati
 
 ```
-apps/         injector, webhid, usbdisk, launcher        <- una per attività
+apps/         injector, webhid, netscan, usbdisk, launcher        <- una per attività
 components/   appfw  ui  gfx  display  input  led         <- interfaccia
               hid  usbdev  net  storage  config  luart    <- servizi
 main/         avvio, tabella app, console di debug
