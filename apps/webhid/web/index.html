@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Grillo</title>
+<style>
+:root{--bg:#0b0f14;--panel:#1a2029;--hi:#252d38;--text:#e6edf3;--dim:#7d8590;--acc:#30b0f0;--ok:#3fb950;--err:#f85149}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:15px system-ui,sans-serif;overscroll-behavior:none}
+body{display:flex;flex-direction:column;padding:8px;gap:8px}
+button,input,textarea{font:inherit;color:inherit}
+button{background:var(--panel);border:1px solid var(--hi);border-radius:8px;padding:10px 0;min-width:0}
+button:active,button.on{background:var(--acc);color:#000}
+header{display:flex;justify-content:space-between;align-items:center}
+h1{margin:0;font-size:16px;color:var(--acc)}
+#st{font-size:12px;color:var(--dim)}
+#st.ok{color:var(--ok)}#st.bad{color:var(--err)}
+#login{margin:auto;display:flex;flex-direction:column;gap:10px;width:min(260px,100%)}
+#pin{background:var(--panel);border:1px solid var(--hi);border-radius:8px;padding:12px;font-size:24px;text-align:center;letter-spacing:6px}
+#login button{background:var(--acc);color:#000;font-weight:600}
+#msg{min-height:1.2em;color:var(--err);text-align:center;font-size:13px}
+#app{display:none;flex:1;min-height:0;flex-direction:column;gap:8px}
+nav{display:flex;gap:6px}nav button{flex:1}
+#pad{flex:1;min-height:120px;background:var(--panel);border:1px solid var(--hi);border-radius:12px;touch-action:none;display:flex;align-items:center;justify-content:center;color:var(--dim);user-select:none}
+.row{display:flex;gap:6px}.row button{flex:1}
+#keys{display:none;flex:1;min-height:0;overflow:auto;flex-direction:column;gap:8px}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.grid.f{grid-template-columns:repeat(6,1fr)}
+input.live,textarea{width:100%;background:var(--panel);border:1px solid var(--hi);border-radius:8px;padding:10px}
+textarea{height:90px;resize:none}
+label{font-size:12px;color:var(--dim)}
+</style>
+</head>
+<body>
+<header><h1>Grillo</h1><span id="st">offline</span></header>
+
+<form id="login">
+  <input id="pin" inputmode="numeric" autocomplete="off" maxlength="6" placeholder="PIN" autofocus>
+  <button>Connect</button>
+  <div id="msg"></div>
+</form>
+
+<div id="app">
+  <nav><button id="t0" class="on">Touchpad</button><button id="t1">Keys</button></nav>
+  <div id="pad0" style="display:contents">
+    <div id="pad">touchpad</div>
+    <div class="row"><button id="bl">Left</button><button id="bm">Mid</button><button id="br">Right</button></div>
+  </div>
+  <div id="keys">
+    <label>Live typing (types as you write)</label>
+    <input class="live" id="live" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+    <div class="grid" id="mods"></div>
+    <div class="grid" id="sp"></div>
+    <div class="grid f" id="fk"></div>
+    <label>Paste &amp; type</label>
+    <textarea id="paste"></textarea>
+    <button id="send">Type it</button>
+  </div>
+</div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const st = $("st");
+let ws = null, pin = "", authed = false, retry = 0;
+let mods = 0;
+
+function setSt(t, c) { st.textContent = t; st.className = c || ""; }
+function tx(s) { if (ws && ws.readyState === 1 && authed) ws.send(s); }
+
+function connect() {
+  ws = new WebSocket("ws://" + location.host + "/ws");
+  setSt("connecting…");
+  ws.onopen = () => ws.send("p" + pin);
+  ws.onmessage = e => {
+    const m = e.data;
+    if (m === "ok") {
+      authed = true; retry = 0; setSt("connected", "ok");
+      $("login").style.display = "none"; $("app").style.display = "flex";
+    } else if (m === "no") { fail("Wrong PIN"); }
+    else if (m === "busy") { fail("Another client is connected"); }
+    else if (m === "locked") { fail("Too many tries, wait 30 s"); }
+    else if (m === "nohost") { setSt("PC not ready", "bad"); }
+  };
+  ws.onclose = () => {
+    const was = authed; authed = false;
+    if (!pin) return;
+    setSt("offline", "bad");
+    // Riconnessione automatica solo se eravamo già dentro; un PIN errato non va ritentato
+    if (was) setTimeout(connect, Math.min(1000 * ++retry, 5000));
+  };
+}
+function fail(t) { pin = ""; $("msg").textContent = t; $("login").style.display = ""; $("app").style.display = "none"; setSt("offline", "bad"); if (ws) ws.close(); }
+
+$("login").onsubmit = e => { e.preventDefault(); pin = $("pin").value.trim(); $("msg").textContent = ""; if (pin) connect(); };
+
+// --- Schede ---
+function tab(n) {
+  $("pad0").style.display = n ? "none" : "contents";
+  $("keys").style.display = n ? "flex" : "none";
+  $("t0").classList.toggle("on", !n); $("t1").classList.toggle("on", !!n);
+}
+$("t0").onclick = () => tab(0); $("t1").onclick = () => tab(1);
+
+// --- Touchpad: 1 dito muove, tap = click, 2 dita scorrono, tap a 2 dita = destro ---
+const pad = $("pad"), ptrs = new Map();
+let acc = {x: 0, y: 0}, sacc = 0, moved = 0, t0 = 0, maxFingers = 0, timer = 0, btnHeld = 0;
+function flush() {
+  timer = 0;
+  const dx = Math.trunc(acc.x), dy = Math.trunc(acc.y);
+  if (dx || dy) { tx("m" + dx + " " + dy); acc.x -= dx; acc.y -= dy; }
+  const w = Math.trunc(sacc);
+  if (w) { tx("w" + (-w)); sacc -= w; }
+}
+function queue() { if (!timer) timer = setTimeout(flush, 16); }
+pad.onpointerdown = e => {
+  pad.setPointerCapture(e.pointerId);
+  if (!ptrs.size) { moved = 0; t0 = e.timeStamp; maxFingers = 0; }
+  ptrs.set(e.pointerId, {x: e.clientX, y: e.clientY});
+  maxFingers = Math.max(maxFingers, ptrs.size);
+};
+pad.onpointermove = e => {
+  const p = ptrs.get(e.pointerId); if (!p) return;
+  const dx = e.clientX - p.x, dy = e.clientY - p.y;
+  p.x = e.clientX; p.y = e.clientY;
+  moved += Math.abs(dx) + Math.abs(dy);
+  if (ptrs.size >= 2) { sacc += dy / 12; }   // 12 px di dito = 1 tacca
+  else { acc.x += dx * 1.6; acc.y += dy * 1.6; } // accelerazione fissa
+  queue();
+};
+function up(e) {
+  if (!ptrs.delete(e.pointerId)) return;
+  if (!ptrs.size && moved < 8 && e.timeStamp - t0 < 250) {
+    const b = maxFingers >= 2 ? 2 : 1;
+    tx("b" + b); tx("b0");
+  }
+}
+pad.onpointerup = up; pad.onpointercancel = up;
+for (const [id, mask] of [["bl", 1], ["br", 2], ["bm", 4]]) {
+  const b = $(id);
+  b.onpointerdown = e => { b.setPointerCapture(e.pointerId); btnHeld |= mask; tx("b" + btnHeld); };
+  const rel = () => { btnHeld &= ~mask; tx("b" + btnHeld); };
+  b.onpointerup = rel; b.onpointercancel = rel;
+}
+
+// --- Tasti ---
+const MODS = [["Ctrl", 1], ["Alt", 4], ["Shift", 2], ["Win", 8]];
+const SPECIAL = [["Esc", 0x29], ["Tab", 0x2B], ["Enter", 0x28], ["Bksp", 0x2A], ["Del", 0x4C], ["Home", 0x4A], ["End", 0x4D],
+  ["PgUp", 0x4B], ["←", 0x50], ["↑", 0x52], ["↓", 0x51], ["→", 0x4F], ["PgDn", 0x4E], ["Ins", 0x49], ["PrtSc", 0x46], ["Menu", 0x65]];
+function key(usage) { tx("k" + mods + " " + usage); clearMods(); }
+function clearMods() { mods = 0; for (const b of $("mods").children) b.classList.remove("on"); }
+for (const [n, m] of MODS) {
+  const b = document.createElement("button"); b.textContent = n;
+  b.onclick = () => { mods ^= m; b.classList.toggle("on", !!(mods & m)); };
+  $("mods").appendChild(b);
+}
+for (const [n, u] of SPECIAL) {
+  const b = document.createElement("button"); b.textContent = n; b.onclick = () => key(u); $("sp").appendChild(b);
+}
+for (let i = 1; i <= 12; i++) {
+  const b = document.createElement("button"); b.textContent = "F" + i; b.onclick = () => key(0x39 + i - 1); $("fk").appendChild(b);
+}
+
+// Campo "live": contiene sempre un carattere sentinella, così anche il
+// backspace (che su un campo vuoto non genera eventi) produce un input.
+const S = "​", live = $("live");
+function reset() { live.value = S; live.setSelectionRange(1, 1); }
+reset();
+live.addEventListener("input", e => {
+  if (e.isComposing) return;
+  const v = live.value;
+  if (v.length === 0) key(0x2A);
+  else {
+    const t = v.split(S).join("");
+    if (t) { if (mods) { for (const ch of t) { tx("c" + mods + " " + ch); } clearMods(); } else tx("t" + t); }
+  }
+  reset();
+});
+live.addEventListener("compositionend", e => { if (e.data) tx("t" + e.data); reset(); });
+live.addEventListener("keydown", e => {
+  if (e.key === "Enter") { e.preventDefault(); key(0x28); }
+  else if (e.key.startsWith("Arrow")) {
+    e.preventDefault();
+    key({ArrowLeft: 0x50, ArrowRight: 0x4F, ArrowUp: 0x52, ArrowDown: 0x51}[e.key]);
+  }
+});
+
+// Incolla e digita: blocchi da 400 caratteri, per non superare il limite di frame del firmware
+$("send").onclick = () => {
+  const t = $("paste").value;
+  for (let i = 0; i < t.length; i += 400) tx("t" + t.slice(i, i + 400));
+};
+</script>
+</body>
+</html>

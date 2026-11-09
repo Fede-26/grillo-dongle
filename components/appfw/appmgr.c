@@ -6,6 +6,7 @@
 #include "freertos/task.h"
 #include "input.h"
 #include "led.h"
+#include "net.h"
 #include "storage.h"
 #include "syslog.h"
 #include "ui.h"
@@ -78,7 +79,9 @@ static void refresh_indicators(void)
                                      [STORAGE_LENT] = 3};
     ui_set_indicator(UI_IND_SD, sd_map[storage_state()]);
     usb_profile_t p = usbdev_profile();
-    ui_set_indicator(UI_IND_USB, p == USB_PROFILE_HID ? 1 : (p == USB_PROFILE_MSC ? 2 : 0));
+    static const uint8_t usb_map[] = {[USB_PROFILE_NONE] = 0, [USB_PROFILE_HID] = 1, [USB_PROFILE_MSC] = 2,
+                                      [USB_PROFILE_HID_DISK] = 3};
+    ui_set_indicator(UI_IND_USB, usb_map[p]);
 }
 
 static void post_current(app_ev_type_t type, int32_t arg)
@@ -137,6 +140,19 @@ static void on_usb(usbdev_event_t ev)
 {
     refresh_indicators();
     post_current(APP_EV_USB, ev);
+}
+
+// Aggiorna l'indicatore WiFi della status bar e avvisa l'app in primo piano.
+static void on_net(net_event_t ev)
+{
+    net_info_t info;
+    net_get_info(&info);
+    uint8_t v = 0;
+    if (ev == NET_EV_CONNECTING) v = 1;
+    else if (info.up && info.mode == NET_AP) v = 6;
+    else if (info.up) v = info.rssi > -55 ? 5 : info.rssi > -65 ? 4 : info.rssi > -75 ? 3 : 2;
+    ui_set_indicator(UI_IND_WIFI, v);
+    post_current(APP_EV_NET, ev);
 }
 
 static void app_task(void *arg)
@@ -199,6 +215,7 @@ static void run_app(const app_desc_t *app, const char *arg)
     // Pulizia d'ufficio delle risorse condivise
     usbdev_apply(USB_PROFILE_NONE, NULL);
     if (storage_state() == STORAGE_LENT) storage_reclaim();
+    net_release_all();
     for (int i = 0; i < s_ncleanups; i++) s_cleanups[i]();
     led_clear(LED_LAYER_APP);
     ui_set_hold(0);
@@ -217,6 +234,7 @@ void appmgr_run(const app_desc_t *launcher, const app_desc_t *const *apps, size_
     s_count = count;
     s_mgr_task = xTaskGetCurrentTaskHandle();
     usbdev_set_event_cb(on_usb);
+    net_set_event_cb(on_net);
     input_init(on_gesture);
     refresh_indicators();
 
