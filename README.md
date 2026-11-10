@@ -30,6 +30,12 @@ Catture dal display (160x80, ingrandite 4 volte) fatte con `tools/grillo.py shot
 | ![Netscan: menu](docs/images/netscan-menu.png) | ![USB Disk: SD collegata al PC](docs/images/usbdisk-connected.png) |
 | ![USB Disk: conferma di uscita senza espulsione](docs/images/usbdisk-confirm.png) | |
 
+Le pagine web (Web HID, Web Injector) hanno un tema comune in tre modalità, scelte dal pulsante in alto a destra. Qui il Web Injector durante uno script, su un telefono (dati di esempio):
+
+| Plain | Arcade | Retro |
+| --- | --- | --- |
+| ![Web Injector, tema plain](docs/images/web-plain.png) | ![Web Injector, tema arcade](docs/images/web-arcade.png) | ![Web Injector, tema retro a fosfori ambra](docs/images/web-retro.png) |
+
 ## Requisiti
 
 - ESP-IDF v6.1, installato in `~/esp/esp-idf`
