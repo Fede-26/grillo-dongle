@@ -99,6 +99,8 @@ Non disponibile mentre il disco USB è collegato (`disk.attach`): errore `no mou
 - `sys.date([formato])`: ora locale (fuso `timezone` di `config.lua`) formattata come `strftime`; default `"%Y-%m-%d %H:%M:%S"`. `nil` se l'ora non è nota; `""` se il risultato supera 63 caratteri.
 - `sys.set_time(secondi)`: imposta l'ora (secondi UTC dal 1970). Errore per un valore precedente al 2023. Di solito si usa `host.clock()`.
 
+Esempi: `payloads/examples/basics/clock.lua` (ora nota, formati, tempo trascorso) e `payloads/examples/host/clock-from-pc.lua` (ora dal PC con `host.clock()`).
+
 ## `led`
 
 - `led.rgb(r, g, b)`: colore fisso, componenti 0..255.
