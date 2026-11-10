@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "class/hid/hid_device.h"
+#include "device/usbd_pvt.h"
 #include "esp_check.h"
 #include "esp_log.h"
 #include "esp_mac.h"
@@ -30,6 +31,7 @@ static tinyusb_msc_storage_handle_t s_msc;
 // scriverci mentre viene distrutta durante un cambio profilo.
 static SemaphoreHandle_t s_cdc_lock;
 static bool s_cdc_active;
+static SemaphoreHandle_t s_parked, s_unpark;
 
 // Indice dell'istanza HID di tastiera e mouse (-1 se assente). TinyUSB
 // numera le istanze HID nell'ordine in cui compaiono nel descrittore.
@@ -226,32 +228,62 @@ static void restore_usj_phy(void)
     usb_serial_jtag_ll_phy_enable_pad(true);
 }
 
+// tinyusb_driver_uninstall elimina il task di TinyUSB dall'esterno
+// (vTaskDelete) in un punto qualunque. Se in quel momento il task serviva
+// una lettura del disco, il mutex del controller SDMMC restava preso per
+// sempre e la FAT del firmware si bloccava alla prima lettura: visto il
+// 2026-11-10 con disk.detach mentre il Mac (Spotlight) leggeva il disco.
+// Questa funzione la esegue il task stesso tra un evento e l'altro, dove non
+// tiene risorse, e lo ferma lì finché non lo si sblocca o lo si elimina.
+// Semafori e non vTaskSuspend: uno sblocco chiesto prima che il task si sia
+// fermato non va perso.
+static void park_tinyusb(void *arg)
+{
+    xSemaphoreGive(s_parked);
+    xSemaphoreTake(s_unpark, portMAX_DELAY);
+}
+
+static void park(void)
+{
+    usbd_defer_func(park_tinyusb, NULL, false);
+    if (xSemaphoreTake(s_parked, pdMS_TO_TICKS(1000)) != pdTRUE) ESP_LOGW(TAG, "task TinyUSB non fermato");
+}
+
 static void teardown(void)
 {
     if (s_profile == USB_PROFILE_NONE) return;
+    // Segnali rimasti da un teardown precedente in cui il task non si era
+    // fermato in tempo: farebbero credere parcheggiato un task che non lo è.
+    xSemaphoreTake(s_parked, 0);
+    xSemaphoreTake(s_unpark, 0);
+    // Staccandoci dal bus l'host smette di inviare comandi; quelli già
+    // ricevuti il task li completa prima di arrivare al parcheggio.
+    tud_disconnect();
+    park();
+    if (s_msc) {
+        // Con una copia in corso esp_tinyusb rifiuta di eliminare lo storage
+        // finché restano scritture differite, che esegue il task di TinyUSB:
+        // lo si sblocca finché non le ha scritte (la coda è FIFO, quindi le
+        // esegue prima del parcheggio successivo). Senza questa attesa il
+        // driver MSC restava allocato e ogni profilo successivo con il disco
+        // falliva fino al riavvio.
+        esp_err_t e = ESP_FAIL;
+        for (int i = 0; i < 200; i++) {
+            e = tinyusb_msc_delete_storage(s_msc);
+            if (e != ESP_ERR_INVALID_STATE) break;
+            xSemaphoreGive(s_unpark);
+            vTaskDelay(pdMS_TO_TICKS(10));
+            park();
+        }
+        if (e == ESP_OK) e = tinyusb_msc_uninstall_driver();
+        if (e != ESP_OK) ESP_LOGE(TAG, "msc teardown: %s", esp_err_to_name(e));
+        s_msc = NULL;
+    }
     if (s_features & USB_F_CDC) {
         xSemaphoreTake(s_cdc_lock, portMAX_DELAY);
         s_cdc_active = false;
         tinyusb_cdcacm_deinit(TINYUSB_CDC_ACM_0);
         xSemaphoreGive(s_cdc_lock);
-    }
-    if (s_msc) {
-        // Con una copia in corso esp_tinyusb rifiuta di eliminare lo storage
-        // finché restano scritture differite, che esegue il task di TinyUSB.
-        // Staccandoci dal bus l'host smette di inviarne di nuove; quelle già
-        // accodate si esauriscono in pochi millisecondi. Senza questa attesa
-        // il driver MSC restava allocato e ogni profilo successivo con il
-        // disco falliva fino al riavvio.
-        tud_disconnect();
-        esp_err_t e = ESP_FAIL;
-        for (int i = 0; i < 200; i++) {
-            e = tinyusb_msc_delete_storage(s_msc);
-            if (e != ESP_ERR_INVALID_STATE) break;
-            vTaskDelay(pdMS_TO_TICKS(10));
-        }
-        if (e == ESP_OK) e = tinyusb_msc_uninstall_driver();
-        if (e != ESP_OK) ESP_LOGE(TAG, "msc teardown: %s", esp_err_to_name(e));
-        s_msc = NULL;
     }
     esp_err_t err = tinyusb_driver_uninstall();
     if (err != ESP_OK) ESP_LOGE(TAG, "uninstall: %s", esp_err_to_name(err));
@@ -306,6 +338,10 @@ static esp_err_t msc_create(sdmmc_card_t *card)
 esp_err_t usbdev_apply(usb_profile_t profile, sdmmc_card_t *msc_card)
 {
     if (!s_cdc_lock) s_cdc_lock = xSemaphoreCreateMutex();
+    if (!s_parked) {
+        s_parked = xSemaphoreCreateBinary();
+        s_unpark = xSemaphoreCreateBinary();
+    }
     if (profile == s_profile) return ESP_OK;
     teardown();
     if (profile == USB_PROFILE_NONE) {
