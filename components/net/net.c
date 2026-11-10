@@ -164,45 +164,69 @@ static esp_err_t wifi_begin(wifi_mode_t mode)
     return ESP_OK;
 }
 
-// Scansiona e sceglie la rete nota col segnale migliore. true se trovata.
-static bool pick_known(wifi_config_t *out, char *pass_out, size_t pass_len)
+// Scansiona e raccoglie le reti note visibili, la più forte per prima. Se
+// ce n'è più d'una e il chiamante ha dato `choose`, decide lui (menu sul
+// display); altrimenti vince la più forte. 1 = scelta fatta, 0 = nessuna
+// rete nota visibile, -1 = scelta annullata.
+static int pick_known(wifi_config_t *out, char *pass_out, size_t pass_len, net_choose_fn choose, void *arg)
 {
     int known = config_count("wifi");
-    if (known == 0) return false;
+    if (known == 0) return 0;
 
     wifi_scan_config_t sc = {.show_hidden = false};
-    if (esp_wifi_scan_start(&sc, true) != ESP_OK) return false;
+    if (esp_wifi_scan_start(&sc, true) != ESP_OK) return 0;
     uint16_t n = 0;
     esp_wifi_scan_get_ap_num(&n);
     if (n > 20) n = 20; // limite di RAM: ogni record pesa circa 100 byte
     wifi_ap_record_t *recs = calloc(n ? n : 1, sizeof(*recs));
-    if (!recs) return false;
+    if (!recs) return 0;
     esp_wifi_scan_get_ap_records(&n, recs);
 
-    int best = -1000;
-    bool found = false;
+    net_candidate_t cand[NET_MAX_CANDIDATES];
+    int idx[NET_MAX_CANDIDATES]; // voce di config.lua di ogni candidata
+    int nc = 0;
     for (int i = 0; i < known; i++) {
         char key[24];
         snprintf(key, sizeof(key), "wifi.%d.ssid", i + 1);
         const char *ssid = config_str(key, "");
         if (!*ssid) continue;
-        for (int j = 0; j < n; j++) {
-            if (strcmp((const char *)recs[j].ssid, ssid) != 0) continue;
-            if (recs[j].rssi > best) {
-                best = recs[j].rssi;
-                found = true;
-                memset(out, 0, sizeof(*out));
-                strlcpy((char *)out->sta.ssid, ssid, sizeof(out->sta.ssid));
-                snprintf(key, sizeof(key), "wifi.%d.pass", i + 1);
-                strlcpy(pass_out, config_str(key, ""), pass_len);
-            }
+        snprintf(key, sizeof(key), "wifi.%d.pass", i + 1);
+        // Reti aperte non supportate (decisione del 2026-11-10): una voce
+        // senza password non viene mai usata.
+        if (!*config_str(key, "")) {
+            ESP_LOGW(TAG, "rete \"%s\" senza password in config.lua: ignorata", ssid);
+            continue;
         }
+        int best = -1000;
+        for (int j = 0; j < n; j++) {
+            // Più access point con lo stesso SSID: conta il più forte
+            if (strcmp((const char *)recs[j].ssid, ssid) == 0 && recs[j].rssi > best) best = recs[j].rssi;
+        }
+        if (best == -1000 || nc == NET_MAX_CANDIDATES) continue;
+        // Inserimento ordinato per RSSI decrescente
+        int k = nc++;
+        for (; k > 0 && cand[k - 1].rssi < best; k--) {
+            cand[k] = cand[k - 1];
+            idx[k] = idx[k - 1];
+        }
+        strlcpy(cand[k].ssid, ssid, sizeof(cand[k].ssid));
+        cand[k].rssi = best;
+        idx[k] = i;
     }
     free(recs);
-    return found;
+    if (nc == 0) return 0;
+
+    int c = nc > 1 && choose ? choose(cand, nc, arg) : 0;
+    if (c < 0 || c >= nc) return -1;
+    memset(out, 0, sizeof(*out));
+    strlcpy((char *)out->sta.ssid, cand[c].ssid, sizeof(out->sta.ssid));
+    char key[24];
+    snprintf(key, sizeof(key), "wifi.%d.pass", idx[c] + 1);
+    strlcpy(pass_out, config_str(key, ""), pass_len);
+    return 1;
 }
 
-static esp_err_t start_sta(uint32_t timeout_ms)
+static esp_err_t start_sta(uint32_t timeout_ms, net_choose_fn choose, void *arg)
 {
     esp_err_t err = wifi_begin(WIFI_MODE_STA);
     if (err != ESP_OK) return err;
@@ -210,14 +234,16 @@ static esp_err_t start_sta(uint32_t timeout_ms)
 
     wifi_config_t wc;
     char pass[65];
-    if (!pick_known(&wc, pass, sizeof(pass))) {
+    int picked = pick_known(&wc, pass, sizeof(pass), choose, arg);
+    if (picked <= 0) {
         esp_wifi_stop();
         esp_wifi_deinit();
-        return ESP_ERR_NOT_FOUND;
+        return picked < 0 ? ESP_ERR_NOT_FINISHED : ESP_ERR_NOT_FOUND;
     }
     strlcpy((char *)wc.sta.password, pass, sizeof(wc.sta.password));
-    // Solo PSK: soglia WPA2, niente reti aperte né WEP
-    wc.sta.threshold.authmode = *pass ? WIFI_AUTH_WPA2_PSK : WIFI_AUTH_OPEN;
+    // Solo PSK: soglia WPA2, quindi niente reti aperte né WEP anche se un
+    // access point con lo stesso SSID si presentasse senza cifratura.
+    wc.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
     wc.sta.pmf_cfg.capable = true;
     esp_wifi_set_config(WIFI_IF_STA, &wc);
     strlcpy(s_ssid, (char *)wc.sta.ssid, sizeof(s_ssid));
@@ -288,12 +314,20 @@ static esp_err_t start_scan_only(void)
 
 esp_err_t net_acquire(net_mode_t mode, uint32_t timeout_ms)
 {
+    return net_acquire_ex(mode, timeout_ms, NULL, NULL);
+}
+
+esp_err_t net_acquire_ex(net_mode_t mode, uint32_t timeout_ms, net_choose_fn choose, void *arg)
+{
     esp_err_t err = net_init_once();
     if (err != ESP_OK) return err;
     xSemaphoreTake(s_lock, portMAX_DELAY);
 
     if (s_started) {
-        bool ok = mode == NET_AUTO || (mode == NET_STA && s_mode == NET_STA) || (mode == NET_AP && s_mode == NET_AP) ||
+        // NET_AUTO vuole una rete vera: con la radio solo in scansione il
+        // chiamante avrebbe avuto un lease senza IP.
+        bool ok = (mode == NET_AUTO && s_mode != NET_SCAN) || (mode == NET_STA && s_mode == NET_STA) ||
+                  (mode == NET_AP && s_mode == NET_AP) ||
                   (mode == NET_SCAN && (s_mode == NET_SCAN || s_mode == NET_STA));
         if (!ok) {
             xSemaphoreGive(s_lock);
@@ -318,8 +352,9 @@ esp_err_t net_acquire(net_mode_t mode, uint32_t timeout_ms)
         err = start_scan_only();
     } else {
         err = ESP_ERR_NOT_FOUND;
-        if (mode != NET_AP) err = start_sta(timeout_ms);
-        if (err != ESP_OK && mode != NET_STA) {
+        if (mode != NET_AP) err = start_sta(timeout_ms, choose, arg);
+        // Scelta annullata dall'utente (uscita dall'app): niente hotspot
+        if (err != ESP_OK && err != ESP_ERR_NOT_FINISHED && mode != NET_STA) {
             if (mode == NET_AUTO) ESP_LOGW(TAG, "nessuna rete nota (%s): avvio l'hotspot", esp_err_to_name(err));
             err = start_ap();
         }

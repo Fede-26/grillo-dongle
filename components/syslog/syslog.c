@@ -32,12 +32,19 @@ static int log_vprintf(const char *fmt, va_list ap)
     // preceduta dal codice colore ANSI.
     const char *p = fmt;
     if (p[0] == '\033') p = strchr(p, 'm') ? strchr(p, 'm') + 1 : p;
-    if (s_q && (p[0] == 'E' || p[0] == 'W')) {
+    if (s_q && (p[0] == 'E' || p[0] == 'W' || p[0] == 'I')) {
         char line[LINE_MAX_];
         vsnprintf(line, sizeof(line), fmt, copy);
+        // Delle righe info si tengono solo quelle di sys.log degli script
+        // (tag "script"): sono il diario che chi scrive lo script ha chiesto.
+        // Il tag è un argomento del formato, quindi si guarda la riga già
+        // composta ("I (1234) script: ...").
+        const char *q = line[0] == '\033' && strchr(line, 'm') ? strchr(line, 'm') + 1 : line;
+        const char *tag = strstr(q, ") ");
+        bool keep = p[0] != 'I' || (tag && strncmp(tag + 2, "script:", 7) == 0);
         // Non blocca mai: se la coda è piena la riga si perde, ma il
         // logging non deve rallentare chi lo chiama.
-        xQueueSend(s_q, line, 0);
+        if (keep) xQueueSend(s_q, line, 0);
     }
     va_end(copy);
     return r;

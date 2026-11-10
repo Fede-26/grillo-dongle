@@ -1,5 +1,7 @@
 #include "lan.h"
 
+#include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -292,6 +294,27 @@ int probe_dns(const char *host, uint32_t *ip_be)
     return (esp_timer_get_time() - t0) / 1000;
 }
 
+// connect() con scadenza: SO_SNDTIMEO non vale per connect in lwIP, e con
+// un captive portal che scarta i SYN l'attesa durava decine di secondi
+// (ritrasmissioni del SYN), con l'app sorda all'hold di uscita.
+static bool connect_timeout(int s, const struct sockaddr *to, socklen_t len, int ms)
+{
+    int fl = fcntl(s, F_GETFL, 0);
+    fcntl(s, F_SETFL, fl | O_NONBLOCK);
+    bool ok = connect(s, to, len) == 0;
+    if (!ok && errno == EINPROGRESS) {
+        fd_set w;
+        FD_ZERO(&w);
+        FD_SET(s, &w);
+        struct timeval tv = {.tv_sec = ms / 1000, .tv_usec = (ms % 1000) * 1000};
+        int err = 0;
+        socklen_t el = sizeof(err);
+        ok = select(s + 1, NULL, &w, NULL, &tv) == 1 && getsockopt(s, SOL_SOCKET, SO_ERROR, &err, &el) == 0 && !err;
+    }
+    fcntl(s, F_SETFL, fl);
+    return ok;
+}
+
 int probe_http(uint32_t ip_be, const char *host, const char *path, int *code)
 {
     int s = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
@@ -304,7 +327,7 @@ int probe_http(uint32_t ip_be, const char *host, const char *path, int *code)
     int ms = -1;
     char req[160], resp[48];
     int rl = snprintf(req, sizeof(req), "GET %s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n", path, host);
-    if (connect(s, (struct sockaddr *)&to, sizeof(to)) == 0 && send(s, req, rl, 0) == rl) {
+    if (connect_timeout(s, (struct sockaddr *)&to, sizeof(to), 4000) && send(s, req, rl, 0) == rl) {
         int r = recv(s, resp, sizeof(resp) - 1, 0);
         resp[r > 0 ? r : 0] = 0;
         // "HTTP/1.1 204 No Content"

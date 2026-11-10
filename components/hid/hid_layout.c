@@ -103,9 +103,14 @@ int hid_translate(const hid_layout_t *l, hid_os_t os, uint32_t cp, hid_stroke_t 
         int n = snprintf(hex, sizeof(hex), "%x", (unsigned)cp);
         if (max < n + 2) return 0;
         int k = 0;
-        out[k++] = (hid_stroke_t){0x18, HID_MOD_LCTRL | HID_MOD_LSHIFT}; // 'u'
+        // La 'u' va cercata nel layout come le cifre: con keycode fisso (0x18,
+        // la U della US) sul Colemak partiva Ctrl+Shift+L. HID_OS_MAC evita
+        // di ricadere di nuovo in questo ripiego.
+        bool dummy;
+        hid_stroke_t u;
+        if (hid_translate(l, HID_OS_MAC, 'u', &u, 1, &dummy) != 1) return 0;
+        out[k++] = (hid_stroke_t){u.key, HID_MOD_LCTRL | HID_MOD_LSHIFT};
         for (int i = 0; i < n; i++) {
-            bool dummy;
             hid_stroke_t s;
             if (hid_translate(l, HID_OS_MAC, (uint8_t)hex[i], &s, 1, &dummy) != 1) return 0;
             out[k++] = s;

@@ -1,7 +1,8 @@
 #pragma once
 
-// Copia su SD (/sd/logs/grillo.log) i log di livello warning ed error,
-// oltre alla console normale. Serve quando la USB è occupata da HID/MSC e
+// Copia su SD (/sd/logs/grillo.log) i log di livello warning ed error, più
+// le righe info con tag "script" (sys.log degli script dell'injector), oltre
+// alla console normale. Serve quando la USB è occupata da HID/MSC e
 // la seriale non è disponibile. Rotazione semplice: oltre 256 KB il file
 // diventa grillo.1.log.
 void syslog_init(void);

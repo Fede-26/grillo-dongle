@@ -39,6 +39,10 @@ static const char *TAG = "netscan";
 
 // --- Orologio e file CSV ---
 
+// true se SNTP l'ha avviato Netscan: se lo aveva già avviato qualcun altro,
+// all'uscita non va fermato.
+static bool s_sntp_ours;
+
 static void clock_start(void)
 {
     setenv("TZ", config_str("timezone", DEFAULT_TZ), 1);
@@ -47,11 +51,13 @@ static void clock_start(void)
     esp_sntp_setoperatingmode(ESP_SNTP_OPMODE_POLL);
     esp_sntp_setservername(0, config_str("netscan.ntp", "pool.ntp.org"));
     esp_sntp_init();
+    s_sntp_ours = true;
 }
 
 static void clock_stop(void)
 {
-    if (esp_sntp_enabled()) esp_sntp_stop();
+    if (s_sntp_ours && esp_sntp_enabled()) esp_sntp_stop();
+    s_sntp_ours = false;
 }
 
 // Apre un nuovo CSV in /sd/scans. Il dongle non ha batteria per l'orologio: se
@@ -62,7 +68,8 @@ static FILE *csv_open(const char *prefix, const char *tag, char *path, size_t n)
     mkdir(SCAN_DIR, 0775);
     char slug[20] = "", stamp[24];
     if (tag && *tag) {
-        ns_file_slug(slug, sizeof(slug), tag);
+        // Un byte resta per il trattino: con uno slug pieno si perdeva
+        ns_file_slug(slug, sizeof(slug) - 1, tag);
         strlcat(slug, "-", sizeof(slug));
     }
     time_t now = time(NULL);
@@ -112,7 +119,7 @@ static void draw_busy(const char *line1, const char *line2)
 static bool join_network(app_ctx_t *ctx, const char *title)
 {
     draw_busy("Connecting…", "");
-    esp_err_t err = net_acquire(NET_STA, 15000);
+    esp_err_t err = app_net_acquire(ctx, NET_STA, 15000);
     if (err == ESP_OK) return true;
     if (!app_should_exit(ctx)) {
         app_message(ctx, title, err == ESP_ERR_NOT_FOUND ? "No known network: add it to wifi in config.lua" : "Connection failed", UI_ERR);

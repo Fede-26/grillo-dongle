@@ -6,6 +6,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "gfx.h"
+#include "net.h"
 #include "usbdev.h"
 
 // Contratto tra il sistema e le app.
@@ -49,6 +50,7 @@ typedef struct {
     const char *arg;       // argomento di avvio (es. payload dell'autorun), può essere NULL
     QueueHandle_t queue;
     volatile bool exit_requested;
+    volatile bool exit_lost; // l'EXIT non è entrato nella coda piena: lo consegna app_next_event
 } app_ctx_t;
 
 struct app_desc {
@@ -65,14 +67,29 @@ struct app_desc {
 };
 
 // Attende il prossimo evento. false se scade il timeout (portMAX_DELAY per
-// attendere per sempre). Un APP_EV_EXIT viene sempre consegnato.
+// attendere per sempre). Un APP_EV_EXIT viene sempre consegnato, anche se
+// quando è stato chiesto la coda era piena.
+//
+// Consegnare l'evento non basta a far uscire un'app: serve che l'app torni
+// ad attenderne uno. Se non lo fa (calcolo lungo, chiamata bloccante), dopo
+// 3 s il sistema propone il riavvio con un secondo hold (vedi appmgr.c).
 bool app_next_event(app_ctx_t *ctx, app_event_t *ev, uint32_t timeout_ms);
 bool app_should_exit(app_ctx_t *ctx);
-// Accoda un evento (utile da timer o task secondari dell'app).
+// Accoda un evento (utile da timer o task secondari dell'app). Con
+// APP_EV_EXIT imposta anche exit_requested: è il modo di chiedere l'uscita
+// dall'interno dell'app (es. un timeout).
 void app_post(app_ctx_t *ctx, app_ev_type_t type, int32_t arg);
+// Annulla una richiesta di uscita già ricevuta (es. l'hold ha solo
+// interrotto uno script, oppure l'utente ha risposto "No" a "Uscire?") e
+// scarta gli EXIT ancora in coda, così il dialogo successivo non si chiude
+// da solo.
+void app_cancel_exit(app_ctx_t *ctx);
 
 // --- Dialoghi bloccanti pronti all'uso ---
 
+// I dialoghi consumano solo i gesti: gli altri eventi che arrivano mentre
+// sono aperti (USB, rete, TICK, USER) tornano in coda alla chiusura.
+//
 // Menu a lista: click = giù, doppio = su, lungo = scegli.
 // Restituisce l'indice scelto o -1 se l'app deve uscire.
 int app_menu(app_ctx_t *ctx, const char *title, const char *const *items, int count, int selected);
@@ -80,10 +97,23 @@ int app_menu(app_ctx_t *ctx, const char *title, const char *const *items, int co
 // essere NULL, e ogni elemento può essere NULL).
 int app_menu_ex(app_ctx_t *ctx, const char *title, const char *const *items, const char *const *rights, int count,
                 int selected);
+// Come app_menu_ex; se non c'è alcun gesto entro timeout_ms (0 = mai)
+// restituisce `selected`. Il conto alla rovescia compare nel titolo, un
+// click o un doppio click lo fermano.
+int app_menu_timeout(app_ctx_t *ctx, const char *title, const char *const *items, const char *const *rights, int count,
+                     int selected, uint32_t timeout_ms);
 // Domanda sì/no: click alterna, lungo conferma. false anche in caso di uscita.
 bool app_confirm(app_ctx_t *ctx, const char *title, const char *text, bool default_yes);
 // Come app_confirm; se non c'è alcun gesto entro timeout_ms (0 = mai) restituisce
 // default_yes. Un click disattiva la scadenza.
 bool app_confirm_timeout(app_ctx_t *ctx, const char *title, const char *text, bool default_yes, uint32_t timeout_ms);
-// Messaggio: attende click o lungo.
+// Messaggio: attende click o lungo. Un testo che non entra scorre da solo.
 void app_message(app_ctx_t *ctx, const char *title, const char *text, uint32_t color);
+
+// --- Rete ---
+
+// net_acquire con la scelta della rete affidata all'utente: se più reti
+// note sono visibili compare un menu (con RSSI) e, senza risposta entro
+// pochi secondi, vale la più forte. Restituisce ESP_ERR_NOT_FINISHED se
+// l'utente esce durante la scelta.
+esp_err_t app_net_acquire(app_ctx_t *ctx, net_mode_t mode, uint32_t timeout_ms);

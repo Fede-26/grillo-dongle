@@ -119,7 +119,13 @@ static int kb_type_secret(lua_State *L)
     const char *v = config_str(key, NULL);
     if (!v) return luaL_error(L, "secret '%s' not in config.lua", name);
     uint32_t bad = 0;
-    check_hid(L, hid_type(v, &bad), bad);
+    hid_result_t r = hid_type(v, &bad);
+    // Il messaggio generico rivelerebbe un carattere della password (U+XXXX)
+    // sul display e nel log.
+    if (r == HID_UNTYPEABLE) {
+        return luaL_error(L, "secret '%s' has a character not typeable with layout %s", name, hid_get_layout()->name);
+    }
+    check_hid(L, r, 0);
     return 0;
 }
 
@@ -326,6 +332,7 @@ static void apply_header_led(const char *spec)
 static int ui_status(lua_State *L)
 {
     strlcpy(s_run->status, luaL_optstring(L, 1, ""), sizeof(s_run->status));
+    s_run->status_scroll.text = NULL; // testo nuovo: inj_redraw riparte dall'inizio
     inj_redraw(s_run);
     return 0;
 }
@@ -455,14 +462,17 @@ static const char *fs_path(lua_State *L, int idx, char *out, size_t len)
 static int fs_read(lua_State *L)
 {
     char path[PAYLOAD_PATH_MAX];
-    FILE *f = fopen(fs_path(L, 1, path, sizeof(path)), "rb");
+    fs_path(L, 1, path, sizeof(path));
+    // Il buffer prima del file: se l'allocazione fallisce Lua solleva un
+    // errore e un FILE già aperto non verrebbe più chiuso (max_files = 8).
+    luaL_Buffer b;
+    char *dst = luaL_buffinitsize(L, &b, FS_READ_MAX);
+    FILE *f = fopen(path, "rb");
     if (!f) {
         lua_pushnil(L);
         lua_pushstring(L, "cannot open");
         return 2;
     }
-    luaL_Buffer b;
-    char *dst = luaL_buffinitsize(L, &b, FS_READ_MAX);
     size_t n = fread(dst, 1, FS_READ_MAX, f);
     bool more = fgetc(f) != EOF;
     fclose(f);
@@ -874,7 +884,17 @@ static void on_timeout(void *arg)
 {
     inj_run_t *r = arg;
     r->timed_out = true;
-    r->ctx->exit_requested = true;
+    // Con l'evento in coda si chiudono anche ui.menu e ui.confirm, che
+    // attendono senza scadenza; il solo flag fermava soltanto il codice Lua.
+    app_post(r->ctx, APP_EV_EXIT, 0);
+}
+
+// Tempo in ms da config.lua, limitato a 0..60000 come kb.speed: i campi di
+// hid_timing_t sono uint16_t e un -1 diventava 65535.
+static int config_ms(const char *key, int def)
+{
+    int v = config_int(key, def);
+    return v < 0 ? 0 : (v > 60000 ? 60000 : v);
 }
 
 // Default da config.lua, poi intestazione dello script.
@@ -887,10 +907,10 @@ static void apply_settings(const payload_meta_t *m)
     hid_os_t o;
     if (hid_os_parse(os, &o)) hid_set_os(o);
     hid_timing_t *t = hid_timing();
-    t->key_delay = m->key_delay >= 0 ? m->key_delay : config_int("keyboard.key_delay", 8);
-    t->hold = m->hold >= 0 ? m->hold : config_int("keyboard.hold", 5);
-    t->jitter = m->jitter >= 0 ? m->jitter : config_int("keyboard.jitter", 0);
-    t->line_delay = m->line_delay >= 0 ? m->line_delay : config_int("keyboard.line_delay", 0);
+    t->key_delay = m->key_delay >= 0 ? m->key_delay : config_ms("keyboard.key_delay", 8);
+    t->hold = m->hold >= 0 ? m->hold : config_ms("keyboard.hold", 5);
+    t->jitter = m->jitter >= 0 ? m->jitter : config_ms("keyboard.jitter", 0);
+    t->line_delay = m->line_delay >= 0 ? m->line_delay : config_ms("keyboard.line_delay", 0);
     led_set(LED_LAYER_APP, LED_FX_PULSE, ui_accent(), 1000);
     if (m->led[0]) apply_header_led(m->led);
 }
@@ -920,7 +940,7 @@ static void lua_run(inj_run_t *r)
     r->waiting_host = false;
     r->started_us = esp_timer_get_time();
     inj_redraw(r);
-    if (hr == HID_OK) hr = hid_sleep(m->start_delay >= 0 ? m->start_delay : config_int("keyboard.start_delay", 1000));
+    if (hr == HID_OK) hr = hid_sleep(m->start_delay >= 0 ? m->start_delay : config_ms("keyboard.start_delay", 1000));
 
     if (hr == HID_OK) {
         // 2 KB liberi bastano a sollevare e propagare l'errore di overflow
@@ -945,7 +965,9 @@ static void lua_run(inj_run_t *r)
             lua_register(L, "require", l_require);
 
             r->ok = luart_dofile(L, m->path, 0, r->error, sizeof(r->error));
-            ESP_LOGI(TAG, "%s: %s (Lua peak %u B)", m->path, r->ok ? "ok" : r->error, (unsigned)luart_mem_peak(L));
+            // Un errore va anche nel log su SD (syslog copia solo W/E)
+            if (r->ok) ESP_LOGI(TAG, "%s: ok (Lua peak %u B)", m->path, (unsigned)luart_mem_peak(L));
+            else ESP_LOGW(TAG, "%s: %s (Lua peak %u B)", m->path, r->error, (unsigned)luart_mem_peak(L));
             luart_close(L);
         }
     }

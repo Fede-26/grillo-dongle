@@ -15,8 +15,26 @@
 static int s_sel;
 static bool s_autorun_done;
 
-static void draw_card(const app_desc_t *app, int xoff)
+// Sottotitoli calcolati una volta per ciclo di aggiornamento (2 s) e non a
+// ogni fotogramma: alcuni leggono la SD (spazio libero, elenco dei payload)
+// e l'animazione del carosello ne disegnava 14 per ogni click.
+#define MAX_CARDS 16
+static char s_sub[MAX_CARDS][40];
+
+static void refresh_subtitles(void)
 {
+    for (int i = 0; i < (int)appmgr_count() && i < MAX_CARDS; i++) {
+        const app_desc_t *app = appmgr_get(i);
+        const char *why = appmgr_unavailable(app);
+        s_sub[i][0] = 0;
+        if (why) strlcpy(s_sub[i], why, sizeof(s_sub[i]));
+        else if (app->subtitle) app->subtitle(s_sub[i], sizeof(s_sub[i]));
+    }
+}
+
+static void draw_card(int index, int xoff)
+{
+    const app_desc_t *app = appmgr_get(index);
     const char *why = appmgr_unavailable(app);
     uint32_t accent = why ? UI_FAINT : app->accent;
     int cx = UI_W / 2 + xoff;
@@ -25,9 +43,7 @@ static void draw_card(const app_desc_t *app, int xoff)
     int nw = gfx_text_width(&gfx_font_large, app->name);
     gfx_text(&gfx_font_large, cx - nw / 2, UI_CONTENT_Y + 26, app->name, why ? UI_DIM : UI_TEXT);
 
-    char sub[40] = "";
-    if (why) strlcpy(sub, why, sizeof(sub));
-    else if (app->subtitle) app->subtitle(sub, sizeof(sub));
+    const char *sub = index < MAX_CARDS ? s_sub[index] : "";
     int sw = gfx_text_width(&gfx_font_small, sub);
     if (sw > UI_W - 24) sw = UI_W - 24;
     gfx_text_fit(&gfx_font_small, cx - sw / 2, UI_CONTENT_Y + 44, UI_W - 24, sub, why ? UI_ERR : UI_DIM);
@@ -42,10 +58,10 @@ static void draw(int sel, int prev, int dir, int frame)
         int t = (frame + 1) * 256 / ANIM_FRAMES;
         int k = 256 - (256 - t) * (256 - t) / 256;
         int shift = UI_W * k / 256;
-        draw_card(appmgr_get(prev), -dir * shift);
-        draw_card(appmgr_get(sel), dir * (UI_W - shift));
+        draw_card(prev, -dir * shift);
+        draw_card(sel, dir * (UI_W - shift));
     } else {
-        draw_card(appmgr_get(sel), 0);
+        draw_card(sel, 0);
     }
     if (n > 1) {
         gfx_text(&gfx_font_small, 3, UI_CONTENT_Y + 30, "‹", UI_FAINT);
@@ -107,7 +123,14 @@ static void launcher_run(app_ctx_t *ctx)
         const char *id = config_str("autorun.app", NULL);
         const app_desc_t *app = id ? appmgr_find(id) : NULL;
         if (id && !app) ui_toast("autorun: unknown app", UI_ERR, 2500);
-        if (app && !appmgr_unavailable(app)) {
+        // Prima un'app non disponibile (es. SD assente) saltava l'autorun in silenzio
+        const char *why = app ? appmgr_unavailable(app) : NULL;
+        if (why) {
+            char msg[40];
+            snprintf(msg, sizeof(msg), "autorun: %s", why);
+            ui_toast(msg, UI_ERR, 3000);
+        }
+        if (app && !why) {
             const char *arg = config_str("autorun.payload", NULL);
             if (autorun_countdown(ctx, app, arg, config_int("autorun.delay", 3))) {
                 appmgr_launch(app, arg);
@@ -118,11 +141,13 @@ static void launcher_run(app_ctx_t *ctx)
 
     if (s_sel >= n) s_sel = 0;
     set_ambient(appmgr_get(s_sel));
+    refresh_subtitles();
     draw(s_sel, -1, 0, ANIM_FRAMES);
     for (;;) {
         app_event_t ev;
         // Timeout: i sottotitoli (es. spazio SD) vengono aggiornati ogni 2 s
         if (!app_next_event(ctx, &ev, 2000)) {
+            refresh_subtitles();
             draw(s_sel, -1, 0, ANIM_FRAMES);
             continue;
         }

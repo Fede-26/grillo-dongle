@@ -144,7 +144,10 @@ static void devcon_task(void *arg)
             char c = buf[i];
             if (c == '\r' || c == '\n') {
                 line[len] = 0;
-                if (len && !(s_filter && s_filter(line))) {
+                // Letto una volta: set_line_filter(NULL) da un altro task tra
+                // il controllo e la chiamata faceva saltare a NULL.
+                devcon_line_filter_t filter = s_filter;
+                if (len && !(filter && filter(line))) {
                     // Sulla CDC in release si accettano solo le righe del filtro
                     if (CDC_CONSOLE || !usbdev_cdc_active()) execute(line);
                 }

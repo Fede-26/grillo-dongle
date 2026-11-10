@@ -13,10 +13,11 @@
 // un'app: un'app che dimentica il rilascio non lascia la radio accesa.
 //
 // Le reti note vengono da config.lua (`wifi = { {ssid=, pass=}, ... }`),
-// l'hotspot da `hotspot = { ssid=, pass= }`.
+// l'hotspot da `hotspot = { ssid=, pass= }`. Le reti senza password (aperte)
+// non sono supportate: le voci senza `pass` vengono ignorate.
 
 typedef enum {
-    NET_AUTO, // reti note per RSSI, in mancanza hotspot
+    NET_AUTO, // rete nota (la più forte o scelta dall'utente), in mancanza hotspot
     NET_STA,  // solo rete nota: errore se nessuna è raggiungibile
     NET_AP,   // solo hotspot
     NET_SCAN, // radio STA accesa senza connettersi: serve solo a net_scan()
@@ -47,6 +48,21 @@ void net_set_event_cb(net_event_cb_t cb);
 // acceso in una modalità incompatibile con quella richiesta restituisce
 // ESP_ERR_INVALID_STATE (non si cambia modalità sotto un altro utente).
 esp_err_t net_acquire(net_mode_t mode, uint32_t timeout_ms);
+
+// Rete nota visibile, proposta a chi sceglie.
+#define NET_MAX_CANDIDATES 8
+typedef struct {
+    char ssid[33];
+    int8_t rssi;
+} net_candidate_t;
+// Riceve le reti note visibili (almeno due), la più forte per prima, e
+// restituisce l'indice scelto o -1 per annullare. Gira nel task che ha
+// chiamato net_acquire_ex, quindi può mostrare un dialogo.
+typedef int (*net_choose_fn)(const net_candidate_t *c, int n, void *arg);
+// Come net_acquire; se più reti note sono visibili decide `choose` (NULL =
+// la più forte). Con la scelta annullata restituisce ESP_ERR_NOT_FINISHED e
+// non ripiega sull'hotspot. Vedi app_net_acquire() in app.h.
+esp_err_t net_acquire_ex(net_mode_t mode, uint32_t timeout_ms, net_choose_fn choose, void *arg);
 void net_release(void);
 void net_release_all(void);
 

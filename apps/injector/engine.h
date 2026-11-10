@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include "app.h"
 #include "payload.h"
+#include "ui.h"
 
 // Esecuzione di uno script dell'injector.
 //
@@ -17,6 +18,8 @@ typedef struct {
 
     // Stato mostrato dalla schermata di esecuzione, aggiornato dallo script
     char status[48];
+    ui_scroll_t status_scroll; // stato lungo: scorre da solo (vedi inj_redraw)
+    int64_t redraw_us;         // prossimo ridisegno periodico da inj_pump
     int progress, progress_max; // barra nascosta se progress_max == 0
     bool waiting_host;
     int64_t started_us;

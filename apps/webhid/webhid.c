@@ -50,13 +50,27 @@ static void client_label(const char *client, const char *own, char *out, size_t 
     else strlcpy(out, client, len);
 }
 
+// Nel formato WIFI: dei QR i caratteri \ ; , : " vanno preceduti da \,
+// altrimenti una password con ';' produceva un QR che non si collegava.
+static void qr_escape(char *out, size_t len, const char *in)
+{
+    size_t o = 0;
+    for (; *in && o + 2 < len; in++) {
+        if (strchr("\\;,:\"", *in)) out[o++] = '\\';
+        out[o++] = *in;
+    }
+    out[o] = 0;
+}
+
 // page 0: URL della pagina (STA e AP); page 1 (solo AP): credenziali WiFi
 static void draw_main(const net_info_t *ni, const char *pin, int page, const char *client)
 {
     char url[48];
     snprintf(url, sizeof(url), "http://%s/", ni->ip);
-    char wifi[128];
-    snprintf(wifi, sizeof(wifi), "WIFI:T:WPA;S:%s;P:%s;;", net_ap_ssid(), net_ap_pass());
+    char ssid[70], pass[130], wifi[220];
+    qr_escape(ssid, sizeof(ssid), net_ap_ssid());
+    qr_escape(pass, sizeof(pass), net_ap_pass());
+    snprintf(wifi, sizeof(wifi), "WIFI:T:WPA;S:%s;P:%s;;", ssid, pass);
 
     ui_begin();
     bool ok = qr_draw(page == 1 ? wifi : url, 0, UI_CONTENT_Y, QR_BOX);
@@ -101,6 +115,14 @@ static void draw_main(const net_info_t *ni, const char *pin, int page, const cha
     ui_end();
 }
 
+// Tempo in ms da config.lua, limitato a 0..60000 (i campi di hid_timing_t
+// sono uint16_t: un -1 diventava 65535).
+static int config_ms(const char *key, int def)
+{
+    int v = config_int(key, def);
+    return v < 0 ? 0 : (v > 60000 ? 60000 : v);
+}
+
 static void apply_keyboard_config(void)
 {
     hid_reset();
@@ -108,15 +130,18 @@ static void apply_keyboard_config(void)
     hid_os_t os;
     if (hid_os_parse(config_str("keyboard.os", "windows"), &os)) hid_set_os(os);
     hid_timing_t *t = hid_timing();
-    t->key_delay = config_int("keyboard.key_delay", 8);
-    t->hold = config_int("keyboard.hold", 5);
-    t->jitter = config_int("keyboard.jitter", 0);
+    t->key_delay = config_ms("keyboard.key_delay", 8);
+    t->hold = config_ms("keyboard.hold", 5);
+    t->jitter = config_ms("keyboard.jitter", 0);
+    // Anche line_delay: la documentazione dice che valgono tutte le keyboard.*
+    t->line_delay = config_ms("keyboard.line_delay", 0);
 }
 
 static void webhid_run(app_ctx_t *ctx)
 {
     draw_connecting();
-    esp_err_t err = net_acquire(NET_AUTO, 15000);
+    esp_err_t err = app_net_acquire(ctx, NET_AUTO, 15000);
+    if (err == ESP_ERR_NOT_FINISHED) return; // uscita durante la scelta della rete
     if (err != ESP_OK) {
         char msg[40];
         snprintf(msg, sizeof(msg), "WiFi failed: %s", esp_err_to_name(err));
@@ -137,7 +162,9 @@ static void webhid_run(app_ctx_t *ctx)
     }
 
     led_set(LED_LAYER_APP, LED_FX_PULSE, ACCENT, 2000);
-    int page = 0;
+    // In hotspot si parte dalle credenziali WiFi: il QR dell'indirizzo non
+    // serve finché il telefono non è sulla rete del dongle.
+    int page = -1;
     char last_client[16] = "";
     for (;;) {
         net_info_t ni;
@@ -147,6 +174,7 @@ static void webhid_run(app_ctx_t *ctx)
             strlcpy(last_client, client, sizeof(last_client));
             led_set(LED_LAYER_APP, *client ? LED_FX_SOLID : LED_FX_PULSE, *client ? UI_OK : ACCENT, 2000);
         }
+        if (ni.up && page < 0) page = ni.mode == NET_AP ? 1 : 0;
         if (ni.up) draw_main(&ni, pin, page, client);
         else draw_connecting();
 

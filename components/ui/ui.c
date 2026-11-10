@@ -85,7 +85,7 @@ static void draw_bar(void)
     }
     uint8_t wifi = s_ind[UI_IND_WIFI];
     if (wifi) {
-        x -= wifi == 6 ? 11 : 11;
+        x -= 11;
         draw_wifi(x, 2, wifi);
         x -= 4;
     }
@@ -164,6 +164,13 @@ void ui_set_title(const char *title, uint32_t accent)
     s_accent = accent;
     unlock();
     refresh_bar();
+}
+
+void ui_get_title(char *buf, size_t len)
+{
+    lock();
+    strlcpy(buf, s_title, len);
+    unlock();
 }
 
 uint32_t ui_accent(void)
@@ -345,4 +352,73 @@ void ui_draw_hint(const char *hint)
 {
     gfx_fill_rect(0, UI_H - 9, UI_W, 9, UI_BG);
     gfx_text_aligned(&gfx_font_small, 0, UI_H - 8, UI_W, GFX_ALIGN_CENTER, hint, UI_FAINT);
+}
+
+// ---------------------------------------------------------------------------
+// Testo a scorrimento
+
+#define SCROLL_FIRST_MS 2000 // tempo per leggere le prime righe
+#define SCROLL_STEP_MS  1100 // una riga in più
+#define SCROLL_LAST_MS  2500 // sosta sulle ultime righe prima di ricominciare
+
+void ui_scroll_init(ui_scroll_t *s, const gfx_font_t *f, int x, int y, int w, int lines, const char *text)
+{
+    *s = (ui_scroll_t){.font = f, .text = text ? text : "", .x = x, .y = y, .w = w, .lines = lines};
+    // Con max_lines = 0 la funzione conta soltanto
+    s->total = ui_draw_wrapped_scroll(f, 0, 0, w, 0, 0, s->text, 0);
+    s->next_us = esp_timer_get_time() + SCROLL_FIRST_MS * 1000LL;
+}
+
+bool ui_scroll_active(const ui_scroll_t *s)
+{
+    return s->total > s->lines;
+}
+
+static void scroll_advance(ui_scroll_t *s)
+{
+    int last = s->total - s->lines;
+    if (s->top >= last) {
+        s->top = 0;
+        s->cycles++;
+        s->next_us = esp_timer_get_time() + SCROLL_FIRST_MS * 1000LL;
+    } else {
+        s->top++;
+        s->next_us = esp_timer_get_time() + (s->top == last ? SCROLL_LAST_MS : SCROLL_STEP_MS) * 1000LL;
+    }
+}
+
+bool ui_scroll_tick(ui_scroll_t *s)
+{
+    if (!ui_scroll_active(s) || esp_timer_get_time() < s->next_us) return false;
+    scroll_advance(s);
+    return true;
+}
+
+void ui_scroll_step(ui_scroll_t *s)
+{
+    if (!ui_scroll_active(s)) return;
+    scroll_advance(s);
+    // Chi scorre a mano sta leggendo: gli si lascia più tempo
+    if (s->top) s->next_us = esp_timer_get_time() + SCROLL_LAST_MS * 1000LL;
+}
+
+uint32_t ui_scroll_wait_ms(const ui_scroll_t *s)
+{
+    if (!ui_scroll_active(s)) return portMAX_DELAY;
+    int64_t left = s->next_us - esp_timer_get_time();
+    return left > 0 ? (uint32_t)(left / 1000) + 1 : 0;
+}
+
+void ui_scroll_draw(const ui_scroll_t *s, uint32_t rgb)
+{
+    ui_draw_wrapped_scroll(s->font, s->x, s->y, s->w, s->lines, s->top, s->text, rgb);
+    if (!ui_scroll_active(s)) return;
+    int lh = s->font->height + 2, h = s->lines * lh - 2;
+    int th = h * s->lines / s->total;
+    if (th < 3) th = 3;
+    int ty = s->y + (h - th) * s->top / (s->total - s->lines);
+    int bx = s->x + s->w + 2;
+    if (bx >= UI_W) bx = UI_W - 1;
+    gfx_fill_rect(bx, s->y, 1, h, UI_FAINT);
+    gfx_fill_rect(bx, ty, 1, th, s_accent);
 }

@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include "hid_layout.h"
 
 static int cmp_entry(const void *a, const void *b)
 {
@@ -137,15 +138,16 @@ static bool parse_int(char *v, int *out)
 typedef struct {
     const char *key;
     size_t offset;
+    int max; // i tempi finiscono in campi uint16_t: oltre 60000 ms si troncavano
 } int_key_t;
 
 static const int_key_t s_int_keys[] = {
-    {"key_delay", offsetof(payload_meta_t, key_delay)},
-    {"hold", offsetof(payload_meta_t, hold)},
-    {"jitter", offsetof(payload_meta_t, jitter)},
-    {"line_delay", offsetof(payload_meta_t, line_delay)},
-    {"start_delay", offsetof(payload_meta_t, start_delay)},
-    {"timeout", offsetof(payload_meta_t, timeout)},
+    {"key_delay", offsetof(payload_meta_t, key_delay), 60000},
+    {"hold", offsetof(payload_meta_t, hold), 60000},
+    {"jitter", offsetof(payload_meta_t, jitter), 60000},
+    {"line_delay", offsetof(payload_meta_t, line_delay), 60000},
+    {"start_delay", offsetof(payload_meta_t, start_delay), 60000},
+    {"timeout", offsetof(payload_meta_t, timeout), 24 * 3600}, // secondi
 };
 
 bool payload_read_meta(const char *path, payload_meta_t *m)
@@ -172,8 +174,15 @@ bool payload_read_meta(const char *path, payload_meta_t *m)
 
         if (!strcmp(key, "name")) strlcpy(m->name, val, sizeof(m->name));
         else if (!strcmp(key, "desc")) strlcpy(m->desc, val, sizeof(m->desc));
-        else if (!strcmp(key, "layout")) strlcpy(m->layout, val, sizeof(m->layout));
-        else if (!strcmp(key, "os")) strlcpy(m->os, val, sizeof(m->os));
+        else if (!strcmp(key, "layout")) {
+            strlcpy(m->layout, val, sizeof(m->layout));
+            if (!hid_layout_find(val)) snprintf(m->error, sizeof(m->error), "line %d: unknown @layout %s", lineno, val);
+        } else if (!strcmp(key, "os")) {
+            // Prima un @os sbagliato (es. "wndows") veniva ignorato in silenzio
+            hid_os_t os;
+            strlcpy(m->os, val, sizeof(m->os));
+            if (!hid_os_parse(val, &os)) snprintf(m->error, sizeof(m->error), "line %d: unknown @os %s", lineno, val);
+        }
         else if (!strcmp(key, "led")) strlcpy(m->led, val, sizeof(m->led));
         else if (!strcmp(key, "tags")) strlcpy(m->tags, val, sizeof(m->tags));
         else {
@@ -181,8 +190,10 @@ bool payload_read_meta(const char *path, payload_meta_t *m)
             for (size_t i = 0; i < sizeof(s_int_keys) / sizeof(s_int_keys[0]); i++) {
                 if (strcmp(key, s_int_keys[i].key)) continue;
                 known = true;
-                if (!parse_int(val, (int *)((char *)m + s_int_keys[i].offset))) {
-                    snprintf(m->error, sizeof(m->error), "line %d: @%s needs a number", lineno, key);
+                int *dst = (int *)((char *)m + s_int_keys[i].offset);
+                if (!parse_int(val, dst) || *dst > s_int_keys[i].max) {
+                    snprintf(m->error, sizeof(m->error), "line %d: @%s needs a number 0..%d", lineno, key,
+                             s_int_keys[i].max);
                 }
             }
             if (!known) snprintf(m->error, sizeof(m->error), "line %d: unknown @%s", lineno, key);

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include "gfx.h"
 
@@ -57,6 +58,8 @@ void ui_end_full(void);
 
 // Stato mostrato nella status bar (ridisegnata subito).
 void ui_set_title(const char *title, uint32_t accent);
+// Copia il titolo corrente (per ripristinarlo dopo un dialogo).
+void ui_get_title(char *buf, size_t len);
 uint32_t ui_accent(void);
 void ui_set_indicator(ui_indicator_t ind, uint8_t value);
 // Avanzamento dell'hold di uscita 0..100; 0 = nascosto.
@@ -89,3 +92,34 @@ int ui_draw_wrapped_scroll(const gfx_font_t *f, int x, int y, int w, int max_lin
                            uint32_t rgb);
 // Barra in basso con suggerimenti per i gesti, es. "click next · hold back"
 void ui_draw_hint(const char *hint);
+
+// --- Testo a scorrimento automatico ---
+//
+// Testo su più righe in un'area di `lines` righe. Se non entra, scorre da
+// solo a passi di una riga: pausa iniziale, un passo alla volta, pausa sulle
+// ultime righe, poi ricomincia dall'inizio. Così errori e descrizioni lunghi
+// si leggono per intero senza premere nulla. Il chiamante:
+//   ui_scroll_init(&s, ...);
+//   for (;;) { ui_begin(); ui_scroll_draw(&s, colore); ui_end();
+//              app_next_event(ctx, &ev, ui_scroll_wait_ms(&s)); ui_scroll_tick(&s); ... }
+typedef struct {
+    const gfx_font_t *font;
+    const char *text; // non copiato: deve restare valido finché si usa lo scroller
+    int x, y, w, lines;
+    int total;   // righe del testo una volta spezzato
+    int top;     // prima riga visibile
+    int cycles;  // giri completi già mostrati (utile a chi vuole chiudere dopo il primo)
+    int64_t next_us;
+} ui_scroll_t;
+
+void ui_scroll_init(ui_scroll_t *s, const gfx_font_t *f, int x, int y, int w, int lines, const char *text);
+// true se il testo non entra nell'area e quindi scorre.
+bool ui_scroll_active(const ui_scroll_t *s);
+// Avanza di un passo se è il momento; true se il contenuto è cambiato.
+bool ui_scroll_tick(ui_scroll_t *s);
+// Passo manuale (es. click): avanza subito e rimanda il passo automatico.
+void ui_scroll_step(ui_scroll_t *s);
+// Millisecondi al prossimo passo automatico, portMAX_DELAY se il testo non scorre.
+uint32_t ui_scroll_wait_ms(const ui_scroll_t *s);
+// Disegna le righe visibili e, se scorre, una barra sottile a destra dell'area.
+void ui_scroll_draw(const ui_scroll_t *s, uint32_t rgb);

@@ -10,6 +10,7 @@
 #include <string.h>
 #include <strings.h>
 #include "config.h"
+#include "hid_layout.h"
 #include "engine.h"
 #include "esp_timer.h"
 #include "icons.h"
@@ -47,7 +48,10 @@ void inj_redraw(inj_run_t *r)
         snprintf(t, sizeof(t), "%d:%02d", secs / 60, secs % 60);
         gfx_text_fit(&gfx_font_small, 6, UI_CONTENT_Y + 2, UI_W - 40, r->meta->name[0] ? r->meta->name : "Script", ACCENT);
         gfx_text_aligned(&gfx_font_small, 0, UI_CONTENT_Y + 2, UI_W - 6, GFX_ALIGN_RIGHT, t, UI_DIM);
-        ui_draw_wrapped(&gfx_font_small, 6, UI_CONTENT_Y + 16, UI_W - 12, 2, r->status, UI_TEXT);
+        // Lo scroller va reinizializzato quando lo script cambia lo stato
+        if (r->status_scroll.text != r->status) ui_scroll_init(&r->status_scroll, &gfx_font_small, 6, UI_CONTENT_Y + 16,
+                                                             UI_W - 12, 2, r->status);
+        ui_scroll_draw(&r->status_scroll, UI_TEXT);
         if (r->progress_max > 0) ui_draw_progress(6, UI_CONTENT_Y + 38, UI_W - 12, 5, r->progress, r->progress_max, ACCENT);
     }
     ui_draw_hint("hold 3s to abort");
@@ -57,6 +61,14 @@ void inj_redraw(inj_run_t *r)
 bool inj_pump(inj_run_t *r)
 {
     app_event_t ev;
+    // Una volta al secondo (cronometro) o al passo dello scorrimento dello
+    // stato: prima la schermata restava ferma durante un kb.type lungo.
+    int64_t now = esp_timer_get_time();
+    bool step = ui_scroll_tick(&r->status_scroll);
+    if (!r->waiting_host && (step || now >= r->redraw_us)) {
+        r->redraw_us = now + 1000000;
+        inj_redraw(r);
+    }
     while (app_next_event(r->ctx, &ev, 0)) {
         switch (ev.type) {
         case APP_EV_CLICK: r->clicks++; break;
@@ -90,6 +102,11 @@ static void run_payload(app_ctx_t *ctx, const payload_meta_t *m)
     r->meta = m;
     r->started_us = esp_timer_get_time();
     eng->run(r);
+    // L'hold 3 s (o il timeout) ha solo interrotto lo script: si resta
+    // nell'app, e un secondo hold dalla lista esce. L'uscita va annullata
+    // prima dell'esito: con l'EXIT ancora in coda il messaggio si chiudeva
+    // subito e "Aborted" non si vedeva.
+    app_cancel_exit(ctx);
 
     if (r->ok) {
         led_set(LED_LAYER_APP, LED_FX_SOLID, UI_OK, 0);
@@ -100,57 +117,35 @@ static void run_payload(app_ctx_t *ctx, const payload_meta_t *m)
         app_message(ctx, r->aborted && !r->timed_out ? "Aborted" : "Error", why, UI_ERR);
     }
     led_clear(LED_LAYER_APP);
-    // L'hold 3 s ha solo interrotto lo script: si resta nell'app. Un
-    // secondo hold dalla lista esce.
-    ctx->exit_requested = false;
     free(r);
 }
 
-// Righe di descrizione visibili insieme. Se la descrizione è più lunga si
-// scorre a pagine: da sola ogni PAGE_MS, o subito con un click.
-#define DESC_LINES 3
-#define PAGE_MS    3500
-
 // Scheda dello script: lungo = esegui, doppio = indietro. true se va eseguito.
+// La descrizione lunga scorre da sola; un click la fa avanzare subito.
 static bool show_card(app_ctx_t *ctx, const payload_meta_t *m)
 {
-    int total = ui_draw_wrapped_scroll(&gfx_font_small, 0, 0, UI_W - 12, 0, 0, m->desc, UI_TEXT);
-    int pages = (total + DESC_LINES - 1) / DESC_LINES;
-    int page = 0;
-    int64_t flip_at = esp_timer_get_time() + PAGE_MS * 1000LL;
+    ui_scroll_t sc;
+    ui_scroll_init(&sc, &gfx_font_small, 6, UI_CONTENT_Y + 23, UI_W - 12, 3, m->desc);
+    char info[48];
+    snprintf(info, sizeof(info), "%s · %s", m->layout[0] ? m->layout : config_str("keyboard.layout", "us"),
+             m->os[0] ? m->os : config_str("keyboard.os", "windows"));
     for (;;) {
         ui_begin();
         gfx_text_fit(&gfx_font_small, 6, UI_CONTENT_Y + 1, UI_W - 12, m->name[0] ? m->name : "(no @name)", ACCENT);
-        char info[48];
-        snprintf(info, sizeof(info), "%s · %s", m->layout[0] ? m->layout : config_str("keyboard.layout", "us"),
-                 m->os[0] ? m->os : config_str("keyboard.os", "windows"));
         gfx_text(&gfx_font_small, 6, UI_CONTENT_Y + 12, info, UI_DIM);
-        if (pages > 1) {
-            char pg[24];
-            snprintf(pg, sizeof(pg), "%d/%d", page + 1, pages);
-            gfx_text_aligned(&gfx_font_small, 0, UI_CONTENT_Y + 12, UI_W - 6, GFX_ALIGN_RIGHT, pg, UI_FAINT);
-        }
-        ui_draw_wrapped_scroll(&gfx_font_small, 6, UI_CONTENT_Y + 23, UI_W - 12, DESC_LINES, page * DESC_LINES, m->desc,
-                               UI_TEXT);
-        ui_draw_hint(pages > 1 ? "click: more · hold: run" : "hold: run · 2x: back");
+        ui_scroll_draw(&sc, UI_TEXT);
+        ui_draw_hint("hold: run · 2x: back");
         ui_end();
 
         app_event_t ev;
-        // Con più pagine ci si sveglia anche senza eventi, per girare pagina da soli
-        if (!app_next_event(ctx, &ev, pages > 1 ? 250 : portMAX_DELAY)) {
-            if (esp_timer_get_time() >= flip_at) {
-                page = (page + 1) % pages;
-                flip_at = esp_timer_get_time() + PAGE_MS * 1000LL;
-            }
+        if (!app_next_event(ctx, &ev, ui_scroll_wait_ms(&sc))) {
+            ui_scroll_tick(&sc);
             continue;
         }
         if (ev.type == APP_EV_EXIT) return false;
         if (ev.type == APP_EV_DOUBLE) return false;
         if (ev.type == APP_EV_LONG) return true;
-        if (ev.type == APP_EV_CLICK && pages > 1) {
-            page = (page + 1) % pages;
-            flip_at = esp_timer_get_time() + PAGE_MS * 1000LL; // chi legge a mano ha più tempo
-        }
+        if (ev.type == APP_EV_CLICK) ui_scroll_step(&sc);
     }
 }
 
@@ -191,11 +186,11 @@ static const char *eff_layout(const payload_entry_t *e)
 
 static int eff_os(const payload_entry_t *e)
 {
-    const char *os = e->os[0] ? e->os : config_str("keyboard.os", "windows");
-    for (int i = 0; i < 3; i++) {
-        if (!strcasecmp(os, OS_NAMES[i])) return i;
-    }
-    return 0;
+    // Stessi nomi accettati dall'esecuzione (win, macos...): prima "macos"
+    // finiva nel gruppo windows del browser.
+    hid_os_t os;
+    if (hid_os_parse(e->os[0] ? e->os : config_str("keyboard.os", "windows"), &os)) return os;
+    return HID_OS_WINDOWS;
 }
 
 static void add_row(listing_t *ls, int *n, row_kind_t k, const char *label, const char *right, int entry)
@@ -224,7 +219,10 @@ static void entry_right(const payload_entry_t *e, bool show_os, char *out, size_
 }
 
 // Tag distinti presenti negli script, in ordine alfabetico.
-static int collect_tags(const payload_entry_t *e, int n, char tags[][16], int max)
+// TAG_LEN come il campo tags: un tag troncato non combaciava più con payload_has_tag
+#define TAG_LEN sizeof(((payload_entry_t *)0)->tags)
+
+static int collect_tags(const payload_entry_t *e, int n, char tags[][TAG_LEN], int max)
 {
     int count = 0;
     for (int i = 0; i < n; i++) {
@@ -234,21 +232,21 @@ static int collect_tags(const payload_entry_t *e, int n, char tags[][16], int ma
             const char *q = p;
             while (*q && *q != ',' && !isspace((unsigned char)*q)) q++;
             if (q > p && count < max) {
-                char t[16];
+                char t[TAG_LEN];
                 strlcpy(t, p, (size_t)(q - p) + 1 < sizeof(t) ? (size_t)(q - p) + 1 : sizeof(t));
                 bool dup = false;
                 for (int j = 0; j < count; j++) dup |= !strcasecmp(tags[j], t);
-                if (!dup) strlcpy(tags[count++], t, 16);
+                if (!dup) strlcpy(tags[count++], t, TAG_LEN);
             }
             p = q;
         }
     }
     for (int i = 1; i < count; i++) { // insertion sort: max 16 elementi
-        char t[16];
+        char t[TAG_LEN];
         strlcpy(t, tags[i], sizeof(t));
         int j = i - 1;
-        for (; j >= 0 && strcasecmp(tags[j], t) > 0; j--) strlcpy(tags[j + 1], tags[j], 16);
-        strlcpy(tags[j + 1], t, 16);
+        for (; j >= 0 && strcasecmp(tags[j], t) > 0; j--) strlcpy(tags[j + 1], tags[j], TAG_LEN);
+        strlcpy(tags[j + 1], t, TAG_LEN);
     }
     return count;
 }
@@ -278,7 +276,7 @@ static void injector_run(app_ctx_t *ctx)
     strlcpy(dir, PAYLOAD_DIR, sizeof(dir));
     view_t view = VIEW_DIR, parent_view = VIEW_DIR;
     int filter_os = 0;
-    char filter_tag[16] = "";
+    char filter_tag[TAG_LEN] = "";
     int sel = 0;
 
     for (;;) {
@@ -293,6 +291,9 @@ static void injector_run(app_ctx_t *ctx)
                 app_message(ctx, "Injector", "No /payloads folder on the SD", UI_ERR);
                 break;
             }
+            // Il tetto vale durante la lettura della cartella: chi ha più voci
+            // ne vede un sottoinsieme, e va almeno avvisato.
+            if (ne == MAX_ENTRIES) ui_toast("Only 48 items: use subfolders", UI_WARN, 2500);
             if (!at_root) {
                 add_row(ls, &n, ROW_UP, "..", NULL, -1);
                 title = strrchr(dir, '/') + 1;
@@ -312,6 +313,7 @@ static void injector_run(app_ctx_t *ctx)
         } else {
             int ne = payload_scan(PAYLOAD_DIR, ls->e, MAX_ENTRIES);
             if (ne < 0) ne = 0;
+            if (ne == MAX_ENTRIES) ui_toast("Only 48 scripts in views", UI_WARN, 2500);
             add_row(ls, &n, ROW_UP, "..", NULL, -1);
             if (view == VIEW_OS_LIST) {
                 title = "By OS";
@@ -324,7 +326,7 @@ static void injector_run(app_ctx_t *ctx)
                 }
             } else if (view == VIEW_TAG_LIST) {
                 title = "By tag";
-                char tags[MAX_GROUPS][16];
+                char tags[MAX_GROUPS][TAG_LEN];
                 int nt = collect_tags(ls->e, ne, tags, MAX_GROUPS);
                 for (int t = 0; t < nt; t++) {
                     int c = 0;

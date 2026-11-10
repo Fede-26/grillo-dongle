@@ -143,9 +143,18 @@ static int cmd_cat(int argc, char **argv)
 static int cmd_config(int argc, char **argv)
 {
     if (argc >= 2 && strcmp(argv[1], "reload") == 0) {
-        esp_err_t e = config_load(CONFIG_PATH);
-        devcon_printf("%s\n", e == ESP_OK ? "ok" : (config_error() ? config_error() : esp_err_to_name(e)));
-        return e == ESP_OK ? 0 : 1;
+        // Ricaricare mentre un'app gira libererebbe stringhe che l'app sta
+        // usando: si ricarica tra un'app e l'altra, dal gestore. Dal
+        // launcher basta farlo ripartire.
+        const char *cur = appmgr_current_id();
+        if (!cur || strcmp(cur, "launcher") != 0) {
+            devcon_printf("exit the app first (config.lua is in use)\n");
+            return 1;
+        }
+        main_request_config_reload();
+        appmgr_request_exit();
+        devcon_printf("reloading: errors are shown on screen and by 'state'\n");
+        return 0;
     }
     if (argc >= 3 && strcmp(argv[1], "get") == 0) {
         const char *v = config_str(argv[2], NULL);

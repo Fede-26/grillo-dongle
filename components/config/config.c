@@ -27,8 +27,16 @@ static void put(const char *key, const char *val)
         s_kv = n;
         s_cap = cap;
     }
-    s_kv[s_n].key = strdup(key);
-    s_kv[s_n].val = strdup(val);
+    char *k = strdup(key), *v = strdup(val);
+    // Senza memoria la chiave si perde (vale il default), ma config_str non
+    // deve mai trovare un NULL da confrontare.
+    if (!k || !v) {
+        free(k);
+        free(v);
+        return;
+    }
+    s_kv[s_n].key = k;
+    s_kv[s_n].val = v;
     s_n++;
 }
 

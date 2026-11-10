@@ -97,17 +97,21 @@ static hid_result_t pause_between(void)
 }
 
 // Caps Lock attivo sull'host inverte maiuscole e minuscole delle lettere:
-// lo compensiamo invertendo lo Shift solo sui tasti lettera.
-static uint8_t fix_caps(uint8_t key, uint8_t mods)
+// lo compensiamo invertendo lo Shift. Va deciso dal carattere, non dal
+// keycode: nel Colemak la 'o' sta sul tasto del ';' (0x33) e il ';' sul
+// tasto della P (0x13), quindi il controllo sul range 0x04..0x1D sbagliava.
+static bool cased_letter(uint32_t cp)
 {
-    if ((usbdev_kbd_leds() & USBDEV_LED_CAPSLOCK) && key >= 0x04 && key <= 0x1D) mods ^= HID_MOD_LSHIFT;
-    return mods;
+    if ((cp >= 'a' && cp <= 'z') || (cp >= 'A' && cp <= 'Z')) return true;
+    // Lettere Latin-1 con maiuscola e minuscola (escluse × ÷ ß ÿ)
+    return cp >= 0xC0 && cp <= 0xFE && cp != 0xD7 && cp != 0xF7 && cp != 0xDF;
 }
 
-static hid_result_t tap(uint8_t key, uint8_t mods)
+static hid_result_t tap(uint8_t key, uint8_t mods, bool letter)
 {
     uint8_t saved = s_mods;
-    s_mods = saved | fix_caps(key, mods);
+    if (letter && (usbdev_kbd_leds() & USBDEV_LED_CAPSLOCK)) mods ^= HID_MOD_LSHIFT;
+    s_mods = saved | mods;
     s_keys[0] = key;
     hid_result_t r = send();
     if (r == HID_OK) r = hid_sleep(s_timing.hold);
@@ -124,7 +128,7 @@ static hid_result_t type_altcode(const hid_stroke_t *s, int n)
 {
     bool restore_numlock = false;
     if (!(usbdev_kbd_leds() & USBDEV_LED_NUMLOCK)) {
-        hid_result_t r = tap(0x53, 0);
+        hid_result_t r = tap(0x53, 0, false);
         if (r != HID_OK) return r;
         restore_numlock = true;
     }
@@ -143,7 +147,7 @@ static hid_result_t type_altcode(const hid_stroke_t *s, int n)
     hid_result_t r2 = send();
     if (r == HID_OK) r = r2;
     if (r == HID_OK) r = pause_between();
-    if (restore_numlock && r == HID_OK) r = tap(0x53, 0);
+    if (restore_numlock && r == HID_OK) r = tap(0x53, 0, false);
     return r;
 }
 
@@ -181,7 +185,11 @@ hid_result_t hid_type(const char *s, uint32_t *bad_cp)
         if (numpad) {
             r = type_altcode(st, n);
         } else {
-            for (int i = 0; i < n && r == HID_OK; i++) r = tap(st[i].key, st[i].mods);
+            // Con un tasto morto la lettera è il secondo tasto: Caps Lock
+            // agisce solo su quello. Le sequenze più lunghe (Ctrl+Shift+U di
+            // Linux) non producono lettere da compensare.
+            bool letter = cased_letter(cp) && n <= 2;
+            for (int i = 0; i < n && r == HID_OK; i++) r = tap(st[i].key, st[i].mods, letter && i == n - 1);
         }
         if (r != HID_OK) return r;
         if (cp == '\n' && s_timing.line_delay) {

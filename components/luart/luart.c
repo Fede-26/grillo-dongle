@@ -121,6 +121,15 @@ lua_State *luart_new(const luart_opts_t *opts)
     }
     lua_pushcfunction(L, l_print);
     lua_setglobal(L, "print");
+    // Solo sorgenti testuali anche da load(): il bytecode malformato può
+    // corrompere la memoria della VM, e luart_dofile lo rifiuta già. Senza
+    // string.dump uno script non può nemmeno produrne.
+    (void)luaL_dostring(L, "local l = load\n"
+                     "load = function(c, n, _, e) return l(c, n, 't', e) end");
+    lua_getglobal(L, LUA_STRLIBNAME);
+    lua_pushnil(L);
+    lua_setfield(L, -2, "dump");
+    lua_pop(L, 1);
     int mask = (opts->abort_flag ? LUA_MASKCOUNT : 0) | (opts->stack_guard ? LUA_MASKCALL : 0);
     if (mask) lua_sethook(L, rt_hook, mask, 1000);
     return L;

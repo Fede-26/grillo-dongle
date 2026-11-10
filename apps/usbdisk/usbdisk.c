@@ -61,8 +61,9 @@ static void usbdisk_run(app_ctx_t *ctx)
         } else if (ev.type == APP_EV_EXIT) {
             if (ejected || !usbdev_mounted()) return;
             if (app_confirm(ctx, "Not ejected!", "Exit anyway? Unsaved data on the SD may be lost.", false)) return;
-            // Uscita annullata: si resta nell'app
-            ctx->exit_requested = false;
+            // Uscita annullata: si resta nell'app. Un'espulsione arrivata
+            // mentre la conferma era aperta è rimasta in coda (app_ui.c).
+            app_cancel_exit(ctx);
         }
     }
 }

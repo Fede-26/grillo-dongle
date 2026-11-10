@@ -137,7 +137,6 @@ static void on_gesture(gesture_t g, uint8_t progress)
             esp_restart();
         }
         if (!in_launcher) {
-            c->exit_requested = true;
             app_post(c, APP_EV_EXIT, 0);
             ui_toast("Exiting…", UI_WARN, 1500);
         }
@@ -270,6 +269,11 @@ void appmgr_run(const app_desc_t *launcher, const app_desc_t *const *apps, size_
 
 bool app_next_event(app_ctx_t *ctx, app_event_t *ev, uint32_t timeout_ms)
 {
+    if (ctx->exit_lost) {
+        ctx->exit_lost = false;
+        *ev = (app_event_t){APP_EV_EXIT, 0};
+        return true;
+    }
     TickType_t t = timeout_ms == portMAX_DELAY ? portMAX_DELAY : pdMS_TO_TICKS(timeout_ms);
     return xQueueReceive(ctx->queue, ev, t) == pdTRUE;
 }
@@ -282,8 +286,28 @@ bool app_should_exit(app_ctx_t *ctx)
 void app_post(app_ctx_t *ctx, app_ev_type_t type, int32_t arg)
 {
     app_event_t ev = {type, arg};
-    // EXIT non deve mai andare perso: se la coda è piena aspettiamo un po'
-    xQueueSend(ctx->queue, &ev, type == APP_EV_EXIT ? pdMS_TO_TICKS(100) : 0);
+    if (type != APP_EV_EXIT) {
+        xQueueSend(ctx->queue, &ev, 0);
+        return;
+    }
+    ctx->exit_requested = true;
+    // EXIT non deve mai andare perso: con la coda piena (es. click accumulati
+    // durante uno sweep) lo consegna app_next_event alla prima chiamata.
+    if (xQueueSend(ctx->queue, &ev, pdMS_TO_TICKS(100)) != pdTRUE) ctx->exit_lost = true;
+}
+
+void app_cancel_exit(app_ctx_t *ctx)
+{
+    ctx->exit_requested = false;
+    ctx->exit_lost = false;
+    // Una coda FreeRTOS non permette di togliere un solo elemento: la si
+    // svuota e si rimette ciò che non è un EXIT, nello stesso ordine.
+    app_event_t keep[16], ev;
+    int n = 0;
+    while (n < 16 && xQueueReceive(ctx->queue, &ev, 0) == pdTRUE) {
+        if (ev.type != APP_EV_EXIT) keep[n++] = ev;
+    }
+    for (int i = 0; i < n; i++) xQueueSend(ctx->queue, &keep[i], 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -303,7 +327,6 @@ void appmgr_request_exit(void)
     app_ctx_t *c = s_current;
     portEXIT_CRITICAL(&s_mux);
     if (!c) return;
-    c->exit_requested = true;
     app_post(c, APP_EV_EXIT, 0);
 }
 

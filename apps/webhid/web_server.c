@@ -17,6 +17,7 @@ extern const uint8_t index_html_gz_end[] asm("_binary_index_html_gz_end");
 
 #define MAX_FRAME      2048 // la pagina spezza gli incolla in blocchi più piccoli
 #define MAX_TRIES      5
+#define MAX_ERASE      500
 #define LOCKOUT_US     (30 * 1000000LL)
 #define ACCENT         0x4070FF
 
@@ -24,8 +25,34 @@ static httpd_handle_t s_server;
 static char s_pin[8];
 static int s_client_fd = -1;
 static char s_client_ip[16];
-static int s_tries;
-static int64_t s_locked_until;
+// true durante web_stop: interrompe una digitazione lunga in corso nel task
+// httpd, che altrimenti httpd_stop aspetterebbe fino alla fine.
+static volatile bool s_stopping;
+
+// Tentativi di PIN per indirizzo: con un contatore unico un altro host
+// sulla LAN poteva tenere bloccato il proprietario sbagliando apposta.
+#define MAX_PEERS 4
+typedef struct {
+    char ip[16];
+    int tries;
+    int64_t locked_until, last_us;
+} peer_t;
+static peer_t s_peers[MAX_PEERS];
+
+static peer_t *peer_of(const char *ip)
+{
+    peer_t *oldest = &s_peers[0];
+    for (int i = 0; i < MAX_PEERS; i++) {
+        if (strcmp(s_peers[i].ip, ip) == 0) return &s_peers[i];
+        if (s_peers[i].last_us < oldest->last_us) oldest = &s_peers[i];
+    }
+    // Si ricicla la voce usata meno di recente, ma non una ancora bloccata:
+    // ruotando gli indirizzi non si deve poter azzerare il blocco altrui.
+    if (oldest->locked_until > esp_timer_get_time()) return oldest;
+    *oldest = (peer_t){0};
+    strlcpy(oldest->ip, ip, sizeof(oldest->ip));
+    return oldest;
+}
 
 const char *web_client_ip(void)
 {
@@ -77,32 +104,66 @@ static void reply(httpd_req_t *req, const char *msg)
     httpd_ws_send_frame(req, &f);
 }
 
+// Lunghezza in byte del carattere UTF-8 in `s`, 0 se la sequenza non è
+// valida o è troncata (fine del frame): così non si legge oltre il buffer.
+static int utf8_len(const char *s)
+{
+    const uint8_t *p = (const uint8_t *)s;
+    int n = p[0] < 0x80 ? 1 : (p[0] & 0xE0) == 0xC0 ? 2 : (p[0] & 0xF0) == 0xE0 ? 3 : (p[0] & 0xF8) == 0xF0 ? 4 : 0;
+    for (int i = 1; i < n; i++) {
+        if ((p[i] & 0xC0) != 0x80) return 0;
+    }
+    return n;
+}
+
 static uint32_t utf8_first(const char *s)
 {
     const uint8_t *p = (const uint8_t *)s;
-    if (p[0] < 0x80) return p[0];
-    if ((p[0] & 0xE0) == 0xC0) return ((p[0] & 0x1F) << 6) | (p[1] & 0x3F);
-    if ((p[0] & 0xF0) == 0xE0) return ((p[0] & 0x0F) << 12) | ((p[1] & 0x3F) << 6) | (p[2] & 0x3F);
-    return ((p[0] & 0x07) << 18) | ((p[1] & 0x3F) << 12) | ((p[2] & 0x3F) << 6) | (p[3] & 0x3F);
+    switch (utf8_len(s)) {
+    case 1: return p[0];
+    case 2: return ((p[0] & 0x1F) << 6) | (p[1] & 0x3F);
+    case 3: return ((p[0] & 0x0F) << 12) | ((p[1] & 0x3F) << 6) | (p[2] & 0x3F);
+    case 4: return ((p[0] & 0x07) << 18) | ((p[1] & 0x3F) << 12) | ((p[2] & 0x3F) << 6) | (p[3] & 0x3F);
+    default: return 0xFFFD;
+    }
+}
+
+// Digita il testo un carattere alla volta. Un carattere che il layout non ha
+// diventa '?': prima la digitazione si fermava lì e perdeva il resto del
+// blocco, e nel live typing la pagina contava un carattere che sul PC non
+// c'era (i backspace successivi ne cancellavano uno di troppo).
+static hid_result_t type_text(const char *s, int *skipped)
+{
+    char one[5];
+    while (*s) {
+        int n = utf8_len(s);
+        if (n == 0) n = 1; // byte non valido: lo si tratta come carattere a sé
+        memcpy(one, s, n);
+        one[n] = 0;
+        s += n;
+        hid_result_t r = hid_type(one, NULL);
+        if (r == HID_UNTYPEABLE) {
+            (*skipped)++;
+            r = hid_type("?", NULL);
+            if (r == HID_UNTYPEABLE) r = HID_OK;
+        }
+        if (r != HID_OK) return r;
+    }
+    return HID_OK;
+}
+
+static bool keep_typing(void *arg)
+{
+    return !s_stopping;
+}
+
+static int clamp(int v, int lim)
+{
+    return v < -lim ? -lim : (v > lim ? lim : v);
 }
 
 static void authenticate(httpd_req_t *req, int fd, const char *given)
 {
-    int64_t now = esp_timer_get_time();
-    if (now < s_locked_until) {
-        reply(req, "locked");
-        return;
-    }
-    if (!pin_ok(given)) {
-        ESP_LOGW(TAG, "PIN errato (%d/%d)", s_tries + 1, MAX_TRIES);
-        led_flash(0xF85149, 200);
-        if (++s_tries >= MAX_TRIES) {
-            s_tries = 0;
-            s_locked_until = now + LOCKOUT_US;
-        }
-        reply(req, "no");
-        return;
-    }
     // lwIP con IPv6 attivo restituisce un sockaddr_in6 anche per i client IPv4
     // (indirizzo "mapped": gli ultimi 4 byte sono l'IPv4). Leggerlo come
     // sockaddr_in dava 0.0.0.0.
@@ -118,22 +179,40 @@ static void authenticate(httpd_req_t *req, int fd, const char *given)
         }
         inet_ntoa_r(v4, ip, sizeof(ip));
     }
-    if (s_client_fd >= 0 && s_client_fd != fd) {
-        // Stesso indirizzo del client attivo: è lo stesso dispositivo che si
-        // riconnette (telefono uscito dallo standby, WiFi tornato) mentre la
-        // vecchia connessione è ancora aperta a metà. Senza il subentro
-        // resterebbe "busy" finché lwIP non chiude il socket morto. Un altro
-        // dispositivo invece trova il posto occupato.
-        if (strcmp(ip, s_client_ip) != 0) {
-            reply(req, "busy");
-            return;
+    int64_t now = esp_timer_get_time();
+    peer_t *peer = peer_of(ip);
+    peer->last_us = now;
+    if (now < peer->locked_until) {
+        reply(req, "locked");
+        return;
+    }
+    // Posto occupato da un altro dispositivo: si risponde prima di guardare
+    // il PIN, così durante una sessione non si possono provare PIN (prima
+    // "busy" arrivava solo con il PIN giusto e confermava di averlo trovato).
+    // Lo stesso indirizzo del client attivo è lo stesso dispositivo che si
+    // riconnette mentre la vecchia connessione è ancora aperta a metà: con il
+    // PIN giusto subentra alla sessione.
+    if (s_client_fd >= 0 && s_client_fd != fd && strcmp(ip, s_client_ip) != 0) {
+        reply(req, "busy");
+        return;
+    }
+    if (!pin_ok(given)) {
+        ESP_LOGW(TAG, "PIN errato da %s (%d/%d)", ip, peer->tries + 1, MAX_TRIES);
+        led_flash(0xF85149, 200);
+        if (++peer->tries >= MAX_TRIES) {
+            peer->tries = 0;
+            peer->locked_until = now + LOCKOUT_US;
         }
+        reply(req, "no");
+        return;
+    }
+    if (s_client_fd >= 0 && s_client_fd != fd) {
         ESP_LOGI(TAG, "%s si riconnette: chiudo la sessione precedente", ip);
         hid_release_all();
         hid_mouse_buttons(0);
         httpd_sess_trigger_close(req->handle, s_client_fd);
     }
-    s_tries = 0;
+    peer->tries = 0;
     s_client_fd = fd;
     strlcpy(s_client_ip, ip, sizeof(s_client_ip));
     ESP_LOGI(TAG, "client autenticato: %s", s_client_ip);
@@ -151,23 +230,24 @@ static void authenticate(httpd_req_t *req, int fd, const char *given)
 //   t testo     digita il testo nel layout dell'host
 //   c mods ch   combinazione: modificatori + carattere (es. Ctrl+C)
 //   k mods key  combinazione con usage HID grezzo (tasti speciali, F-key)
-//   e n         n backspace di seguito (il live typing cancella così)
+//   e n         n backspace di seguito, 1..MAX_ERASE (il live typing cancella così)
 //   l nome      layout dell'host (it, us, colemak)
 //   o nome      OS dell'host (windows, linux, mac): sceglie i ripieghi per i caratteri mancanti
-static hid_result_t command(const char *m)
+static hid_result_t command(const char *m, int *skipped)
 {
     int a = 0, b = 0;
     switch (m[0]) {
     case 'm':
-        if (sscanf(m + 1, "%d %d", &a, &b) == 2) return hid_mouse_move(a, b);
+        // Un dx enorme teneva occupato il task httpd per ore di report
+        if (sscanf(m + 1, "%d %d", &a, &b) == 2) return hid_mouse_move(clamp(a, 2000), clamp(b, 2000));
         break;
     case 'b':
         if (sscanf(m + 1, "%d", &a) == 1) return hid_mouse_buttons(a);
         break;
     case 'w':
         sscanf(m + 1, "%d %d", &a, &b);
-        return hid_mouse_scroll(a, b);
-    case 't': return hid_type(m + 1, NULL);
+        return hid_mouse_scroll(clamp(a, 127), clamp(b, 127));
+    case 't': return type_text(m + 1, skipped);
     case 'c':
         if (sscanf(m + 1, "%d", &a) == 1) {
             const char *ch = strchr(m + 1, ' ');
@@ -176,7 +256,8 @@ static hid_result_t command(const char *m)
         }
         break;
     case 'e':
-        if (sscanf(m + 1, "%d", &a) == 1 && a > 0 && a <= 200) {
+        // La pagina spezza le cancellazioni lunghe in blocchi da MAX_ERASE
+        if (sscanf(m + 1, "%d", &a) == 1 && a > 0 && a <= MAX_ERASE) {
             uint8_t bs = 0x2A; // Backspace
             for (int i = 0; i < a; i++) {
                 hid_result_t r = hid_chord(0, &bs, 1);
@@ -223,7 +304,19 @@ static esp_err_t ws_handler(httpd_req_t *req)
             authenticate(req, fd, buf + 1);
         } else if (fd == s_client_fd) {
             led_flash(ACCENT, 15);
-            if (command(buf) == HID_NO_HOST) reply(req, "nohost");
+            int skipped = 0;
+            hid_result_t r = command(buf, &skipped);
+            // "hostok" solo al ritorno del PC, non a ogni comando: toglie
+            // l'avviso "PC not ready" dalla pagina, che prima restava per sempre.
+            static bool host_bad;
+            if (r == HID_NO_HOST) reply(req, "nohost");
+            else if (r == HID_OK && host_bad) reply(req, "hostok");
+            host_bad = r == HID_NO_HOST;
+            if (skipped) {
+                char msg[24];
+                snprintf(msg, sizeof(msg), "untypeable %d", skipped);
+                reply(req, msg);
+            }
         }
         // Messaggi di un client non autenticato: ignorati
     }
@@ -236,8 +329,9 @@ esp_err_t web_start(const char *pin)
     strlcpy(s_pin, pin, sizeof(s_pin));
     s_client_fd = -1;
     s_client_ip[0] = 0;
-    s_tries = 0;
-    s_locked_until = 0;
+    memset(s_peers, 0, sizeof(s_peers));
+    s_stopping = false;
+    hid_set_poll(keep_typing, NULL);
 
     httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
     cfg.stack_size = 6144; // hid_type usa array di tasti sullo stack
@@ -264,7 +358,9 @@ esp_err_t web_start(const char *pin)
 
 void web_stop(void)
 {
+    s_stopping = true;
     if (s_server) httpd_stop(s_server);
+    hid_set_poll(NULL, NULL);
     s_server = NULL;
     s_client_fd = -1;
     s_client_ip[0] = 0;

@@ -117,6 +117,8 @@ function connect() {
     else if (m === "locked") { fail("Too many tries, wait 30 s"); }
     else if (m[0] === "L") { const [l, o] = m.slice(1).split(" "); $("lay").value = l; $("os").value = o; labelMods(); }
     else if (m === "nohost") { setSt("PC not ready", "bad"); }
+    else if (m === "hostok") { setSt("connected", "ok"); }
+    else if (m.startsWith("untypeable")) { setSt(m.slice(11) + " char(s) not in layout: typed ?", "bad"); }
   };
   ws.onclose = () => {
     const was = authed; authed = false;
@@ -243,7 +245,8 @@ function sync() {
   let i = 0;
   while (i < a.length && i < b.length && a[i] === b[i]) i++;
   const del = a.length - i, add = b.slice(i).join("").split(S).join("");
-  if (del) tx("e" + del);
+  // Il dongle accetta al massimo 500 backspace per comando
+  for (let d = del; d > 0; d -= 500) tx("e" + Math.min(d, 500));
   if (add) {
     if (mods) { for (const ch of add) tx("c" + mods + " " + ch); clearMods(); }
     else tx("t" + add);

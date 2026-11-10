@@ -194,6 +194,10 @@ size_t ns_csv_field(char *dst, size_t n, const char *src)
 {
     if (n == 0) return 0;
     size_t o = 0;
+    // Il controllo va fatto sul primo carattere che resterà nel campo: i
+    // controlli iniziali vengono tolti sotto, e con "\t=HYPERLINK(...)" un
+    // controllo sul primo byte grezzo lasciava passare la formula.
+    while (*src && ((unsigned char)*src < 0x20 || *src == 0x7F)) src++;
     bool quote = false, formula = strchr("=+-@", *src) && *src;
     // Un numero con segno (l'RSSI, "-77") non è una formula: l'apice lo trasformerebbe in testo
     if (formula && src[1] && strspn(src + 1, "0123456789.") == strlen(src + 1) && *src != '=' && *src != '@') formula = false;

@@ -65,6 +65,10 @@ static void test_layouts(void)
     n = hid_translate(hid_layout_find("it"), HID_OS_LINUX, 0xF1, s, 8, &np);
     CHECK(n == 4 && s[0].key == 0x18 && s[3].key == 0x2C, "it/linux ñ fallback n=%d", n);
     // Colemak su Linux: à = AltGr+r (tasto morto grave, posizione fisica 's' = 0x16), poi a (0x04)
+    // Ripiego Ctrl+Shift+U: la 'u' Colemak sta sul tasto della I US (0x0C)
+    n = hid_translate(hid_layout_find("colemak"), HID_OS_LINUX, 0x0416, s, 8, &np);
+    CHECK(n >= 3 && s[0].key == 0x0C && s[0].mods == (HID_MOD_LCTRL | HID_MOD_LSHIFT), "colemak/linux Ж: u=0x%02X",
+          s[0].key);
     n = hid_translate(hid_layout_find("colemak"), HID_OS_LINUX, 0x00E0, s, 8, &np);
     CHECK(n == 2 && s[0].key == 0x16 && s[0].mods == HID_MOD_RALT && s[1].key == 0x04 && s[1].mods == 0,
           "colemak/linux à n=%d", n);
@@ -176,6 +180,9 @@ static void test_netscan(void)
     CHECK(!strcmp(t, "\"Casa, \"\"mia\"\"\""), "csv quote '%s'", t);
     ns_csv_field(t, sizeof(t), "=HYPERLINK(1)");
     CHECK(!strcmp(t, "'=HYPERLINK(1)"), "csv formula '%s'", t);
+    // Controlli prima della formula: vengono tolti, l'apice deve restare
+    ns_csv_field(t, sizeof(t), "\t=HYPERLINK(1)");
+    CHECK(!strcmp(t, "'=HYPERLINK(1)"), "csv formula dopo tab '%s'", t);
     ns_csv_field(t, sizeof(t), "-77");
     CHECK(!strcmp(t, "-77"), "csv numero '%s'", t);
     ns_csv_field(t, sizeof(t), "-1+cmd");
