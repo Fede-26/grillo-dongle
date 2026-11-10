@@ -233,7 +233,9 @@ static int pick_known(wifi_config_t *out, char *pass_out, size_t pass_len, net_c
     int c = nc > 1 && choose ? choose(cand, nc, arg) : 0;
     if (c < 0 || c >= nc) return -1;
     memset(out, 0, sizeof(*out));
-    strlcpy((char *)out->sta.ssid, cand[c].ssid, sizeof(out->sta.ssid));
+    // Uno SSID di 32 caratteri riempie il campo senza terminatore: strlcpy
+    // tagliava l'ultimo carattere e la connessione non trovava la rete
+    memcpy(out->sta.ssid, cand[c].ssid, strnlen(cand[c].ssid, sizeof(out->sta.ssid)));
     char key[24];
     snprintf(key, sizeof(key), "wifi.%d.pass", idx[c] + 1);
     strlcpy(pass_out, config_str(key, ""), pass_len);
@@ -254,13 +256,14 @@ static esp_err_t start_sta(uint32_t timeout_ms, net_choose_fn choose, void *arg,
         esp_wifi_deinit();
         return picked < 0 ? ESP_ERR_NOT_FINISHED : ESP_ERR_NOT_FOUND;
     }
-    strlcpy((char *)wc.sta.password, pass, sizeof(wc.sta.password));
+    // Come lo SSID: una chiave esadecimale di 64 caratteri occupa tutto il campo
+    memcpy(wc.sta.password, pass, strnlen(pass, sizeof(wc.sta.password)));
     // Solo PSK: soglia WPA2, quindi niente reti aperte né WEP anche se un
     // access point con lo stesso SSID si presentasse senza cifratura.
     wc.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
     wc.sta.pmf_cfg.capable = true;
     esp_wifi_set_config(WIFI_IF_STA, &wc);
-    strlcpy(s_ssid, (char *)wc.sta.ssid, sizeof(s_ssid));
+    snprintf(s_ssid, sizeof(s_ssid), "%.*s", (int)sizeof(wc.sta.ssid), (char *)wc.sta.ssid);
 
     ESP_LOGI(TAG, "connessione a \"%s\"", s_ssid);
     notify(NET_EV_CONNECTING);
@@ -302,8 +305,9 @@ static esp_err_t start_ap(void)
     esp_err_t err = wifi_begin(WIFI_MODE_AP);
     if (err != ESP_OK) return err;
     wifi_config_t wc = {0};
-    strlcpy((char *)wc.ap.ssid, s_ap_ssid, sizeof(wc.ap.ssid));
-    strlcpy((char *)wc.ap.password, s_ap_pass, sizeof(wc.ap.password));
+    // Campi senza terminatore obbligatorio, come in start_sta
+    memcpy(wc.ap.ssid, s_ap_ssid, strnlen(s_ap_ssid, sizeof(wc.ap.ssid)));
+    memcpy(wc.ap.password, s_ap_pass, strnlen(s_ap_pass, sizeof(wc.ap.password)));
     wc.ap.ssid_len = strlen(s_ap_ssid);
     wc.ap.channel = 6;
     wc.ap.max_connection = 2; // basta: un solo client alla volta usa il Web HID
