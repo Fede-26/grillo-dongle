@@ -79,10 +79,37 @@ static void refresh_indicators(void)
     static const uint8_t sd_map[] = {[STORAGE_ABSENT] = 0, [STORAGE_MOUNTED] = 1, [STORAGE_UNSUPPORTED] = 2,
                                      [STORAGE_LENT] = 3};
     ui_set_indicator(UI_IND_SD, sd_map[storage_state()]);
+    // Dalle interfacce, non dal nome del profilo: un profilo nuovo ha
+    // l'indicatore giusto senza toccare questa funzione.
     usb_profile_t p = usbdev_profile();
-    static const uint8_t usb_map[] = {[USB_PROFILE_NONE] = 0, [USB_PROFILE_HID] = 1, [USB_PROFILE_MSC] = 2,
-                                      [USB_PROFILE_HID_DISK] = 3};
-    ui_set_indicator(UI_IND_USB, usb_map[p]);
+    bool hid = p & (USB_F_KBD | USB_F_MOUSE);
+    uint8_t usb = 0;
+    if (hid && (p & USB_F_DISK)) usb = 3;
+    else if (hid) usb = 1;
+    else if (p & USB_F_DISK) usb = 2;
+    ui_set_indicator(UI_IND_USB, usb);
+}
+
+esp_err_t app_usb_apply(usb_profile_t p)
+{
+    if (p == usbdev_profile()) return ESP_OK;
+    // Prima l'host perde il disco, poi la SD torna al firmware, solo dopo la
+    // si presta di nuovo: passare da un modo all'altro senza staccare l'host
+    // smonterebbe la FAT mentre la sta leggendo.
+    usbdev_apply(USB_PROFILE_NONE, NULL);
+    storage_unshare();
+    if (storage_state() == STORAGE_LENT) storage_reclaim();
+    sdmmc_card_t *card = NULL;
+    if (p & USB_F_DISK) syslog_flush(); // da qui il firmware non scrive più sulla SD
+    if (p & USB_F_DISK_RW) card = storage_lend();
+    else if (p & USB_F_DISK_RO) card = storage_share_ro();
+    esp_err_t err = usbdev_apply(p, card);
+    if (err != ESP_OK) {
+        storage_unshare();
+        if (storage_state() == STORAGE_LENT) storage_reclaim();
+    }
+    refresh_indicators();
+    return err;
 }
 
 static void post_current(app_ev_type_t type, int32_t arg)
@@ -186,19 +213,10 @@ static void run_app(const app_desc_t *app, const char *arg)
     ui_set_title(app->name, app->accent);
     led_set(LED_LAYER_AMBIENT, LED_FX_PULSE, gfx_mix(0, app->accent, 90), 4000);
 
-    // Profilo USB: per l'MSC la SD passa dal firmware all'host
-    sdmmc_card_t *card = NULL;
-    if (app->usb == USB_PROFILE_MSC) {
-        syslog_flush();
-        card = storage_lend();
-    }
-    if (usbdev_apply(app->usb, card) != ESP_OK) {
+    if (app_usb_apply(app->usb) != ESP_OK) {
         ui_toast("USB init failed", UI_ERR, 2500);
-        if (card) storage_reclaim();
-        refresh_indicators();
         return;
     }
-    refresh_indicators();
 
     app_ctx_t ctx = {
         .app = app,
@@ -209,7 +227,7 @@ static void run_app(const app_desc_t *app, const char *arg)
     s_current = &ctx;
     portEXIT_CRITICAL(&s_mux);
 
-    TaskHandle_t t;
+    TaskHandle_t t = NULL;
     if (xTaskCreate(app_task, app->id, app->stack, &ctx, 4, &t) != pdPASS) {
         ESP_LOGE(TAG, "task %s: memoria insufficiente", app->id);
         ui_toast("Out of memory", UI_ERR, 2500);
@@ -227,13 +245,14 @@ static void run_app(const app_desc_t *app, const char *arg)
     s_current = NULL;
     portEXIT_CRITICAL(&s_mux);
 
-    // Pulizia d'ufficio delle risorse condivise
+    // Pulizia d'ufficio delle risorse condivise. Torna al profilo NONE anche
+    // se l'app l'ha cambiato con app_usb_apply, e riprende la SD prestata o
+    // condivisa (senza, syslog non scriveva più sulla SD fino al riavvio).
     usbdev_apply(USB_PROFILE_NONE, NULL);
     if (storage_state() == STORAGE_LENT) storage_reclaim();
-    // Condivisione in sola lettura (HID + disco) lasciata attiva: senza,
-    // syslog non scriveva più sulla SD fino al riavvio.
     storage_unshare();
-    net_release_all();
+    // Solo i lease del task dell'app, che a questo punto è terminato
+    if (t) net_release_task(t);
     for (int i = 0; i < s_ncleanups; i++) s_cleanups[i]();
     led_clear(LED_LAYER_APP);
     ui_set_hold(0);

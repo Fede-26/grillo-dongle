@@ -1,6 +1,6 @@
 # Protocollo WebSocket del Web HID
 
-L'app Web HID serve una pagina e un canale WebSocket che trasporta i comandi. Il server è `esp_http_server` del dongle; un solo client alla volta.
+L'app Web HID serve una pagina e un canale WebSocket che trasporta i comandi. Il server è il componente `websrv` (sopra `esp_http_server`); un solo client alla volta. Le rotte `/cfg` e `/ws`, l'accesso con `p<PIN>` e le risposte `ok`, `no`, `locked` e `busy` sono del componente e valgono per ogni app web; i comandi sono del Web HID.
 
 ## Endpoint
 

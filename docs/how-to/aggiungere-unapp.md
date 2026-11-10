@@ -7,4 +7,8 @@ Un'app è un componente in `apps/` che esporta un descrittore `app_desc_t`. Il c
 3. Aggiungi l'app a `main/app_list.c` e il componente al `PRIV_REQUIRES` di `main/CMakeLists.txt`.
 4. In `run(ctx)`: disegna con le funzioni di `ui.h`, attendi eventi con `app_next_event`, esci quando `app_should_exit(ctx)` o `APP_EV_EXIT`. Non restare a lungo senza attendere eventi (calcoli lunghi, chiamate di rete senza scadenza): l'uscita arriva solo lì, e altrimenti all'utente resta il riavvio. Per la rete usa `app_net_acquire`, che lascia scegliere la rete quando ce n'è più d'una.
 
+Il profilo USB è la combinazione di interfacce che serve all'app (vedi [API C delle app](../reference/api-app.md#descrittore)): se nessuno dei profili pronti va bene, componi la maschera `USB_F_*`. Per cambiarlo a metà usa `app_usb_apply`, che sposta anche la SD.
+
+Per un'app comandata da una pagina web usa i componenti `websrv` (server, PIN, una sessione per volta) e `qr` (QR code sul display, anche per le credenziali dell'hotspot): `apps/webhid` è l'esempio. La pagina va compressa in fase di build come in `apps/webhid/CMakeLists.txt` e registrata con `websrv_add_page`.
+
 Quando `run` ritorna, il sistema rilascia d'ufficio profilo USB, SD prestata, livello LED e rete: non serve farlo a mano.

@@ -1,4 +1,6 @@
 #include <stdbool.h>
+#include <stdio.h>
+#include <string.h>
 #include "gfx.h"
 #include "qr.h"
 #include "qrcode.h"
@@ -43,4 +45,25 @@ bool qr_draw(const char *text, int x, int y, int box)
         .user_data = &job,
     };
     return esp_qrcode_generate(&cfg, text) == ESP_OK && job.ok;
+}
+
+// Nel formato WIFI: dei QR i caratteri \ ; , : " vanno preceduti da \,
+// altrimenti una password con ';' produceva un QR che non si collegava.
+static void escape(char *out, size_t len, const char *in)
+{
+    size_t o = 0;
+    for (; *in && o + 2 < len; in++) {
+        if (strchr("\\;,:\"", *in)) out[o++] = '\\';
+        out[o++] = *in;
+    }
+    out[o] = 0;
+}
+
+void qr_wifi_text(char *out, size_t len, const char *ssid, const char *pass)
+{
+    // SSID fino a 32 byte e password fino a 64, raddoppiati dall'escape
+    char s[70], p[130];
+    escape(s, sizeof(s), ssid);
+    escape(p, sizeof(p), pass);
+    snprintf(out, len, "WIFI:T:WPA;S:%s;P:%s;;", s, p);
 }

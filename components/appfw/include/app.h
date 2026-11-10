@@ -59,7 +59,7 @@ struct app_desc {
     const gfx_icon_t *icon;         // icona pixel art 12x12 (disegnata 2x)
     uint32_t accent;                // colore d'accento: UI e LED
     uint32_t requires;              // maschera di app_req_t
-    usb_profile_t usb;              // profilo USB attivo mentre l'app gira
+    usb_profile_t usb;              // profilo USB attivo mentre l'app gira (maschera di USB_F_*)
     uint32_t stack;                 // stack del task dell'app in byte
     void (*run)(app_ctx_t *ctx);
     // Facoltativa: riga informativa sotto il nome nel launcher.
@@ -110,10 +110,18 @@ bool app_confirm_timeout(app_ctx_t *ctx, const char *title, const char *text, bo
 // Messaggio: attende click o lungo. Un testo che non entra scorre da solo.
 void app_message(app_ctx_t *ctx, const char *title, const char *text, uint32_t color);
 
+// --- USB ---
+
+// Cambia il profilo USB mentre l'app gira (es. per collegare il disco a
+// metà script) e passa la SD all'host o la riprende secondo USB_F_DISK_RW/RO.
+// All'uscita dall'app il manager torna comunque al profilo NONE. Se il
+// profilo nuovo fallisce TinyUSB resta spento e la SD torna al firmware.
+esp_err_t app_usb_apply(usb_profile_t profile);
+
 // --- Rete ---
 
 // net_acquire con la scelta della rete affidata all'utente: se più reti
 // note sono visibili compare un menu (con RSSI) e, senza risposta entro
 // pochi secondi, vale la più forte. Restituisce ESP_ERR_NOT_FINISHED se
-// l'utente esce durante la scelta.
+// l'utente esce durante la scelta o durante l'attesa della connessione.
 esp_err_t app_net_acquire(app_ctx_t *ctx, net_mode_t mode, uint32_t timeout_ms);

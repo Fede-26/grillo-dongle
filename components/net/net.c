@@ -12,6 +12,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 #include "freertos/semphr.h"
+#include "freertos/task.h"
 #include "nvs_flash.h"
 
 static const char *TAG = "net";
@@ -27,7 +28,15 @@ static SemaphoreHandle_t s_lock;
 static EventGroupHandle_t s_ev;
 static bool s_inited;
 static bool s_started;
-static int s_leases;
+// Lease per task: all'uscita di un'app l'app manager rilascia solo quelli
+// del task dell'app. Un servizio con un proprio task (es. un futuro log via
+// rete) non perde la connessione quando l'app in primo piano esce.
+#define MAX_OWNERS 4
+typedef struct {
+    TaskHandle_t task;
+    int count;
+} owner_t;
+static owner_t s_owners[MAX_OWNERS];
 static net_mode_t s_mode; // modalità effettiva (NET_STA o NET_AP) quando s_started
 static esp_netif_t *s_sta_netif;
 static esp_netif_t *s_ap_netif;
@@ -226,7 +235,7 @@ static int pick_known(wifi_config_t *out, char *pass_out, size_t pass_len, net_c
     return 1;
 }
 
-static esp_err_t start_sta(uint32_t timeout_ms, net_choose_fn choose, void *arg)
+static esp_err_t start_sta(uint32_t timeout_ms, net_choose_fn choose, void *arg, const volatile bool *abort)
 {
     esp_err_t err = wifi_begin(WIFI_MODE_STA);
     if (err != ESP_OK) return err;
@@ -255,7 +264,17 @@ static esp_err_t start_sta(uint32_t timeout_ms, net_choose_fn choose, void *arg)
     s_connecting = true;
     xEventGroupClearBits(s_ev, BIT_GOT_IP | BIT_FAILED);
     esp_wifi_connect();
-    EventBits_t bits = xEventGroupWaitBits(s_ev, BIT_GOT_IP | BIT_FAILED, pdFALSE, pdFALSE, pdMS_TO_TICKS(timeout_ms));
+    // A passi di 100 ms per accorgersi dell'uscita dall'app: prima l'attesa
+    // durava fino a timeout_ms (15 s) e l'hold di 3 s sembrava non funzionare.
+    EventBits_t bits = 0;
+    bool aborted = false;
+    for (uint32_t waited = 0; waited < timeout_ms && !(bits & (BIT_GOT_IP | BIT_FAILED)); waited += 100) {
+        if (abort && *abort) {
+            aborted = true;
+            break;
+        }
+        bits = xEventGroupWaitBits(s_ev, BIT_GOT_IP | BIT_FAILED, pdFALSE, pdFALSE, pdMS_TO_TICKS(100));
+    }
     s_connecting = false;
     if (bits & BIT_GOT_IP) {
         // Il risparmio energetico di default (WIFI_PS_MIN_MODEM) fa dormire la
@@ -269,6 +288,7 @@ static esp_err_t start_sta(uint32_t timeout_ms, net_choose_fn choose, void *arg)
     esp_wifi_disconnect();
     esp_wifi_stop();
     esp_wifi_deinit();
+    if (aborted) return ESP_ERR_NOT_FINISHED;
     return (bits & BIT_FAILED) ? ESP_ERR_INVALID_RESPONSE : ESP_ERR_TIMEOUT;
 }
 
@@ -312,16 +332,45 @@ static esp_err_t start_scan_only(void)
     return ESP_OK;
 }
 
-esp_err_t net_acquire(net_mode_t mode, uint32_t timeout_ms)
+static int total_leases(void)
 {
-    return net_acquire_ex(mode, timeout_ms, NULL, NULL);
+    int n = 0;
+    for (int i = 0; i < MAX_OWNERS; i++) n += s_owners[i].count;
+    return n;
 }
 
-esp_err_t net_acquire_ex(net_mode_t mode, uint32_t timeout_ms, net_choose_fn choose, void *arg)
+// Voce del task corrente; con `create` ne occupa una libera. NULL se sono
+// tutte occupate da altri task.
+static owner_t *current_owner(bool create)
+{
+    TaskHandle_t me = xTaskGetCurrentTaskHandle();
+    owner_t *free_slot = NULL;
+    for (int i = 0; i < MAX_OWNERS; i++) {
+        if (s_owners[i].count && s_owners[i].task == me) return &s_owners[i];
+        if (!s_owners[i].count && !free_slot) free_slot = &s_owners[i];
+    }
+    if (!create || !free_slot) return NULL;
+    free_slot->task = me;
+    return free_slot;
+}
+
+esp_err_t net_acquire(net_mode_t mode, uint32_t timeout_ms)
+{
+    return net_acquire_ex(mode, timeout_ms, NULL, NULL, NULL);
+}
+
+esp_err_t net_acquire_ex(net_mode_t mode, uint32_t timeout_ms, net_choose_fn choose, void *arg,
+                         const volatile bool *abort)
 {
     esp_err_t err = net_init_once();
     if (err != ESP_OK) return err;
     xSemaphoreTake(s_lock, portMAX_DELAY);
+    owner_t *owner = current_owner(true);
+    if (!owner) {
+        xSemaphoreGive(s_lock);
+        ESP_LOGE(TAG, "troppi task con un lease");
+        return ESP_ERR_NO_MEM;
+    }
 
     if (s_started) {
         // NET_AUTO vuole una rete vera: con la radio solo in scansione il
@@ -333,7 +382,7 @@ esp_err_t net_acquire_ex(net_mode_t mode, uint32_t timeout_ms, net_choose_fn cho
             xSemaphoreGive(s_lock);
             return ESP_ERR_INVALID_STATE;
         }
-        s_leases++;
+        owner->count++;
         xSemaphoreGive(s_lock);
         return ESP_OK;
     }
@@ -352,14 +401,15 @@ esp_err_t net_acquire_ex(net_mode_t mode, uint32_t timeout_ms, net_choose_fn cho
         err = start_scan_only();
     } else {
         err = ESP_ERR_NOT_FOUND;
-        if (mode != NET_AP) err = start_sta(timeout_ms, choose, arg);
-        // Scelta annullata dall'utente (uscita dall'app): niente hotspot
+        if (mode != NET_AP) err = start_sta(timeout_ms, choose, arg, abort);
+        // Scelta annullata o uscita dall'app durante l'attesa: niente hotspot
         if (err != ESP_OK && err != ESP_ERR_NOT_FINISHED && mode != NET_STA) {
             if (mode == NET_AUTO) ESP_LOGW(TAG, "nessuna rete nota (%s): avvio l'hotspot", esp_err_to_name(err));
             err = start_ap();
         }
     }
-    if (err == ESP_OK) s_leases = 1;
+    if (err == ESP_OK) owner->count = 1;
+    else if (err == ESP_ERR_NOT_FINISHED) ESP_LOGI(TAG, "WiFi non avviato: annullato");
     else ESP_LOGE(TAG, "WiFi non avviato: %s", esp_err_to_name(err));
     xSemaphoreGive(s_lock);
     return err;
@@ -369,16 +419,23 @@ void net_release(void)
 {
     if (!s_inited) return;
     xSemaphoreTake(s_lock, portMAX_DELAY);
-    if (s_leases > 0 && --s_leases == 0 && s_started) wifi_stop();
+    owner_t *owner = current_owner(false);
+    if (owner) owner->count--;
+    if (owner && total_leases() == 0 && s_started) wifi_stop();
     xSemaphoreGive(s_lock);
 }
 
-void net_release_all(void)
+void net_release_task(TaskHandle_t task)
 {
     if (!s_inited) return;
     xSemaphoreTake(s_lock, portMAX_DELAY);
-    s_leases = 0;
-    if (s_started) wifi_stop();
+    for (int i = 0; i < MAX_OWNERS; i++) {
+        if (s_owners[i].count && s_owners[i].task == task) {
+            ESP_LOGI(TAG, "rilascio %d lease lasciati da un task terminato", s_owners[i].count);
+            s_owners[i].count = 0;
+        }
+    }
+    if (total_leases() == 0 && s_started) wifi_stop();
     xSemaphoreGive(s_lock);
 }
 

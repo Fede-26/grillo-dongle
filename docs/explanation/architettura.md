@@ -6,8 +6,8 @@ Grillo è un firmware ESP-IDF v6.1 (C, FreeRTOS) per un dispositivo con vincoli 
 
 ```
 apps/         injector, webhid, netscan, usbdisk, launcher        <- una per attività
-components/   appfw  ui  gfx  display  input  led         <- interfaccia
-              hid  usbdev  net  storage  config  luart    <- servizi
+components/   appfw  ui  gfx  display  input  led  qr     <- interfaccia
+              hid  usbdev  net  websrv  storage  config  luart  <- servizi
               devcon  syslog  board  lua                  <- console, log, pin, interprete
 main/         avvio, tabella app, console di debug
 ```
@@ -24,9 +24,11 @@ I testi più lunghi dello spazio disponibile (errori, descrizioni degli script, 
 
 ## Profili USB
 
-TinyUSB espone o tutto o niente, e riconfigurare la USB richiede di ri-enumerare il dispositivo. Per questo l'app dichiara il profilo che le serve (HID, HID + disco, solo disco) e il sistema lo applica prima di avviarla. Con profilo spento la PHY torna alla USB-Serial-JTAG (log e flash).
+TinyUSB espone o tutto o niente, e riconfigurare la USB richiede di ri-enumerare il dispositivo. Per questo l'app dichiara il profilo che le serve e il sistema lo applica prima di avviarla. Un profilo è una combinazione di interfacce (tastiera, mouse, disco, seriale CDC), non un elenco chiuso: un'app nuova dichiara quella che le serve, e nomi, PID e indicatore della barra di stato ne derivano. Con profilo spento la PHY torna alla USB-Serial-JTAG (log e flash).
 
-La microSD è un'unica risorsa: o la usa il firmware (FAT su `/sd`), o è prestata all'host come disco. Il passaggio smonta e rimonta, e prima si svuota il log per non perdere righe.
+Non tutte le combinazioni entrano: l'OTG dell'ESP32-S3 ha pochi endpoint IN, e con tastiera + mouse + disco + CDC il Mac enumerava solo l'HID (provato sul dispositivo). Il limite misurato è di 4 endpoint IN oltre a EP0; una combinazione che lo supera viene rifiutata invece di essere enumerata a metà.
+
+La microSD è un'unica risorsa e il disco è sempre lei, in uno di due modi: prestata all'host in lettura e scrittura (il firmware non la vede più), oppure condivisa in sola lettura (il firmware la tiene montata ma non ci scrive). Il modo è parte del profilo, e il passaggio della SD lo fa il sistema: si stacca l'host, la SD torna al firmware, si svuota il log per non perdere righe, poi la si presta di nuovo. Un'app che cambia profilo a metà (lo fa l'injector con `disk.attach`) passa dalla stessa funzione.
 
 ## Configurazione e script
 
@@ -40,7 +42,9 @@ Misure sul dispositivo (a memoria di sessione, non riprodotte in un test automat
 
 ## Rete
 
-Il gestore WiFi (`net`) è a lease: ogni app che ne ha bisogno lo richiede e lo rilascia; il WiFi resta acceso finché c'è almeno un lease. In modalità automatica cerca le reti, sceglie la migliore tra quelle note in `config.lua`, e se non ne trova crea un hotspot. Il risparmio energetico del WiFi è disattivato: attiva, la pagina web del Web HID impiegava secondi a rispondere.
+Il gestore WiFi (`net`) è a lease: ogni app che ne ha bisogno lo richiede e lo rilascia; il WiFi resta acceso finché c'è almeno un lease. Ogni lease appartiene al task che l'ha preso: all'uscita di un'app il sistema rilascia solo quelli del suo task, così un servizio in un task proprio non perderebbe la connessione. L'attesa della connessione si interrompe quando l'utente chiede l'uscita, invece di durare fino alla scadenza.
+
+Il server delle pagine web (`websrv`) e il QR code (`qr`) sono componenti a parte, non codice del Web HID: autenticazione con PIN, blocco per indirizzo dopo 5 errori, una sola sessione con subentro dallo stesso dispositivo, pagina compressa. Servono così anche alle app web future (file browser, injector web) senza ripetere la parte che riguarda la sicurezza. In modalità automatica cerca le reti, sceglie la migliore tra quelle note in `config.lua`, e se non ne trova crea un hotspot. Il risparmio energetico del WiFi è disattivato: attiva, la pagina web del Web HID impiegava secondi a rispondere.
 
 ## Test
 

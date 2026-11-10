@@ -17,6 +17,7 @@
 #include "ui.h"
 #include "usbdev.h"
 #include "web_server.h"
+#include "websrv.h"
 #include "webhid.h"
 
 #define ACCENT 0x4070FF
@@ -50,27 +51,13 @@ static void client_label(const char *client, const char *own, char *out, size_t 
     else strlcpy(out, client, len);
 }
 
-// Nel formato WIFI: dei QR i caratteri \ ; , : " vanno preceduti da \,
-// altrimenti una password con ';' produceva un QR che non si collegava.
-static void qr_escape(char *out, size_t len, const char *in)
-{
-    size_t o = 0;
-    for (; *in && o + 2 < len; in++) {
-        if (strchr("\\;,:\"", *in)) out[o++] = '\\';
-        out[o++] = *in;
-    }
-    out[o] = 0;
-}
-
 // page 0: URL della pagina (STA e AP); page 1 (solo AP): credenziali WiFi
 static void draw_main(const net_info_t *ni, const char *pin, int page, const char *client)
 {
     char url[48];
     snprintf(url, sizeof(url), "http://%s/", ni->ip);
-    char ssid[70], pass[130], wifi[220];
-    qr_escape(ssid, sizeof(ssid), net_ap_ssid());
-    qr_escape(pass, sizeof(pass), net_ap_pass());
-    snprintf(wifi, sizeof(wifi), "WIFI:T:WPA;S:%s;P:%s;;", ssid, pass);
+    char wifi[220];
+    qr_wifi_text(wifi, sizeof(wifi), net_ap_ssid(), net_ap_pass());
 
     ui_begin();
     bool ok = qr_draw(page == 1 ? wifi : url, 0, UI_CONTENT_Y, QR_BOX);
@@ -169,7 +156,7 @@ static void webhid_run(app_ctx_t *ctx)
     for (;;) {
         net_info_t ni;
         net_get_info(&ni);
-        const char *client = web_client_ip();
+        const char *client = websrv_client_ip();
         if (strcmp(client, last_client) != 0) {
             strlcpy(last_client, client, sizeof(last_client));
             led_set(LED_LAYER_APP, *client ? LED_FX_SOLID : LED_FX_PULSE, *client ? UI_OK : ACCENT, 2000);

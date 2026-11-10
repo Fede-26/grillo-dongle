@@ -4,13 +4,18 @@
 #include <stdint.h>
 #include "esp_err.h"
 #include "esp_netif.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 // Gestore WiFi condiviso, con lease a conteggio di riferimenti.
 //
 // Il WiFi è spento finché nessuno lo chiede. net_acquire() lo accende (o
 // riusa la connessione già attiva), net_release() lo spegne all'ultimo
-// rilascio. L'app manager chiama net_release_all() a ogni uscita da
-// un'app: un'app che dimentica il rilascio non lascia la radio accesa.
+// rilascio. Ogni lease appartiene al task che lo prende: l'app manager, a
+// ogni uscita da un'app, chiama net_release_task() sul task dell'app, così
+// un'app che dimentica il rilascio non lascia la radio accesa e i lease di
+// altri task restano validi. Lease e rilascio vanno quindi fatti dallo
+// stesso task.
 //
 // Le reti note vengono da config.lua (`wifi = { {ssid=, pass=}, ... }`),
 // l'hotspot da `hotspot = { ssid=, pass= }`. Le reti senza password (aperte)
@@ -60,11 +65,16 @@ typedef struct {
 // chiamato net_acquire_ex, quindi può mostrare un dialogo.
 typedef int (*net_choose_fn)(const net_candidate_t *c, int n, void *arg);
 // Come net_acquire; se più reti note sono visibili decide `choose` (NULL =
-// la più forte). Con la scelta annullata restituisce ESP_ERR_NOT_FINISHED e
-// non ripiega sull'hotspot. Vedi app_net_acquire() in app.h.
-esp_err_t net_acquire_ex(net_mode_t mode, uint32_t timeout_ms, net_choose_fn choose, void *arg);
+// la più forte). Se `abort` (può essere NULL) diventa true durante l'attesa
+// della connessione, smette subito. Con la scelta annullata o l'attesa
+// interrotta restituisce ESP_ERR_NOT_FINISHED e non ripiega sull'hotspot.
+// Vedi app_net_acquire() in app.h.
+esp_err_t net_acquire_ex(net_mode_t mode, uint32_t timeout_ms, net_choose_fn choose, void *arg,
+                         const volatile bool *abort);
+// Rilascia un lease del task chiamante.
 void net_release(void);
-void net_release_all(void);
+// Rilascia tutti i lease di `task` (che di solito è terminato).
+void net_release_task(TaskHandle_t task);
 
 void net_get_info(net_info_t *info);
 // Interfaccia STA, per leggere gateway, maschera e DNS o inviare pacchetti.

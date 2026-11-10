@@ -11,7 +11,7 @@ struct app_desc {
     const gfx_icon_t *icon;    // icona 12x12, disegnata 2x
     uint32_t accent;           // colore d'accento di UI e LED
     uint32_t requires;         // maschera di app_req_t
-    usb_profile_t usb;         // profilo USB mentre l'app gira
+    usb_profile_t usb;         // profilo USB mentre l'app gira (maschera di USB_F_*)
     uint32_t stack;            // stack del task in byte
     void (*run)(app_ctx_t *ctx);
     void (*subtitle)(char *buf, size_t len);   // facoltativa: riga sotto il nome
@@ -20,11 +20,13 @@ struct app_desc {
 
 `requires`: `APP_REQ_SD` (SD montata FAT su `/sd`), `APP_REQ_CARD` (scheda presente, anche non FAT), `APP_REQ_NET` (userà il WiFi), `APP_REQ_BLE` (riservato). Se un requisito manca, `appmgr_unavailable()` restituisce il motivo e il launcher non avvia l'app.
 
-Profili USB (`usbdev.h`): `USB_PROFILE_NONE` (TinyUSB spento, torna la USB-Serial-JTAG), `USB_PROFILE_HID` (tastiera + mouse + seriale CDC), `USB_PROFILE_HID_DISK` (tastiera + SD in sola lettura, senza mouse), `USB_PROFILE_MSC` (SD come disco in lettura e scrittura).
+Profili USB (`usbdev.h`): un profilo è la maschera delle interfacce, `USB_F_KBD`, `USB_F_MOUSE`, `USB_F_CDC` e il disco in uno dei due modi, `USB_F_DISK_RW` (SD all'host in lettura e scrittura, il firmware non la vede) o `USB_F_DISK_RO` (SD in sola lettura per l'host, il firmware la tiene montata). Quelli già pronti: `USB_PROFILE_NONE` (TinyUSB spento, torna la USB-Serial-JTAG), `USB_PROFILE_HID` (tastiera + mouse + CDC), `USB_PROFILE_HID_DISK` (tastiera + disco in sola lettura + CDC, senza mouse), `USB_PROFILE_MSC` (disco in lettura e scrittura). Con `CONFIG_GRILLO_USB_DEBUG_CDC` la CDC si aggiunge a ogni profilo. Le combinazioni con più di 4 endpoint IN (tastiera + mouse + disco + CDC) vengono rifiutate con `ESP_ERR_NOT_SUPPORTED`.
+
+Per cambiare profilo mentre l'app gira: `esp_err_t app_usb_apply(usb_profile_t p)`. Passa la SD all'host o la riprende secondo il modo del disco; se il profilo nuovo fallisce, TinyUSB resta spento e la SD torna al firmware. Non chiamare `usbdev_apply` direttamente: non sposta la SD.
 
 ## Ciclo di vita
 
-`run(ctx)` gira in un task dedicato. Quando ritorna, l'app è terminata e il sistema rilascia d'ufficio: profilo USB, SD prestata, livello LED dell'app, lease di rete. Un'app può farlo prima per conto suo.
+`run(ctx)` gira in un task dedicato. Quando ritorna, l'app è terminata e il sistema rilascia d'ufficio: profilo USB, SD prestata o condivisa, livello LED dell'app, lease di rete presi dal task dell'app. Un'app può farlo prima per conto suo.
 
 `ctx->arg` è l'argomento di avvio (per l'autorun, il percorso dello script); può essere `NULL`.
 
@@ -84,11 +86,31 @@ for (;;) {
 ```c
 esp_err_t app_net_acquire(app_ctx_t *ctx, net_mode_t mode, uint32_t timeout_ms); // con scelta della rete
 esp_err_t net_acquire(net_mode_t mode, uint32_t timeout_ms);   // NET_AUTO | NET_STA | NET_AP | NET_SCAN
-void net_release(void);
+void net_release(void);                                        // un lease del task chiamante
 void net_get_info(net_info_t *info);
 esp_netif_t *net_sta_netif(void);                              // interfaccia STA: IP, gateway, DNS, MAC
 int net_scan(net_ap_t *out, int max);                          // reti visibili, la più forte per prima
 const char *net_auth_name(uint8_t auth);                       // "WPA2", "open"...
 ```
 
-Le richieste sono a conteggio di riferimenti (lease): il WiFi resta acceso finché c'è almeno un'app che l'ha richiesto. `NET_AUTO` usa una rete nota, altrimenti crea l'hotspot. Con più reti note visibili `app_net_acquire` mostra un menu (RSSI, 6 secondi, poi la più forte) e restituisce `ESP_ERR_NOT_FINISHED` se l'utente esce; `net_acquire` prende sempre la più forte. Le reti aperte non sono supportate. `NET_SCAN` accende la radio in modalità STA senza connettersi: basta per `net_scan()` (circa 2 secondi, al massimo 40 reti). `net_scan()` funziona con un lease `NET_SCAN` o `NET_STA`, non con l'hotspot. Un lease `NET_SCAN` è compatibile con una connessione STA già attiva, non viceversa.
+Le richieste sono a conteggio di riferimenti (lease): il WiFi resta acceso finché c'è almeno un lease. Un lease appartiene al task che lo prende, quindi va rilasciato dallo stesso task; quelli che il task dell'app lascia aperti li rilascia il sistema all'uscita. Se l'utente chiede l'uscita mentre `app_net_acquire` attende la connessione, l'attesa si interrompe e la funzione restituisce `ESP_ERR_NOT_FINISHED`. `NET_AUTO` usa una rete nota, altrimenti crea l'hotspot. Con più reti note visibili `app_net_acquire` mostra un menu (RSSI, 6 secondi, poi la più forte) e restituisce `ESP_ERR_NOT_FINISHED` se l'utente esce; `net_acquire` prende sempre la più forte. Le reti aperte non sono supportate. `NET_SCAN` accende la radio in modalità STA senza connettersi: basta per `net_scan()` (circa 2 secondi, al massimo 40 reti). `net_scan()` funziona con un lease `NET_SCAN` o `NET_STA`, non con l'hotspot. Un lease `NET_SCAN` è compatibile con una connessione STA già attiva, non viceversa.
+
+## Server web e QR code
+
+Per le app comandate da una pagina web (componenti `websrv` e `qr`; l'esempio è `apps/webhid`):
+
+```c
+esp_err_t websrv_start(const websrv_config_t *cfg); // pin, stack_size, max_frame, on_message, on_auth, on_session_end
+esp_err_t websrv_add_page(const char *uri, const char *type, const uint8_t *gz, size_t len); // pagina già in gzip
+esp_err_t websrv_add_route(const httpd_uri_t *uri);  // rotta propria: non protetta dal PIN
+bool websrv_is_client(httpd_req_t *req);             // la richiesta viene dal client autenticato?
+void websrv_reply(httpd_req_t *req, const char *msg); // messaggio WebSocket al client
+const char *websrv_client_ip(void);                  // "" se nessuno è collegato
+bool websrv_stopping(void);                          // da controllare nei lavori lunghi di on_message
+void websrv_stop(void);
+
+bool qr_draw(const char *text, int x, int y, int box);  // tra ui_begin e ui_end
+void qr_wifi_text(char *out, size_t len, const char *ssid, const char *pass); // QR per unirsi all'hotspot
+```
+
+Il server ha due rotte fisse: `/cfg` dice alla pagina se serve il PIN, `/ws` è il WebSocket. Il primo messaggio deve essere `p<PIN>`; le risposte e le regole (blocco per indirizzo, una sessione per volta, subentro dallo stesso IP) sono in [Protocollo WebSocket](protocollo-websocket.md). Dopo l'autenticazione ogni messaggio di testo arriva a `on_message`, nel task del server: un lavoro lungo blocca le altre richieste e deve smettere quando `websrv_stopping()` diventa vero. `on_session_end` è chiamata quando il client se ne va, quando un altro lo sostituisce e a ogni `websrv_stop`: è il posto dove rilasciare ciò che la sessione teneva (il Web HID lascia i tasti).

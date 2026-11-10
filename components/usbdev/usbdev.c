@@ -19,14 +19,6 @@
 
 static const char *TAG = "usbdev";
 
-// Interfacce che un profilo può combinare
-enum {
-    F_KBD = 1 << 0,
-    F_MOUSE = 1 << 1,
-    F_MSC = 1 << 2,
-    F_CDC = 1 << 3,
-};
-
 static usb_profile_t s_profile = USB_PROFILE_NONE;
 static uint32_t s_features;
 static usbdev_event_cb_t s_cb;
@@ -94,7 +86,7 @@ static size_t build_config(uint32_t f)
     int hid_instance = 0;
     s_hid_kbd = s_hid_mouse = -1;
 
-    if (f & F_KBD) {
+    if (f & USB_F_KBD) {
         // bInterval 1 ms: fino a 1000 report/s, la digitazione non è
         // limitata dal polling dell'host.
         uint8_t d[] = {TUD_HID_DESCRIPTOR(itf, 0, HID_ITF_PROTOCOL_KEYBOARD, sizeof(s_kbd_report), 0x80 | ep, 8, 1)};
@@ -102,23 +94,23 @@ static size_t build_config(uint32_t f)
         p += sizeof(d), len += sizeof(d), itf++, ep++;
         s_hid_kbd = hid_instance++;
     }
-    if (f & F_MOUSE) {
+    if (f & USB_F_MOUSE) {
         uint8_t d[] = {TUD_HID_DESCRIPTOR(itf, 0, HID_ITF_PROTOCOL_MOUSE, sizeof(s_mouse_report), 0x80 | ep, 8, 1)};
         memcpy(p, d, sizeof(d));
         p += sizeof(d), len += sizeof(d), itf++, ep++;
         s_hid_mouse = hid_instance++;
     }
-    if (f & F_MSC) {
+    if (f & USB_F_DISK) {
         uint8_t d[] = {TUD_MSC_DESCRIPTOR(itf, 0, ep, 0x80 | ep, 64)};
         memcpy(p, d, sizeof(d));
         p += sizeof(d), len += sizeof(d), itf++, ep++;
     }
-    if (f & F_CDC) {
+    if (f & USB_F_CDC) {
         uint8_t d[] = {TUD_CDC_DESCRIPTOR(itf, STR_CDC, 0x80 | ep, 8, ep + 1, 0x80 | (ep + 1), 64)};
         memcpy(p, d, sizeof(d));
         p += sizeof(d), len += sizeof(d), itf += 2, ep += 2;
     }
-    uint8_t head[] = {TUD_CONFIG_DESCRIPTOR(1, itf, 0, len, (f & F_KBD) ? TUSB_DESC_CONFIG_ATT_REMOTE_WAKEUP : 0, 100)};
+    uint8_t head[] = {TUD_CONFIG_DESCRIPTOR(1, itf, 0, len, (f & USB_F_KBD) ? TUSB_DESC_CONFIG_ATT_REMOTE_WAKEUP : 0, 100)};
     memcpy(s_cfg, head, sizeof(head));
     return len;
 }
@@ -199,12 +191,19 @@ usb_profile_t usbdev_profile(void)
 
 const char *usbdev_profile_name(usb_profile_t p)
 {
-    switch (p) {
-    case USB_PROFILE_HID: return "HID";
-    case USB_PROFILE_HID_DISK: return "HID+DISK";
-    case USB_PROFILE_MSC: return "MSC";
-    default: return "-";
+    static const struct {
+        usb_profile_t p;
+        const char *name;
+    } names[] = {
+        {USB_PROFILE_NONE, "-"},
+        {USB_PROFILE_HID, "HID"},
+        {USB_PROFILE_HID_DISK, "HID+DISK"},
+        {USB_PROFILE_MSC, "MSC"},
+    };
+    for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
+        if (names[i].p == p) return names[i].name;
     }
+    return "custom";
 }
 
 bool usbdev_mounted(void)
@@ -230,7 +229,7 @@ static void restore_usj_phy(void)
 static void teardown(void)
 {
     if (s_profile == USB_PROFILE_NONE) return;
-    if (s_features & F_CDC) {
+    if (s_features & USB_F_CDC) {
         xSemaphoreTake(s_cdc_lock, portMAX_DELAY);
         s_cdc_active = false;
         tinyusb_cdcacm_deinit(TINYUSB_CDC_ACM_0);
@@ -264,20 +263,18 @@ static void teardown(void)
     restore_usj_phy();
 }
 
-static uint32_t features_of(usb_profile_t p)
+// Endpoint IN usati, escluso EP0: uno per tastiera, mouse e disco, due per
+// la CDC (notifiche e dati).
+static int in_endpoints(uint32_t f)
 {
-    switch (p) {
-    // La CDC nei profili HID è funzionale (canale di ritorno host.ask), non
-    // solo di debug: c'è sempre.
-    case USB_PROFILE_HID: return F_KBD | F_MOUSE | F_CDC;
-    // Endpoint IN insufficienti per tastiera + mouse + disco + CDC: provato
-    // sul dispositivo (2026-11-09), il Mac enumera solo l'HID e perde disco
-    // e seriale. Con il disco quindi il mouse viene tolto.
-    case USB_PROFILE_HID_DISK: return F_KBD | F_MSC | F_CDC;
-    case USB_PROFILE_MSC: return F_MSC | (CONFIG_GRILLO_USB_DEBUG_CDC ? F_CDC : 0);
-    default: return 0;
-    }
+    return !!(f & USB_F_KBD) + !!(f & USB_F_MOUSE) + !!(f & USB_F_DISK) + ((f & USB_F_CDC) ? 2 : 0);
 }
+
+// Con tastiera + mouse + disco + CDC (5) l'installazione riesce ma il Mac
+// enumera solo l'HID e perde disco e seriale (provato sul dispositivo il
+// 2026-11-09); con 4 (tastiera + disco + CDC) funziona. Il limite è quello
+// misurato: meglio rifiutare il profilo che enumerarlo a metà.
+#define MAX_IN_ENDPOINTS 4
 
 static esp_err_t msc_create(sdmmc_card_t *card)
 {
@@ -315,8 +312,13 @@ esp_err_t usbdev_apply(usb_profile_t profile, sdmmc_card_t *msc_card)
         ESP_LOGI(TAG, "profilo NONE");
         return ESP_OK;
     }
-    uint32_t f = features_of(profile);
-    ESP_RETURN_ON_FALSE(!(f & F_MSC) || msc_card, ESP_ERR_INVALID_ARG, TAG, "MSC senza scheda");
+    // La seriale di debug si aggiunge a ogni profilo; la tiene il profilo
+    // attivo (s_profile), così il confronto con quello richiesto resta esatto.
+    uint32_t f = profile | (CONFIG_GRILLO_USB_DEBUG_CDC ? USB_F_CDC : 0);
+    ESP_RETURN_ON_FALSE((f & USB_F_DISK) != USB_F_DISK, ESP_ERR_INVALID_ARG, TAG, "disco RW e RO insieme");
+    ESP_RETURN_ON_FALSE(in_endpoints(f) <= MAX_IN_ENDPOINTS, ESP_ERR_NOT_SUPPORTED, TAG, "troppi endpoint IN (0x%x)",
+                        (unsigned)f);
+    ESP_RETURN_ON_FALSE(!(f & USB_F_DISK) || msc_card, ESP_ERR_INVALID_ARG, TAG, "disco senza scheda");
 
     if (!s_serial[0]) {
         uint8_t mac[6];
@@ -325,14 +327,14 @@ esp_err_t usbdev_apply(usb_profile_t profile, sdmmc_card_t *msc_card)
                  mac[5]);
         s_strings[STR_SERIAL] = s_serial;
     }
-    s_dev.idProduct = PID_BASE | ((f & F_CDC) ? PID_CDC : 0) | ((f & F_MSC) ? PID_MSC : 0) |
-                      ((f & F_KBD) ? PID_HID : 0) | ((f & F_KBD) && !(f & F_MOUSE) ? PID_NO_MOUSE : 0);
+    s_dev.idProduct = PID_BASE | ((f & USB_F_CDC) ? PID_CDC : 0) | ((f & USB_F_DISK) ? PID_MSC : 0) |
+                      ((f & USB_F_KBD) ? PID_HID : 0) | ((f & USB_F_KBD) && !(f & USB_F_MOUSE) ? PID_NO_MOUSE : 0);
     // Con la CDC serve l'IAD (Interface Association), quindi classe "misc"
-    bool iad = f & F_CDC;
+    bool iad = f & USB_F_CDC;
     s_dev.bDeviceClass = iad ? TUSB_CLASS_MISC : 0;
     s_dev.bDeviceSubClass = iad ? MISC_SUBCLASS_COMMON : 0;
     s_dev.bDeviceProtocol = iad ? MISC_PROTOCOL_IAD : 0;
-    s_strings[STR_PRODUCT] = (f & F_KBD) ? "Grillo HID" : "Grillo Disk";
+    s_strings[STR_PRODUCT] = (f & USB_F_KBD) ? "Grillo HID" : "Grillo Disk";
     build_config(f);
 
     tinyusb_config_t cfg = TINYUSB_DEFAULT_CONFIG(on_tinyusb_event, NULL);
@@ -341,10 +343,9 @@ esp_err_t usbdev_apply(usb_profile_t profile, sdmmc_card_t *msc_card)
     cfg.descriptor.string_count = STR_COUNT;
     cfg.descriptor.full_speed_config = s_cfg;
 
-    // Nel composito con la tastiera la SD resta montata anche dal firmware:
-    // l'host la vede in sola lettura.
-    s_msc_readonly = profile == USB_PROFILE_HID_DISK;
-    if (f & F_MSC) ESP_RETURN_ON_ERROR(msc_create(msc_card), TAG, "msc");
+    // In sola lettura la SD resta montata anche dal firmware
+    s_msc_readonly = f & USB_F_DISK_RO;
+    if (f & USB_F_DISK) ESP_RETURN_ON_ERROR(msc_create(msc_card), TAG, "msc");
 
     esp_err_t err = tinyusb_driver_install(&cfg);
     if (err != ESP_OK) {
@@ -359,7 +360,7 @@ esp_err_t usbdev_apply(usb_profile_t profile, sdmmc_card_t *msc_card)
     s_profile = profile;
     s_features = f;
 
-    if (f & F_CDC) {
+    if (f & USB_F_CDC) {
         tinyusb_config_cdcacm_t acm = {.cdc_port = TINYUSB_CDC_ACM_0};
         if (tinyusb_cdcacm_init(&acm) == ESP_OK) {
             xSemaphoreTake(s_cdc_lock, portMAX_DELAY);

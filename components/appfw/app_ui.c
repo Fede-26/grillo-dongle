@@ -225,5 +225,6 @@ static int choose_network(const net_candidate_t *c, int n, void *arg)
 
 esp_err_t app_net_acquire(app_ctx_t *ctx, net_mode_t mode, uint32_t timeout_ms)
 {
-    return net_acquire_ex(mode, timeout_ms, choose_network, ctx);
+    if (app_should_exit(ctx)) return ESP_ERR_NOT_FINISHED;
+    return net_acquire_ex(mode, timeout_ms, choose_network, ctx, &ctx->exit_requested);
 }

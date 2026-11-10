@@ -21,7 +21,6 @@
 #include "led.h"
 #include "luart.h"
 #include "storage.h"
-#include "syslog.h"
 #include "ui.h"
 #include "usbdev.h"
 
@@ -684,8 +683,7 @@ static void hlog_flush(void);
 static void disk_release(void)
 {
     if (!s_attached) return;
-    usbdev_apply(USB_PROFILE_HID, NULL);
-    storage_unshare();
+    app_usb_apply(USB_PROFILE_HID);
     s_attached = false;
     hlog_flush(); // dopo il detach la SD è di nuovo solo del dongle
 }
@@ -697,11 +695,9 @@ static int disk_attach(lua_State *L)
     lua_Integer t = luaL_optinteger(L, 1, 15000);
     if (s_attached) return 0;
     if (storage_state() != STORAGE_MOUNTED) return luaL_error(L, "SD not mounted");
-    syslog_flush(); // da qui il firmware non scrive più sulla SD
     s_run->ejected = false;
-    if (usbdev_apply(USB_PROFILE_HID_DISK, storage_share_ro()) != ESP_OK) {
-        storage_unshare();
-        usbdev_apply(USB_PROFILE_HID, NULL);
+    if (app_usb_apply(USB_PROFILE_HID_DISK) != ESP_OK) {
+        app_usb_apply(USB_PROFILE_HID);
         return luaL_error(L, "cannot switch USB profile");
     }
     s_attached = true;

@@ -185,15 +185,18 @@ static int cmd_log(int argc, char **argv)
 // riporta a quello dell'app al prossimo cambio app.
 static int cmd_usb(int argc, char **argv)
 {
-    static const char *const names[] = {"none", "hid", "hiddisk", "msc"};
-    for (int p = 0; argc > 1 && p < 4; p++) {
-        if (strcmp(argv[1], names[p]) != 0) continue;
-        sdmmc_card_t *card = NULL;
-        if (p == USB_PROFILE_HID_DISK) card = storage_share_ro();
-        if (p == USB_PROFILE_MSC) card = storage_lend();
-        esp_err_t e = usbdev_apply(p, card);
-        if (p != USB_PROFILE_HID_DISK) storage_unshare();
-        if (p != USB_PROFILE_MSC && storage_state() == STORAGE_LENT) storage_reclaim();
+    static const struct {
+        const char *name;
+        usb_profile_t p;
+    } profiles[] = {
+        {"none", USB_PROFILE_NONE},
+        {"hid", USB_PROFILE_HID},
+        {"hiddisk", USB_PROFILE_HID_DISK},
+        {"msc", USB_PROFILE_MSC},
+    };
+    for (size_t i = 0; argc > 1 && i < sizeof(profiles) / sizeof(profiles[0]); i++) {
+        if (strcmp(argv[1], profiles[i].name) != 0) continue;
+        esp_err_t e = app_usb_apply(profiles[i].p);
         devcon_printf("%s\n", esp_err_to_name(e));
         return e == ESP_OK ? 0 : 1;
     }

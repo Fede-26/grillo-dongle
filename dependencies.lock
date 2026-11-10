@@ -30,6 +30,6 @@ direct_dependencies:
 - espressif/esp_tinyusb
 - espressif/qrcode
 - idf
-manifest_hash: 43a08d756a2d717a9d541311eca33096804721e054075d5cc1a09056df4e2577
+manifest_hash: 2dcd495c1aa19ed2ebcc90cdd329c3f2f2d2b7037d41a78b67f16a9ca0ba2cfe
 target: esp32s3
 version: 3.0.0
