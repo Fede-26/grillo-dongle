@@ -25,13 +25,15 @@ typedef struct {
     // Riga di sys.log
     void (*log)(void *arg, const char *text);
     // Dialogo aperto sul display (il front-end può rispondere con
-    // APP_EV_ANSWER); chiuso da dialog_end, chiunque abbia risposto.
+    // APP_EV_ANSWER); chiuso da dialog_end, chiunque abbia risposto, con la
+    // risposta come testo (voce del menu, "Yes"/"No", gesto del pulsante) o
+    // NULL se non ce n'è una (abort, chiusura dell'esito).
     void (*menu)(void *arg, const char *title, const char *const *items, int n);
     void (*confirm)(void *arg, const char *title, const char *text, bool yes);
     void (*wait_button)(void *arg);
     // Esito, mostrato poi sul display fino a un click o a un APP_EV_ANSWER
     void (*done)(void *arg, const inj_run_t *r);
-    void (*dialog_end)(void *arg);
+    void (*dialog_end)(void *arg, const char *answer);
 } inj_hooks_t;
 
 struct inj_run {

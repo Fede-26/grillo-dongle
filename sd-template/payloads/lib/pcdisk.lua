@@ -6,6 +6,8 @@
 --
 -- Il corpo è testo per il terminale aperto sul PC (PowerShell su Windows, shell
 -- POSIX su Linux e macOS, scelta da kb.os()) e deve stare in una riga: usa `;`.
+-- La shell la avvia pcdisk.run (common.shell), quindi il terminale può avere
+-- qualunque shell aperta.
 -- Dentro il corpo `$d` è la radice della SD senza barra finale ("E:" su Windows,
 -- "/Volumes/GRILLO-SD" su macOS). Non scrivere `${` nel corpo: kb.type lo legge
 -- come variabile dello script.
@@ -20,6 +22,7 @@
 -- Tutto va in una riga perché i comandi digitati mentre un altro gira si accodano
 -- nel buffer del terminale e il dongle non sa quando finiscono.
 local M = {}
+local common = require("common")
 
 -- Per ogni OS: `find` imposta $d (e, su Windows, $r), `eject` espelle.
 local SHELLS = {
@@ -61,6 +64,9 @@ function M.run(body, opts)
     elseif mode ~= "auto" then
         error("pcdisk: mount deve essere auto o sudo")
     end
+
+    ui.status("Avvio la shell")
+    common.shell(kb.os() == "windows" and "powershell" or "sh")
 
     ui.status("Collego la SD")
     disk.attach()

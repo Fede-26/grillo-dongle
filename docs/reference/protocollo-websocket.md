@@ -69,16 +69,17 @@ Stesse rotte, stesso accesso e stesse risposte `ok`, `no`, `locked`, `busy`. Dal
 
 | `t` | Campi | Significato |
 | --- | --- | --- |
-| `hello` | `phase`: `idle`, `run`, `done` | Dopo ogni accesso. Con uno script in corso seguono l'ultimo `state` e il dialogo aperto. |
+| `hello` | `phase`: `idle`, `run`, `done`; `dropped` (voci della cronologia scartate) | Dopo ogni accesso. Seguono la cronologia della run in corso o dell'ultima (`log`), l'ultimo `state` con uno script in corso, il dialogo aperto e l'esito (`result`). |
 | `entry` | `name`, `title`, `dir`; per gli script `layout`, `os`, `tags` (effettivi); con `s` anche `path` | Una voce dell'elenco. |
 | `end` | `scan`, `full` (elenco troncato a 48 voci) | Fine dell'elenco. |
 | `meta` | `path`, `name`, `desc`, `layout`, `os`, `tags`, `timeout` (-1 se assente), `error` | Intestazione dello script. |
 | `state` | `name`, `status`, `p`, `max` (0 = niente barra), `wait` (attesa dell'host USB) | Stato dello script cambiato. |
-| `log` | `text` | Riga di `sys.log`. |
+| `log` | `k`, `at`, `text` | Voce della cronologia. `k`: `start` (nome dello script), `log` (riga di `sys.log`), `status` (stato nuovo), `ask` (dialogo aperto), `answer` (risposta, con "(from the page)" se è arrivata dalla pagina), `done` (esito). `at`: ora del dongle (`HH:MM:SS`) o, senza ora valida, tempo dall'avvio (`+m:ss`). Testo tagliato a 200 byte; il dongle tiene le ultime 100 voci. |
 | `menu` | `id`, `title`, `items` | `ui.menu` aperto. |
 | `confirm` | `id`, `title`, `text`, `yes` (risposta predefinita) | `ui.confirm` aperto. |
 | `button` | `id` | `ui.wait_button` in attesa. |
-| `done` | `id`, `name`, `ok`, `aborted`, `timeout`, `error` | Esito: resta aperto finché qualcuno risponde. |
+| `done` | `id`, `name`, `path`, `ok`, `aborted`, `timeout`, `error` | Esito: resta aperto sul display finché qualcuno risponde. `path` è lo script, per eseguirlo di nuovo. |
+| `result` | come `done`, senza `id` | Esito dell'ultima run, rimandato a ogni accesso finché non ne parte un'altra. |
 | `close` | `id` | Dialogo chiuso, da qualunque parte sia arrivata la risposta. |
 | `idle` | | Esito chiuso: si può avviare un altro script. |
 | `error` | `text` | Comando rifiutato. |

@@ -103,7 +103,7 @@ void inj_run_payload(app_ctx_t *ctx, const payload_meta_t *m, const inj_hooks_t 
         const char *why = r->timed_out ? "timeout" : (r->error[0] ? r->error : "failed");
         app_message(ctx, r->aborted && !r->timed_out ? "Aborted" : "Error", why, UI_ERR);
     }
-    INJ_HOOK(r, dialog_end);
+    INJ_HOOK(r, dialog_end, NULL);
     led_clear(LED_LAYER_APP);
     free(r);
 }

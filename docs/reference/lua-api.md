@@ -131,7 +131,7 @@ Se lo script termina con il disco ancora collegato, il dongle lo scollega comunq
 Il PC può rispondere al dongle con una riga `@G<nonce>:<codice>` scritta sulla porta seriale CDC. Il dongle accetta solo quella riga, con il nonce atteso: dal PC arrivano "finito" e un numero, mai l'output dei comandi. Ogni altra riga è scartata. Di solito si usa la libreria `host` qui sotto, non queste primitive.
 
 - `host.expect(nonce)`: si aspetta una risposta con questo nonce (1..15 lettere o cifre). Va chiamata **prima** di digitare il comando, altrimenti una risposta rapida andrebbe persa.
-- `host.wait([timeout_ms])`: attende la risposta (default 60000 ms). Restituisce il codice di uscita e il testo ricevuto (max 256 caratteri; il dongle sostituisce con `_` tutto ciò che non è lettera, cifra, `. _ : -` o spazio), oppure `nil` allo scadere. Errore `call host.expect() first` se manca `expect`.
+- `host.wait([timeout_ms [, on_click]])`: attende la risposta (default 60000 ms). Restituisce il codice di uscita e il testo ricevuto (max 256 byte; il dongle sostituisce con `_` tutto ciò che non è lettera, accentate comprese, cifra, `. _ : -` o spazio), oppure `nil` allo scadere. Con `on_click` vero, un click del pulsante restituisce `false` e l'attesa resta armata: si può chiamare di nuovo `host.wait` per la stessa risposta. Errore `call host.expect() first` se manca `expect`.
 - `host.append(id, data, etichetta, valore)`: aggiunge una riga `data,script,etichetta,valore` a `/logs/host/<id>.csv` sulla SD. `id` e `etichetta` sono ripuliti (solo `A-Z a-z 0-9 _ -`, 24 caratteri); massimo 64 file e 256 KB per file. Con il disco collegato (`disk.attach`) la riga aspetta in RAM (massimo 16) e viene scritta al `disk.detach`.
 
 ## Libreria `host`
@@ -145,12 +145,13 @@ local code = host.run([[Start-Process notepad -Wait]])
 if code ~= 0 then error("notepad: " .. tostring(code)) end
 ```
 
-- `host.shell(tipo)`: `"powershell"` o `"sh"` (bash, zsh). Digita una volta il codice che trova la porta seriale del dongle dal suo numero di serie e verifica il canale; errore se il PC non risponde. `cmd.exe` non è supportato (vedi sotto).
+- `host.shell(tipo)`: `"powershell"` o `"sh"`. Avvia prima la shell nel terminale in primo piano: digita `powershell -NoProfile` (va anche da `cmd.exe`; da PowerShell è una sessione annidata) oppure `exec sh` (sh POSIX al posto di fish, zsh, bash), senza profilo né file rc, così alias e funzioni dell'utente non cambiano i comandi. Poi digita una volta il codice che trova la porta seriale del dongle dal suo numero di serie e verifica il canale; errore se il PC non risponde. Il terminale resta nella shell avviata. La shell si avvia una volta per script, anche se la chiedono sia `host` sia `pcdisk`.
 - `host.run(comando [, {timeout = ms}])`: digita il comando seguito da una coda che invia il codice di uscita. Restituisce il codice, o `nil` allo scadere (default 60000 ms).
 - `host.sync([opzioni])`: attende che la shell abbia eseguito tutto ciò che è stato digitato prima.
-- `host.get(espressione [, {timeout}])`: valuta l'espressione nella shell del PC e restituisce il risultato come stringa (max 256 caratteri ripuliti), o `nil`. Più righe sono unite con spazi.
+- `host.get(espressione [, {timeout}])`: valuta l'espressione nella shell del PC e restituisce il risultato come stringa (max 256 byte ripuliti), o `nil`. Più righe sono unite con spazi.
 - `host.machine([espressione])`: imposta l'id della macchina per i log e la data del PC. Senza argomento usa il MAC della prima scheda di rete fisica (in ordine di indirizzo): è dell'hardware, quindi diverso anche tra PC clonati con Clonezilla, mentre `MachineGuid` e nome host si copiano con il disco. Restituisce l'id.
 - `host.clock([{timeout}])`: legge l'ora UTC dal PC (`[DateTimeOffset]::UtcNow` in PowerShell, `date +%s` in sh), imposta l'orologio del dongle e restituisce `sys.date()`. Da lì le righe di `/logs/grillo.log` e `sys.date()` hanno la data. Errore se il PC non risponde.
+- `host.input(prompt [, {timeout, status}])`: testo scritto dall'utente sulla tastiera del PC. Il dongle digita un comando che mostra `prompt` e legge una riga (`Read-Host` in PowerShell, `read` in sh), mostra `status` (default "Type on the PC, then click") e si ferma. L'utente scrive e preme il pulsante del dongle: il dongle preme Invio al suo posto e riparte. Va bene anche Invio dalla tastiera. Restituisce il testo (ripulito come in `host.get`: le lettere accentate restano in UTF-8, simboli come `,` `;` `"` `$` diventano `_`), o `nil` allo scadere (default 600000 ms). In sh le frecce non spostano il cursore e finirebbero nel testo; Backspace funziona.
 - `host.log(etichetta, espressione)`: come `host.get`, poi aggiunge la riga a `/logs/host/<id>.csv` e restituisce il valore. Senza `host.machine` il file è `unknown.csv`.
 
 ```lua
@@ -168,7 +169,7 @@ Il comando deve essere bloccante: con `Start-Process` senza `-Wait`, o `open` su
 
 Non è nel firmware ma in `sd-template/payloads/lib/pcdisk.lua`: `require("pcdisk")` dopo averla copiata sulla SD.
 
-- `pcdisk.run(corpo [, {timeout = ms}])`: collega la SD al PC, digita nel terminale aperto sul PC una riga che trova il disco, esegue `corpo` ed espelle; poi attende l'espulsione (default 180000 ms) e scollega. Restituisce `"eject"` o `"click"`, errore se scade il tempo.
+- `pcdisk.run(corpo [, {timeout = ms}])`: avvia PowerShell o sh nel terminale aperto sul PC (come `host.shell`), collega la SD, digita una riga che trova il disco, esegue `corpo` ed espelle; poi attende l'espulsione (default 180000 ms) e scollega. Restituisce `"eject"` o `"click"`, errore se scade il tempo.
 - `corpo` è una riga di PowerShell (`kb.os()` = `windows`) o di shell POSIX (`linux`, `mac`); `$d` è la radice della SD senza barra finale. Non usare `${` nel corpo.
 - Il disco si riconosce dal file `.grillo` nella radice. Il supporto Linux (percorsi di automount di udisks) non è verificato.
 - `opzioni.mount`: `"auto"` (default) usa il montaggio automatico del sistema; `"sudo"` (solo Linux) monta la SD a mano in `/mnt/grillo`, in sola lettura, e la smonta ed espelle alla fine. Il default si può impostare in `config.lua` con `pcdisk = { mount = "sudo" }`.

@@ -8,7 +8,7 @@
 -- Change "@os linux" to "mac" in the header for a Mac.
 local host = require("host")
 
-host.shell("sh")           -- bash and zsh work too; cmd.exe is not supported
+host.shell("sh")           -- types `exec sh` first: any shell works (bash, zsh, fish)
 
 local code = host.run([[sh -c 'exit 5']])
 ui.status("exit code: " .. tostring(code))      -- 5

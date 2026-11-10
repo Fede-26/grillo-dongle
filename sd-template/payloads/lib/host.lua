@@ -17,17 +17,20 @@
 --   host.log("seriale", [[(Get-CimInstance Win32_BIOS).SerialNumber]])
 --   local model = host.get([[(Get-CimInstance Win32_ComputerSystem).Model]])
 --   host.clock()                                     -- ora del PC sul dongle (log, sys.date)
--- Il valore è al massimo di 256 caratteri; il dongle sostituisce con "_" tutto ciò
--- che non è lettera, cifra, ". _ : -" o spazio. Non ridigitare mai un valore letto
+--   local note = host.input("Comment")               -- l'utente scrive sul PC e preme il pulsante
+-- Il valore è al massimo di 256 byte; il dongle sostituisce con "_" tutto ciò
+-- che non è lettera (accentate comprese, in UTF-8), cifra, ". _ : -" o spazio. Non ridigitare mai un valore letto
 -- dal PC dentro un comando di shell senza controllarlo: può contenere ciò che ha
 -- scelto chi ha configurato la macchina.
 --
 -- Il comando deve essere bloccante: con un programma che si stacca subito
 -- (es. `Start-Process` senza `-Wait`, `open` su macOS) il codice arriva appena
 -- parte, non quando finisce. Non scrivere `${` nel comando: kb.type lo legge
--- come variabile dello script. Shell supportate: PowerShell, sh/bash/zsh (non
--- cmd.exe: per ora nessuna variante).
+-- come variabile dello script. host.shell avvia prima PowerShell o sh nel
+-- terminale (common.shell), quindi va bene qualunque shell aperta: cmd.exe,
+-- fish, zsh, bash.
 local M = {}
+local common = require("common")
 
 local kind -- "powershell" | "sh", impostata da host.shell
 
@@ -40,12 +43,12 @@ local function helper(serial)
     if kind == "powershell" then
         -- La COM è figlia del dispositivo composito, il cui id contiene il numero di serie.
         return [[$G=(Get-CimInstance Win32_PnPEntity | Where-Object { $_.Name -match '\(COM\d+\)' -and (Get-PnpDeviceProperty -InstanceId $_.PNPDeviceID -KeyName DEVPKEY_Device_Parent).Data -like '*]]
-            .. serial .. [[*' } | Select-Object -First 1 -ExpandProperty Name) -replace '.*\((COM\d+)\).*','$1'; function Send-G($n,$c){$p=New-Object IO.Ports.SerialPort $G,115200; $p.Open(); $p.WriteLine('@G'+$n+':'+$c); $p.Close()}]]
+            .. serial .. [[*' } | Select-Object -First 1 -ExpandProperty Name) -replace '.*\((COM\d+)\).*','$1'; function Send-G($n,$c){$p=New-Object IO.Ports.SerialPort $G,115200; $p.Encoding=[Text.Encoding]::UTF8; $p.Open(); $p.WriteLine('@G'+$n+':'+$c); $p.Close()}]]
     end
-    -- macOS: /dev/cu.usbmodem<serie><n>; Linux: /dev/serial/by-id/*<serie>*. `sh -c` per
-    -- avere i pattern senza corrispondenza passati a ls (zsh darebbe errore).
-    return [[G=$(sh -c 'ls /dev/cu.usbmodem*]] .. serial .. [[* /dev/serial/by-id/*]] .. serial
-        .. [[* 2>/dev/null' | head -1)]]
+    -- macOS: /dev/cu.usbmodem<serie><n>; Linux: /dev/serial/by-id/*<serie>*. In sh un
+    -- pattern senza corrispondenza arriva a ls così com'è, e l'errore va in /dev/null.
+    return [[G=$(ls /dev/cu.usbmodem*]] .. serial .. [[* /dev/serial/by-id/*]] .. serial
+        .. [[* 2>/dev/null | head -1)]]
 end
 
 -- Codice di uscita del comando, o nil se non arriva entro opts.timeout (default 60000 ms).
@@ -64,7 +67,7 @@ function M.run(cmd, opts)
     return host.wait((opts and opts.timeout) or 60000)
 end
 
--- Valore (stringa ripulita, max 256 caratteri) dell'espressione `expr` valutata nella
+-- Valore (stringa ripulita, max 256 byte) dell'espressione `expr` valutata nella
 -- shell del PC, o nil se non arriva entro opts.timeout (default 60000 ms).
 -- Un'espressione che restituisce più righe è unita con spazi.
 function M.get(expr, opts)
@@ -126,15 +129,53 @@ function M.log(label, expr, opts)
     return value
 end
 
+-- Testo da mettere tra apici singoli nella shell del PC
+local function quoted(s)
+    if kind == "powershell" then return "'" .. s:gsub("'", "''") .. "'" end
+    return "'" .. s:gsub("'", [['\'']]) .. "'"
+end
+
+-- Testo scritto dall'utente sulla tastiera del PC, o nil se non arriva entro
+-- opts.timeout (default 600000 ms). Il dongle digita un comando che mostra
+-- `prompt` e legge una riga (Read-Host, read), poi si ferma: l'utente scrive e
+-- preme il pulsante del dongle (o Invio); al click il dongle preme Invio per
+-- lui e riparte con il testo arrivato sulla seriale. In sh le frecce non
+-- spostano il cursore: finirebbero nel testo come caratteri. Il testo è
+-- ripulito come quello di host.get: le lettere accentate restano, simboli
+-- come , ; " $ diventano "_".
+function M.input(prompt, opts)
+    if not kind then error("host.input: chiama prima host.shell()") end
+    opts = opts or {}
+    local n = nonce()
+    local line
+    if kind == "powershell" then
+        line = [[Send-G ]] .. n .. [[ (Read-Host ]] .. quoted(prompt) .. [[)]]
+    else
+        line = [[printf '%s: ' ]] .. quoted(prompt) .. [[; IFS= read -r v; printf '@G%s:%s\n' ]] .. n .. [[ "$v" > "$G"]]
+    end
+    host.expect(n)
+    kb.type(line .. "\n")
+    ui.status(opts.status or "Type on the PC, then click")
+    local r, text = host.wait(opts.timeout or 600000, true)
+    if r == false then
+        kb.tap("ENTER")
+        r, text = host.wait(15000)
+    end
+    if r == nil then return nil end
+    return text
+end
+
 -- Attende che la shell abbia eseguito tutto ciò che è stato digitato prima.
 function M.sync(opts)
     return M.run(kind == "powershell" and "$null" or ":", opts)
 end
 
--- Prepara la shell ("powershell" o "sh") e verifica il canale: errore se non risponde.
+-- Avvia la shell ("powershell" o "sh"), la prepara e verifica il canale: errore se
+-- non risponde.
 function M.shell(k)
     if k ~= "powershell" and k ~= "sh" then error("host.shell: powershell o sh") end
     kind = k
+    common.shell(k)
     local serial = sys.serial()
     if serial == "" then error("host.shell: numero di serie USB non disponibile") end
     kb.type(helper(serial) .. "\n")

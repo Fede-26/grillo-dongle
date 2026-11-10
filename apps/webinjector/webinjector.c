@@ -7,14 +7,17 @@
 // (injector_core): display e pulsante restano attivi, e nei dialoghi vince
 // la prima risposta, dal pulsante o dalla pagina (APP_EV_ANSWER). Se la
 // pagina si chiude lo script continua; alla riconnessione la pagina riceve
-// lo stato e l'eventuale dialogo aperto.
+// la cronologia della run, lo stato, l'eventuale dialogo aperto e l'esito.
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
+#include "clock.h"
 #include "config.h"
 #include "engine.h"
 #include "esp_random.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "icons.h"
@@ -33,6 +36,10 @@
 #define MAX_ENTRIES 48
 // Il messaggio più lungo dalla pagina è un comando con un percorso
 #define MAX_FRAME   (PAYLOAD_PATH_MAX + 16)
+// Cronologia: ultime HIST_MAX voci, testo tagliato a HIST_TEXT byte (uno
+// script può scrivere per ore): al massimo una trentina di KB
+#define HIST_MAX    100
+#define HIST_TEXT   200
 
 extern const uint8_t page_gz_start[] asm("_binary_webinjector_html_gz_start");
 extern const uint8_t page_gz_end[] asm("_binary_webinjector_html_gz_end");
@@ -54,6 +61,20 @@ static int s_dialog_id, s_next_id;       // id del dialogo aperto, 0 se nessuno
 static dlg_kind_t s_dialog_kind;
 // Ultimi stato e dialogo, rimandati a ogni riconnessione della pagina
 static char *s_state_msg, *s_dialog_msg;
+// Esito dell'ultima run, rimandato alla riconnessione finché non ne parte
+// un'altra: la pagina resta sull'esecuzione anche a run finita
+static char *s_result_msg;
+static bool s_page_answered; // la risposta al dialogo aperto è arrivata dalla pagina
+
+// Cronologia della run in corso o dell'ultima (avvio, sys.log, cambi di
+// stato, dialoghi con la risposta, esito), rimandata a ogni riconnessione:
+// così si vede anche ciò che è successo a pagina chiusa (telefono in
+// standby). Coda circolare di messaggi JSON già pronti, sotto s_lock.
+static char *s_hist[HIST_MAX];
+static int s_hist_first, s_hist_n, s_hist_dropped;
+// Solo nel task dell'app (agganci e run_pending)
+static int64_t s_run_start_us;
+static char s_last_status[48]; // stato già in cronologia: i soli avanzamenti non entrano
 
 static void lock(void)
 {
@@ -67,6 +88,56 @@ static void unlock(void)
 
 // ---------------------------------------------------------------------------
 // Agganci dello script (task dell'app)
+
+// Sotto s_lock
+static void hist_clear(void)
+{
+    for (int i = 0; i < s_hist_n; i++) free(s_hist[(s_hist_first + i) % HIST_MAX]);
+    s_hist_first = s_hist_n = s_hist_dropped = 0;
+}
+
+// Aggiunge una voce alla cronologia e la manda alla pagina. kind: start,
+// log, status, ask, answer, done. Da chiamare senza s_lock.
+static void add_event(const char *kind, const char *text)
+{
+    // Ora del dongle se nota, altrimenti tempo dall'avvio della run
+    char at[16];
+    if (clock_valid()) {
+        time_t now = time(NULL);
+        struct tm tm;
+        strftime(at, sizeof(at), "%H:%M:%S", localtime_r(&now, &tm));
+    } else {
+        int sec = (int)((esp_timer_get_time() - s_run_start_us) / 1000000);
+        snprintf(at, sizeof(at), "+%d:%02d", sec / 60, sec % 60);
+    }
+    char cut[HIST_TEXT + 4];
+    size_t n = strlen(text);
+    if (n > HIST_TEXT) {
+        // Taglio su un confine di carattere UTF-8, poi "…"
+        n = HIST_TEXT;
+        while (n > 0 && ((unsigned char)text[n] & 0xC0) == 0x80) n--;
+        memcpy(cut, text, n);
+        memcpy(cut + n, "\xE2\x80\xA6", 4);
+        text = cut;
+    }
+    jbuf_t b = {0};
+    jb_begin(&b, "log");
+    jb_kstr(&b, "k", kind);
+    jb_kstr(&b, "at", at);
+    jb_kstr(&b, "text", text);
+    char *msg = jb_end(&b);
+    if (!msg) return;
+    lock();
+    if (s_hist_n == HIST_MAX) {
+        free(s_hist[s_hist_first]);
+        s_hist_first = (s_hist_first + 1) % HIST_MAX;
+        s_hist_n--;
+        s_hist_dropped++;
+    }
+    s_hist[(s_hist_first + s_hist_n++) % HIST_MAX] = msg;
+    websrv_send(msg);
+    unlock();
+}
 
 // NULL (memoria finita) non si manda
 static void send_msg(const char *msg)
@@ -94,16 +165,13 @@ static void hook_state(void *arg, const inj_run_t *r)
     jb_kint(&b, "max", r->progress_max);
     jb_kbool(&b, "wait", r->waiting_host);
     keep_and_send(&s_state_msg, jb_end(&b));
+    if (r->status[0] && strcmp(r->status, s_last_status) != 0) add_event("status", r->status);
+    strlcpy(s_last_status, r->status, sizeof(s_last_status));
 }
 
 static void hook_log(void *arg, const char *text)
 {
-    jbuf_t b = {0};
-    jb_begin(&b, "log");
-    jb_kstr(&b, "text", text);
-    char *msg = jb_end(&b);
-    send_msg(msg);
-    free(msg);
+    add_event("log", text);
 }
 
 // Apre un dialogo: nuovo id, messaggio conservato per la riconnessione
@@ -112,6 +180,7 @@ static void open_dialog(dlg_kind_t kind, jbuf_t *b)
     lock();
     s_dialog_id = ++s_next_id;
     s_dialog_kind = kind;
+    s_page_answered = false;
     jb_kint(b, "id", s_dialog_id);
     unlock();
     keep_and_send(&s_dialog_msg, jb_end(b));
@@ -129,6 +198,9 @@ static void hook_menu(void *arg, const char *title, const char *const *items, in
     }
     jb_lit(&b, "]");
     open_dialog(DLG_CHOICE, &b);
+    char t[HIST_TEXT];
+    snprintf(t, sizeof(t), "Menu: %s", title);
+    add_event("ask", t);
 }
 
 static void hook_confirm(void *arg, const char *title, const char *text, bool yes)
@@ -139,6 +211,9 @@ static void hook_confirm(void *arg, const char *title, const char *text, bool ye
     jb_kstr(&b, "text", text);
     jb_kbool(&b, "yes", yes);
     open_dialog(DLG_CHOICE, &b);
+    char t[HIST_TEXT];
+    snprintf(t, sizeof(t), "Confirm: %s", text);
+    add_event("ask", t);
 }
 
 static void hook_wait_button(void *arg)
@@ -146,29 +221,53 @@ static void hook_wait_button(void *arg)
     jbuf_t b = {0};
     jb_begin(&b, "button");
     open_dialog(DLG_BUTTON, &b);
+    add_event("ask", "Waiting for the button");
+}
+
+// Esito per la pagina: "done" è il dialogo aperto sul display, "result"
+// ciò che resta dopo, fino alla run successiva. Il percorso (relativo a
+// /payloads) serve a "Run again" anche dopo una riconnessione.
+static void outcome(jbuf_t *b, const char *type, const inj_run_t *r)
+{
+    jb_begin(b, type);
+    jb_kstr(b, "name", r->meta->name[0] ? r->meta->name : "Script");
+    jb_kstr(b, "path", r->meta->path + strlen(PAYLOAD_DIR "/"));
+    jb_kbool(b, "ok", r->ok);
+    jb_kbool(b, "aborted", r->aborted && !r->timed_out);
+    jb_kbool(b, "timeout", r->timed_out);
+    jb_kstr(b, "error", r->error);
 }
 
 // L'esito resta sul display finché qualcuno risponde: per la pagina è un
 // dialogo con un solo pulsante.
 static void hook_done(void *arg, const inj_run_t *r)
 {
+    char t[HIST_TEXT];
+    if (r->ok) strlcpy(t, "Done", sizeof(t));
+    else if (r->timed_out) strlcpy(t, "Timeout", sizeof(t));
+    else if (r->aborted) strlcpy(t, "Aborted", sizeof(t));
+    else snprintf(t, sizeof(t), "Error: %s", r->error[0] ? r->error : "failed");
+    add_event("done", t);
+    jbuf_t b = {0};
+    outcome(&b, "result", r);
+    char *result = jb_end(&b);
     lock();
     s_phase = PHASE_DONE; // da qui la pagina non può più chiedere l'abort
+    free(s_result_msg);
+    s_result_msg = result;
     unlock();
-    jbuf_t b = {0};
-    jb_begin(&b, "done");
-    jb_kstr(&b, "name", r->meta->name[0] ? r->meta->name : "Script");
-    jb_kbool(&b, "ok", r->ok);
-    jb_kbool(&b, "aborted", r->aborted && !r->timed_out);
-    jb_kbool(&b, "timeout", r->timed_out);
-    jb_kstr(&b, "error", r->error);
+    b = (jbuf_t){0}; // jb_end ha ceduto il buffer a s_result_msg
+    outcome(&b, "done", r);
     open_dialog(DLG_CHOICE, &b);
 }
 
-static void hook_dialog_end(void *arg)
+static void hook_dialog_end(void *arg, const char *answer)
 {
     jbuf_t b = {0};
     lock();
+    // Approssimato: se pagina e pulsante rispondono insieme, vale il primo
+    // arrivato ma il flag dice pagina
+    bool page = s_page_answered;
     jb_begin(&b, "close");
     jb_kint(&b, "id", s_dialog_id);
     s_dialog_id = 0;
@@ -187,6 +286,11 @@ static void hook_dialog_end(void *arg)
     free(msg);
     if (finished) websrv_send("{\"t\":\"idle\"}");
     unlock();
+    if (answer) {
+        char t[HIST_TEXT];
+        snprintf(t, sizeof(t), "Answer: %s%s", answer, page ? " (from the page)" : "");
+        add_event("answer", t);
+    }
 }
 
 static const inj_hooks_t s_hooks = {
@@ -338,10 +442,13 @@ static void on_message(httpd_req_t *req, char *msg, size_t len)
         if (sscanf(msg + 1, "%d:%d", &id, &v) != 2) return;
         lock();
         // Un id vecchio è una risposta a un dialogo già chiuso dal pulsante
-        if (id == s_dialog_id && s_dialog_kind == DLG_CHOICE) app_post(s_ctx, APP_EV_ANSWER, v);
-        else if (id == s_dialog_id && s_dialog_kind == DLG_BUTTON) {
+        if (id == s_dialog_id && s_dialog_kind == DLG_CHOICE) {
+            app_post(s_ctx, APP_EV_ANSWER, v);
+            s_page_answered = true;
+        } else if (id == s_dialog_id && s_dialog_kind == DLG_BUTTON && v >= 0 && v < 3) {
             static const app_ev_type_t gestures[] = {APP_EV_CLICK, APP_EV_DOUBLE, APP_EV_LONG};
-            if (v >= 0 && v < 3) app_post(s_ctx, gestures[v], 0);
+            app_post(s_ctx, gestures[v], 0);
+            s_page_answered = true;
         }
         unlock();
         return;
@@ -356,16 +463,21 @@ static void on_message(httpd_req_t *req, char *msg, size_t len)
     }
 }
 
-// Alla (ri)connessione: fase, stato dello script e dialogo aperto
+// Alla (ri)connessione: fase, cronologia, stato dello script, dialogo
+// aperto ed esito dell'ultima run. Sotto s_lock: una voce nuova arriva solo
+// dopo, quindi niente doppioni né buchi.
 static void on_auth(httpd_req_t *req)
 {
     static const char *const phases[] = {"idle", "run", "done"};
-    char hello[40];
+    char hello[64];
     lock();
-    snprintf(hello, sizeof(hello), "{\"t\":\"hello\",\"phase\":\"%s\"}", phases[s_phase]);
+    snprintf(hello, sizeof(hello), "{\"t\":\"hello\",\"phase\":\"%s\",\"dropped\":%d}", phases[s_phase],
+             s_hist_dropped);
     websrv_reply(req, hello);
+    for (int i = 0; i < s_hist_n; i++) websrv_reply(req, s_hist[(s_hist_first + i) % HIST_MAX]);
     if (s_state_msg) websrv_reply(req, s_state_msg);
     if (s_dialog_msg) websrv_reply(req, s_dialog_msg);
+    if (s_result_msg) websrv_reply(req, s_result_msg);
     unlock();
 }
 
@@ -383,6 +495,15 @@ static void run_pending(app_ctx_t *ctx, payload_meta_t *m)
     if (!payload_read_meta(path, m)) err = "Cannot read the script";
     else if (m->error[0]) err = m->error;
     if (!err) {
+        // Run nuova: si perdono cronologia ed esito di quella prima
+        lock();
+        hist_clear();
+        free(s_result_msg);
+        s_result_msg = NULL;
+        unlock();
+        s_run_start_us = esp_timer_get_time();
+        s_last_status[0] = 0;
+        add_event("start", m->name[0] ? m->name : path + strlen(PAYLOAD_DIR "/"));
         inj_run_payload(ctx, m, &s_hooks);
         return;
     }
@@ -476,8 +597,12 @@ out:
     free(m);
     free(s_state_msg);
     free(s_dialog_msg);
-    s_state_msg = s_dialog_msg = NULL;
-    if (s_lock) vSemaphoreDelete(s_lock);
+    free(s_result_msg);
+    s_state_msg = s_dialog_msg = s_result_msg = NULL;
+    if (s_lock) {
+        hist_clear();
+        vSemaphoreDelete(s_lock);
+    }
     s_lock = NULL;
 }
 

@@ -11,7 +11,7 @@ Il nome viene dal grillo parlante: un piccolo aiutante da tenere in tasca. Il pr
 | App | Cosa fa | Stato |
 | --- | --- | --- |
 | Injector | Esegue script Lua dalla microSD che digitano testo, premono combinazioni di tasti e muovono il mouse. Ogni script dichiara layout della tastiera e sistema operativo del PC di destinazione. | funzionante |
-| Web Injector | Gli stessi script dell'Injector, scelti e seguiti da una pagina web protetta da PIN: elenco per cartelle, OS e tag, stato, log, dialoghi e abort dal telefono. | funzionante |
+| Web Injector | Gli stessi script dell'Injector, scelti e seguiti da una pagina web protetta da PIN: elenco per cartelle, OS e tag, stato, dialoghi e abort dal telefono; cronologia della run anche dopo una riconnessione, esito che resta in pagina. | funzionante |
 | Web Files | La microSD da una pagina web protetta da PIN: sfoglia, carica, scarica, rinomina, sposta, copia, cestino ed eliminazione definitiva; editor per script Lua (con controllo della sintassi sul dongle) e CSV a tabella. | funzionante |
 | Web HID | Tastiera e touchpad comandati da una pagina web (PC o telefono), protetta da PIN. Layout e OS si scelgono dalla pagina. | funzionante |
 | USB disk | Espone la microSD al PC come disco. | funzionante |

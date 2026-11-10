@@ -369,7 +369,7 @@ static int ui_menu(lua_State *L)
     }
     INJ_HOOK(s_run, menu, title, items, n);
     int sel = app_menu(s_run->ctx, title, items, n, 0);
-    INJ_HOOK(s_run, dialog_end);
+    INJ_HOOK(s_run, dialog_end, sel >= 0 ? items[sel] : NULL);
     inj_redraw(s_run);
     if (sel < 0) luaL_error(L, "aborted");
     lua_pushinteger(L, sel + 1);
@@ -385,7 +385,7 @@ static int ui_confirm(lua_State *L)
     bool def = lua_isnoneornil(L, 2) || lua_toboolean(L, 2);
     INJ_HOOK(s_run, confirm, title, text, def);
     bool yes = app_confirm_timeout(s_run->ctx, title, text, def, (uint32_t)ms);
-    INJ_HOOK(s_run, dialog_end);
+    INJ_HOOK(s_run, dialog_end, s_run->ctx->exit_requested ? NULL : yes ? "Yes" : "No");
     if (s_run->ctx->exit_requested) luaL_error(L, "aborted");
     inj_redraw(s_run);
     lua_pushboolean(L, yes);
@@ -399,17 +399,16 @@ static int ui_wait_button(lua_State *L)
     INJ_HOOK(s_run, wait_button);
     for (;;) {
         if (!inj_pump(s_run)) {
-            INJ_HOOK(s_run, dialog_end);
+            INJ_HOOK(s_run, dialog_end, NULL);
             luaL_error(L, "aborted");
         }
-        if (s_run->clicks != c) lua_pushliteral(L, "click");
-        else if (s_run->doubles != d) lua_pushliteral(L, "double");
-        else if (s_run->longs != l) lua_pushliteral(L, "long");
-        else {
+        const char *g = s_run->clicks != c ? "click" : s_run->doubles != d ? "double" : s_run->longs != l ? "long" : NULL;
+        if (!g) {
             vTaskDelay(pdMS_TO_TICKS(20));
             continue;
         }
-        INJ_HOOK(s_run, dialog_end);
+        INJ_HOOK(s_run, dialog_end, g);
+        lua_pushstring(L, g);
         return 1;
     }
 }
@@ -638,14 +637,35 @@ static struct {
 // Deve stare in una riga della console (devcon LINE_LEN) insieme a "@G<nonce>:"
 #define HOST_TEXT_MAX 256
 
+// Lunghezza della sequenza UTF-8 multibyte valida che inizia in s, 0 se non
+// lo è (ASCII, byte di continuazione isolato, sequenza troncata)
+static int utf8_seq(const unsigned char *s)
+{
+    int n = s[0] >= 0xC2 && s[0] <= 0xDF ? 2 : s[0] >= 0xE0 && s[0] <= 0xEF ? 3 : s[0] >= 0xF0 && s[0] <= 0xF4 ? 4 : 0;
+    for (int i = 1; i < n; i++) {
+        if ((s[i] & 0xC0) != 0x80) return 0;
+    }
+    return n;
+}
+
 // Ripulisce un testo arrivato dal PC: solo caratteri innocui per CSV e per
-// essere ridigitati (A-Z a-z 0-9 . _ : - e spazio), il resto diventa '_'.
-// strict = solo A-Z a-z 0-9 _ - (nomi di file). Spazi ai bordi tolti.
+// essere ridigitati (A-Z a-z 0-9 . _ : - e spazio, più i caratteri UTF-8
+// non ASCII: lettere accentate di un commento in italiano), il resto
+// diventa '_'. strict = solo A-Z a-z 0-9 _ - (nomi di file). Spazi ai bordi
+// tolti. `max` conta i byte; un carattere UTF-8 non viene mai tagliato a metà.
 static void host_clean(char *dst, size_t dstlen, const char *src, size_t max, bool strict)
 {
     size_t n = 0;
     for (; *src && n < max && n < dstlen - 1; src++) {
         unsigned char c = *src;
+        int u = strict || c < 0x80 ? 0 : utf8_seq((const unsigned char *)src);
+        if (u) {
+            if (n + u > max || n + u > dstlen - 1) break;
+            memcpy(dst + n, src, u);
+            n += u;
+            src += u - 1;
+            continue;
+        }
         bool ok = isalnum(c) || c == '_' || c == '-' || (!strict && (c == '.' || c == ':' || c == ' '));
         dst[n++] = ok ? c : '_';
     }
@@ -689,10 +709,15 @@ static int host_expect(lua_State *L)
 
 // host.wait([timeout_ms]) -> codice di uscita, testo; nil allo scadere (default 60 s).
 // Il testo (max 256 caratteri ripuliti) serve a host.get; con host.run è il codice in cifre.
+// host.wait([timeout_ms [, on_click]]): con on_click un click del pulsante
+// restituisce false e lascia l'attesa armata (host.input preme Invio al posto
+// dell'utente e attende di nuovo lo stesso nonce).
 static int host_wait(lua_State *L)
 {
     if (!s_host.pending) return luaL_error(L, "call host.expect() first");
     int64_t end = esp_timer_get_time() + luaL_optinteger(L, 1, 60000) * 1000LL;
+    bool on_click = lua_toboolean(L, 2);
+    uint32_t clicks = s_run->clicks;
     for (;;) {
         if (xSemaphoreTake(s_host.sem, pdMS_TO_TICKS(20)) == pdTRUE) {
             s_host.pending = false;
@@ -703,6 +728,10 @@ static int host_wait(lua_State *L)
         if (!inj_pump(s_run)) {
             s_host.armed = s_host.pending = false;
             luaL_error(L, "aborted");
+        }
+        if (on_click && s_run->clicks != clicks) {
+            lua_pushboolean(L, false);
+            return 1;
         }
         if (esp_timer_get_time() >= end) {
             s_host.armed = s_host.pending = false;

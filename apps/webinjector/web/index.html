@@ -39,7 +39,19 @@ nav{display:flex;gap:6px}nav button{flex:1}
 #run{display:none}
 #bar{height:10px;background:var(--hi);overflow:hidden;display:none}
 #bar div{height:100%;width:0;background:var(--acc)}
-#log{margin:0;max-height:40vh;overflow:auto;font-size:15px;color:var(--dim);white-space:pre-wrap;overflow-wrap:anywhere}
+/* Cronologia: una voce per riga, ora a sinistra */
+#log{margin:0;padding:0;list-style:none;max-height:50vh;overflow:auto;font-size:15px;display:flex;flex-direction:column;gap:2px}
+#log li{display:flex;gap:8px;overflow-wrap:anywhere;min-width:0}
+#log .at{flex:none;color:var(--dim);font-family:var(--f-mono);font-size:13px;padding-top:2px}
+#log .x{min-width:0}
+#log .status{color:var(--dim)}
+#log .ask,#log .answer,#log .start{color:var(--acc)}
+#log .done.ok{color:var(--ok)}#log .done.bad{color:var(--err)}
+#log .note{font-style:italic}
+#result{display:none;padding:8px;border:2px solid var(--hi)}
+#result.ok{border-color:var(--ok)}#result.bad{border-color:var(--err)}
+#result b{display:block}
+#vlast{display:none}
 #ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);padding:16px;align-items:center;justify-content:center;z-index:5}
 #ov .panel{width:min(420px,100%);max-height:90vh;overflow:auto}
 #toast{position:fixed;left:8px;right:8px;bottom:8px;display:none;background:var(--err);color:#000;clip-path:var(--notch);padding:10px;z-index:60}
@@ -61,11 +73,17 @@ html.arcade #bar div{background:repeating-linear-gradient(90deg,var(--acc) 0 8px
     <h2 id="rname"></h2>
     <div id="rstatus" class="desc"></div>
     <div id="bar"><div></div></div>
-    <pre id="log"></pre>
-    <button id="abort" class="danger">Abort</button>
+    <div id="result"></div>
+    <div class="row">
+      <button id="abort" class="danger">Abort</button>
+      <button id="rok" class="main" title="Close the result on the dongle display">OK</button>
+      <button id="rback">Back</button>
+      <button id="ragain">Run again</button>
+    </div>
+    <ol id="log"></ol>
   </section>
   <div id="browse" class="col">
-    <nav><button id="v0" class="on">Folders</button><button id="v1">By OS</button><button id="v2">By tag</button></nav>
+    <nav><button id="v0" class="on">Folders</button><button id="v1">By OS</button><button id="v2">By tag</button><button id="vlast">Last run</button></nav>
     <div id="where"></div>
     <div id="list"></div>
   </div>
@@ -112,22 +130,39 @@ fetch("/cfg").then(r => r.text()).then(t => { if (t === "nopin") { pin = "-"; co
 $("login").onsubmit = e => { e.preventDefault(); pin = $("pin").value.trim(); $("msg").textContent = ""; if (pin) connect(); };
 
 // --- Messaggi del dongle ---
-let entries = [], dialogId = 0;
+// phase: "idle" | "run" | "done" (esito ancora sul display, resultId)
+let entries = [], dialogId = 0, phase = "idle", resultId = 0, lastPath = "", pendingRun = "";
 function handle(m) {
   switch (m.t) {
   case "hello":
-    showRun(m.phase !== "idle");
-    if (m.phase === "idle") { hideDialog(); refresh(); }
+    // Dopo hello arrivano cronologia, stato, dialogo ed esito: si riparte da zero
+    phase = m.phase; resultId = 0; clearRun();
+    if (m.dropped) logItem("note", "", m.dropped + " earlier lines not kept");
+    if (phase !== "idle") showRun(true);
+    else { hideDialog(); if (!runShown()) showRun(false); }
+    refresh(); buttons();
     break;
   case "entry": entries.push(m); break;
   case "end": listDone(m); break;
   case "meta": showCard(m); break;
-  case "state": showRun(true); runState(m); break;
-  case "log": logLine(m.text); break;
-  case "menu": case "confirm": case "button": case "done": showDialog(m); break;
-  case "close": if (m.id === dialogId) hideDialog(); break;
-  case "idle": showRun(false); refresh(); break;
-  case "error": loading = false; toast(m.text); break;
+  case "state": phase = "run"; showRun(true); runState(m); buttons(); break;
+  case "log":
+    if (m.k === "start") { clearRun(); $("rname").textContent = m.text; }
+    logItem(m.k, m.at, m.text);
+    break;
+  case "menu": case "confirm": case "button": showDialog(m); break;
+  // Esito: in pagina, non in una finestra. "done" è anche sul display (OK lo chiude)
+  case "done": phase = "done"; resultId = m.id; showResult(m); break;
+  case "result": showResult(m); break;
+  case "close":
+    if (m.id === dialogId) hideDialog();
+    if (m.id === resultId) { resultId = 0; buttons(); }
+    break;
+  case "idle":
+    phase = "idle"; resultId = 0; refresh(); buttons();
+    if (pendingRun) { tx("r" + pendingRun); pendingRun = ""; }
+    break;
+  case "error": loading = false; pendingRun = ""; toast(m.text); break;
   }
 }
 
@@ -193,7 +228,7 @@ function showCard(m) {
   row.appendChild(back);
   if (!m.error) {
     const run = el("button", "main", "Run");
-    run.onclick = () => { hideDialog(); $("log").textContent = ""; tx("r" + m.path); };
+    run.onclick = () => { hideDialog(); tx("r" + m.path); };
     row.appendChild(run);
   }
   box.appendChild(row);
@@ -201,24 +236,58 @@ function showCard(m) {
   $("ov").style.display = "flex";
 }
 
-// --- Esecuzione ---
+// --- Esecuzione: resta in pagina anche a run finita, fino a Back ---
 function showRun(on) {
   $("run").style.display = on ? "flex" : "none";
   $("browse").style.display = on ? "none" : "flex";
+  // "block" e non "": il CSS lo nasconde finché non c'è una run da rivedere
+  $("vlast").style.display = !on && $("log").children.length ? "block" : "none";
 }
+const runShown = () => $("run").style.display === "flex";
+function clearRun() {
+  $("log").textContent = ""; $("result").style.display = "none"; $("bar").style.display = "none";
+  $("rstatus").textContent = "";
+}
+function buttons() {
+  const ended = phase !== "run" && $("result").style.display !== "none";
+  $("abort").style.display = phase === "run" ? "" : "none";
+  $("rok").style.display = resultId ? "" : "none";
+  $("rback").style.display = $("ragain").style.display = ended ? "" : "none";
+}
+function showResult(m) {
+  lastPath = m.path;
+  const r = $("result"); r.textContent = ""; r.className = m.ok ? "ok" : "bad"; r.style.display = "block";
+  r.appendChild(el("b", "", m.ok ? "Done" : m.aborted ? "Aborted" : m.timeout ? "Timeout" : "Error"));
+  if (!m.ok && !m.aborted && !m.timeout) r.appendChild(el("div", "err", m.error || "failed"));
+  $("rname").textContent = m.name; $("rstatus").textContent = ""; $("bar").style.display = "none";
+  buttons();
+}
+// Chiude l'esito sul display, se c'è ancora
+function dismiss() { if (resultId) tx("a" + resultId + ":0"); }
+$("rok").onclick = dismiss;
+$("rback").onclick = () => { dismiss(); showRun(false); };
+$("ragain").onclick = () => {
+  // Con l'esito ancora sul display il dongle non accetta una run nuova: prima si chiude
+  if (resultId) { pendingRun = lastPath; dismiss(); } else tx("r" + lastPath);
+};
+$("vlast").onclick = () => showRun(true);
 function runState(m) {
   $("rname").textContent = m.name;
   $("rstatus").textContent = m.wait ? "Waiting for the USB host…" : m.status;
   $("bar").style.display = m.max > 0 ? "block" : "none";
   if (m.max > 0) $("bar").firstChild.style.width = Math.max(0, Math.min(100, 100 * m.p / m.max)) + "%";
 }
-function logLine(t) {
+function logItem(k, at, text) {
   const log = $("log");
-  log.textContent += t + "\n";
-  // Ultime 200 righe: lo script può scrivere per ore
-  const lines = log.textContent.split("\n");
-  if (lines.length > 201) log.textContent = lines.slice(-201).join("\n");
-  log.scrollTop = log.scrollHeight;
+  // In fondo segue le voci nuove; se si sta rileggendo più su, resta lì
+  const atEnd = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
+  const li = el("li", k + (k === "done" ? (text === "Done" ? " ok" : " bad") : ""));
+  li.appendChild(el("span", "at", at)); li.appendChild(el("span", "x", text));
+  log.appendChild(li);
+  // Ultime 300 voci: lo script può scrivere per ore
+  while (log.children.length > 300) log.firstChild.remove();
+  if (atEnd) log.scrollTop = log.scrollHeight;
+  if (!runShown()) $("vlast").style.display = "block";
 }
 $("abort").onclick = () => tx("x");
 
@@ -238,16 +307,11 @@ function showDialog(m) {
     const no = el("button", m.yes ? "" : "main", "No"); no.onclick = answer(0);
     const yes = el("button", m.yes ? "main" : "", "Yes"); yes.onclick = answer(1);
     row.appendChild(no); row.appendChild(yes); col.appendChild(row);
-  } else if (m.t === "button") {
+  } else {
     box.appendChild(el("h2", "", "Waiting for the button"));
     const row = el("div", "row");
     ["Click", "Double", "Long"].forEach((n, i) => { const b = el("button", "", n); b.onclick = answer(i); row.appendChild(b); });
     col.appendChild(row);
-  } else {
-    box.appendChild(el("h2", "", m.ok ? "Done" : m.aborted ? "Aborted" : "Error"));
-    box.appendChild(el("div", "info", m.name));
-    if (!m.ok) box.appendChild(el("div", "err", m.timeout ? "timeout" : m.error || "failed"));
-    const ok = el("button", "main", "OK"); ok.onclick = answer(0); col.appendChild(ok);
   }
   box.appendChild(col);
   $("ov").style.display = "flex";

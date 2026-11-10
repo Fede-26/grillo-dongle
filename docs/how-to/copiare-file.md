@@ -28,4 +28,5 @@ Senza la libreria si possono usare direttamente `disk.attach`, `disk.wait_eject`
 - Mentre il disco è collegato il mouse non funziona (`mouse.*` dà errore) e il firmware non scrive sulla scheda: i log sono scaricati prima.
 - `disk.wait_eject` termina anche con un click sul pulsante, utile se l'espulsione non è rilevata.
 - I comandi per copiare ed espellere dipendono dal PC: il dongle non li conosce, li digiti tu con `kb.type`.
+- `pcdisk.run` avvia per prima cosa la shell giusta nel terminale in primo piano (`powershell -NoProfile` su Windows, `exec sh` su Linux e macOS), quindi il corpo funziona anche se è aperto `cmd.exe` o fish. Aprire il terminale resta compito dello script, come nell'esempio sopra.
 - Se lo script finisce o si interrompe con il disco ancora collegato, il dongle lo scollega.

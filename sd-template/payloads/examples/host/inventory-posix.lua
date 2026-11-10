@@ -1,5 +1,5 @@
 --- @name Inventory (Linux / macOS)
---- @desc Logs model, serial and OS of a Linux or macOS machine to /logs/host/<MAC>.csv. Terminal focused.
+--- @desc Types shell commands that read model, serial and OS of a Linux or macOS machine, and logs them to /logs/host/<MAC>.csv. Terminal focused.
 --- @tags host, inventory, linux, mac
 --- @layout it
 --- @os linux

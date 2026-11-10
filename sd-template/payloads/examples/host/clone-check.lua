@@ -1,5 +1,5 @@
 --- @name Clone check (Windows)
---- @desc Logs every identifier that could tell cloned PCs apart. Run it on two PCs and compare the CSVs.
+--- @desc Types PowerShell commands that read the IDs that could tell cloned PCs apart, and logs them. Run it on two PCs, compare the CSVs. PowerShell focused.
 --- @tags host, inventory, windows
 --- @layout it
 --- @os windows
@@ -11,7 +11,9 @@
 -- which rows differ in /logs/host/*.csv: pick that one as your machine id.
 local host = require("host")
 host.shell("powershell")
-host.machine([[$env:COMPUTERNAME]])   -- hostnames can collide: then use host.machine() alone
+-- The default id is the MAC of a physical adapter: two clones write two files.
+-- The host name would not do here: clones share it, and both would write one file.
+host.machine()
 
 local rows = {
     {"mac_all",    [[(Get-NetAdapter -Physical | Sort-Object MacAddress).MacAddress -join ',']]},

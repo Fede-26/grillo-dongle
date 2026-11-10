@@ -1,5 +1,5 @@
 --- @name Inventory (Windows)
---- @desc Logs serial, model, UUID and OS build of the PC to /logs/host/<MAC>.csv on the SD. PowerShell focused.
+--- @desc Types PowerShell commands that read serial, model, UUID and OS build of the PC, and logs them to /logs/host/<MAC>.csv on the SD. PowerShell focused.
 --- @tags host, inventory, windows
 --- @layout it
 --- @os windows

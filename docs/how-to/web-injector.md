@@ -18,19 +18,21 @@ Tieni premuto il pulsante 3 secondi per uscire.
 
 Toccando uno script si apre la scheda (nome, descrizione, layout, OS, tag, timeout); **Run** lo avvia. Un'intestazione non valida mostra l'errore e non si può eseguire.
 
-Durante l'esecuzione la pagina mostra nome, stato (`ui.status`), barra di avanzamento (`ui.progress`) e le righe di `sys.log`; **Abort** interrompe lo script come i 3 secondi di pressione. I dialoghi dello script compaiono anche sulla pagina:
+Durante l'esecuzione la pagina mostra nome, stato (`ui.status`), barra di avanzamento (`ui.progress`) e la cronologia della run, una voce per riga con l'ora (quella del dongle se la conosce, altrimenti il tempo dall'avvio): avvio, righe di `sys.log`, ogni stato nuovo, i dialoghi con la risposta data (e se è arrivata dalla pagina), l'esito. I soli avanzamenti della barra non entrano. Se stai rileggendo più su, la lista non scorre da sola. **Abort** interrompe lo script come i 3 secondi di pressione. I dialoghi dello script compaiono anche sulla pagina:
 
 - `ui.menu`: le voci come pulsanti;
 - `ui.confirm`: No e Yes, con evidenziata la risposta predefinita (il timeout dello script vale anche qui);
 - `ui.wait_button`: Click, Double e Long, come i gesti del pulsante.
 
-Display e pulsante restano attivi: si può rispondere da entrambi, e vale la prima risposta. L'esito resta sul display e sulla pagina finché non si preme OK (o il pulsante).
+Display e pulsante restano attivi: si può rispondere da entrambi, e vale la prima risposta.
+
+Alla fine la pagina resta sull'esecuzione: l'esito (Done, Error con il messaggio, Aborted, Timeout) compare sopra la cronologia. Sul display l'esito resta finché non si preme **OK** sulla pagina o il pulsante del dongle. **Back** torna all'elenco e **Run again** riavvia lo stesso script; entrambi chiudono anche l'esito sul display. Dall'elenco, **Last run** riapre l'ultima esecuzione.
 
 Il pulsante in alto a destra cambia l'aspetto della pagina: **Plain** (sobrio), **Arcade** (pixel art, righe di scansione) e **Retro** (monitor a fosfori ambra). Il browser ricorda la scelta.
 
 ## Se la pagina si chiude
 
-Lo script continua. Quando la pagina si ricollega (da sola, finché il PIN è valido) riceve lo stato attuale e l'eventuale dialogo aperto; le righe di log scritte nel frattempo non vengono ripetute.
+Lo script continua. Quando la pagina si ricollega (da sola, finché il PIN è valido) riceve tutta la cronologia della run, anche le voci scritte a pagina chiusa, lo stato attuale, l'eventuale dialogo aperto e, a run finita, l'esito. Il dongle tiene le ultime 100 voci, ognuna fino a 200 byte; quando ne ha scartate la pagina lo dice in cima. La cronologia dell'ultima run resta finché non ne parte un'altra o non si esce dall'app.
 
 ## Senza PIN
 
