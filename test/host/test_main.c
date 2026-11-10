@@ -6,6 +6,8 @@
 #include "gesture.h"
 #include "hid_layout.h"
 #include "netscan_util.h"
+#include "secrets.h"
+#include <stdlib.h>
 
 static int s_fail;
 #define CHECK(cond, ...)                                  \
@@ -231,11 +233,48 @@ static void test_gestures(void)
     CHECK(run(&g, false, &t, 400) == GESTURE_NONE, "release after exit");
 }
 
+static void expect_mask(const char *src, const char *want)
+{
+    char *m = secrets_mask(src);
+    CHECK(m && strcmp(m, want) == 0, "mask\n  src:  %s\n  got:  %s\n  want: %s", src, m ? m : "(null)", want);
+    // Salvare il testo mascherato senza toccarlo restituisce l'originale
+    char *u = m ? secrets_unmask(m, src) : NULL;
+    CHECK(u && strcmp(u, src) == 0, "unmask round trip\n  got:  %s\n  want: %s", u ? u : "(null)", src);
+    free(m);
+    free(u);
+}
+
+static void test_secrets(void)
+{
+    expect_mask("wifi = { { ssid = \"Casa\", pass = \"segreta\" } }",
+                "wifi = { { ssid = \"Casa\", pass = \"<secret:1>\" } }");
+    expect_mask("hotspot = { pass = 'x\\'y' }, password=[[lunga]]",
+                "hotspot = { pass = \"<secret:1>\" }, password=\"<secret:2>\"");
+    expect_mask("secrets = { admin = \"a}b\", sudo = [==[s]]x]==] }, ui = { name = \"vis\" }",
+                "secrets = { admin = \"<secret:1>\", sudo = \"<secret:2>\" }, ui = { name = \"vis\" }");
+    // Tabelle dentro secrets: anche queste nascoste; dopo la chiusura no
+    expect_mask("secrets = { t = { \"a\" } }, x = \"b\"", "secrets = { t = { \"<secret:1>\" } }, x = \"b\"");
+    // Commenti e confronti non contano
+    expect_mask("-- pass = \"no\"\n--[[ secrets = { \"no\" } ]]\nok = pass == \"no\"",
+                "-- pass = \"no\"\n--[[ secrets = { \"no\" } ]]\nok = pass == \"no\"");
+    expect_mask("ssid = \"pass\", PASS = \"si\"", "ssid = \"pass\", PASS = \"<secret:1>\"");
+    expect_mask("", "");
+
+    // Modifiche dalla pagina: valore nuovo, segnaposto spostato, indice inesistente
+    const char *orig = "wifi = { { ssid = \"A\", pass = \"uno\" }, { ssid = \"B\", pass = \"due\" } }";
+    char *u = secrets_unmask("wifi = { { ssid = \"B\", pass = \"<secret:2>\" }, { ssid = \"C\", pass = \"nuova\" } }, "
+                             "x = '<secret:1>', y = \"<secret:9>\", z = \"<secret:1>x\"", orig);
+    CHECK(u && strcmp(u, "wifi = { { ssid = \"B\", pass = \"due\" }, { ssid = \"C\", pass = \"nuova\" } }, "
+                         "x = \"uno\", y = \"<secret:9>\", z = \"<secret:1>x\"") == 0, "unmask edit: %s", u ? u : "(null)");
+    free(u);
+}
+
 int main(void)
 {
     test_layouts();
     test_gestures();
     test_netscan();
+    test_secrets();
     printf(s_fail ? "%d test falliti\n" : "tutti i test passati\n", s_fail);
     return s_fail != 0;
 }

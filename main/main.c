@@ -69,24 +69,22 @@ static void apply_settings(void)
     clock_set_timezone(config_str("timezone", CLOCK_DEFAULT_TZ));
 }
 
-static volatile bool s_reload_requested;
-
 void main_request_config_reload(void)
 {
-    s_reload_requested = true;
+    app_config_changed();
 }
 
 // Chiamata a ogni uscita da un'app, quando nessun'altra app gira: è l'unico
 // momento in cui ricaricare è sicuro, perché config_load libera le stringhe
 // restituite da config_str che un'app potrebbe ancora usare. Si ricarica se
 // la SD è stata prestata al PC (USB Disk: config.lua può essere cambiato) o
-// su richiesta della console.
+// su richiesta della console o di un'app (app_config_changed).
 static void reload_config(void)
 {
     static uint32_t last_lend;
-    if (storage_lend_count() == last_lend && !s_reload_requested) return;
+    bool changed = appmgr_take_config_changed();
+    if (storage_lend_count() == last_lend && !changed) return;
     last_lend = storage_lend_count();
-    s_reload_requested = false;
     if (storage_state() != STORAGE_MOUNTED) return;
     if (config_load(CONFIG_PATH) == ESP_FAIL) ui_toast("config.lua error", UI_ERR, 3000);
     apply_settings();

@@ -36,6 +36,7 @@ I frame sono limitati in dimensione; un frame vuoto o troppo lungo chiude il can
 | Messaggio | Significato |
 | --- | --- |
 | `ok` | Accesso riuscito. Se un'altra sessione dello stesso indirizzo IP era ancora aperta, il dongle la chiude e la sostituisce. |
+| `T<token>` | Subito dopo `ok`: token della sessione per le rotte HTTP delle app che ne hanno (header `X-Grillo-Token` o parametro `t`). Cambia a ogni accesso; le pagine che non lo usano lo ignorano. |
 | `no` | PIN errato. |
 | `locked` | Troppi tentativi da questo indirizzo: bloccato per 30 secondi dopo 5 PIN errati. |
 | `busy` | Un client con un altro indirizzo è già collegato. Arriva prima del controllo del PIN: durante una sessione non si possono provare PIN. |

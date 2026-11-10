@@ -23,6 +23,8 @@ const char *appmgr_unavailable(const app_desc_t *app);
 // Funzione di pulizia chiamata a ogni uscita da un'app. I servizi (rete,
 // ecc.) la registrano per rilasciare ciò che l'app ha lasciato acceso.
 void appmgr_add_cleanup(void (*fn)(void));
+// true (una volta) se un'app o la console hanno chiamato app_config_changed().
+bool appmgr_take_config_changed(void);
 
 // --- Usate dalla console di debug ---
 

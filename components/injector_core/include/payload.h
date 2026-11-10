@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stdio.h>
 
 #define PAYLOAD_DIR "/sd/payloads"
 #define PAYLOAD_LIB_DIR PAYLOAD_DIR "/lib"
@@ -36,6 +37,9 @@ typedef struct {
 // Salta file nascosti, file AppleDouble ("._*") e la cartella lib.
 int payload_list(const char *dir, payload_entry_t *out, int max);
 bool payload_read_meta(const char *path, payload_meta_t *m);
+// Come payload_read_meta da un file già aperto (anche fmemopen: il file
+// browser controlla l'intestazione di un testo non ancora salvato).
+void payload_parse_meta(FILE *f, const char *path, payload_meta_t *m);
 
 // Come payload_list ma ricorsivo (fino a 3 livelli) e solo script, in un
 // elenco piatto: base delle viste per OS e per tag.

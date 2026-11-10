@@ -318,6 +318,20 @@ void app_post(app_ctx_t *ctx, app_ev_type_t type, int32_t arg)
     if (xQueueSend(ctx->queue, &ev, pdMS_TO_TICKS(100)) != pdTRUE) ctx->exit_lost = true;
 }
 
+static volatile bool s_config_changed;
+
+void app_config_changed(void)
+{
+    s_config_changed = true;
+}
+
+bool appmgr_take_config_changed(void)
+{
+    bool c = s_config_changed;
+    s_config_changed = false;
+    return c;
+}
+
 void app_cancel_exit(app_ctx_t *ctx)
 {
     ctx->exit_requested = false;

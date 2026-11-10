@@ -15,7 +15,8 @@
 //   GET /ws   WebSocket. Il primo messaggio deve essere "p<PIN>"; il server
 //             risponde "ok", "no" (PIN errato), "locked" (troppi errori da
 //             quell'indirizzo, 30 s) o "busy" (sessione aperta da un altro
-//             dispositivo). Dopo "ok" i messaggi di testo vanno all'app.
+//             dispositivo). Dopo "ok" arriva "T<token>" per le rotte HTTP
+//             (websrv_authorized); poi i messaggi di testo vanno all'app.
 //
 // Un solo client autenticato alla volta. Lo stesso indirizzo IP con il PIN
 // giusto subentra alla propria sessione: è il telefono che si riconnette
@@ -49,8 +50,17 @@ esp_err_t websrv_add_page(const char *uri, const char *type, const uint8_t *gz, 
 enum { WEBSRV_GZIP = 1 << 0, WEBSRV_CACHE = 1 << 1 };
 esp_err_t websrv_add_file(const char *uri, const char *type, const uint8_t *data, size_t len, unsigned flags);
 // Rotta aggiuntiva (API, download). Dopo websrv_start. Non è protetta dal
-// PIN: l'handler chiama websrv_is_client() prima di fare qualcosa.
+// PIN: l'handler chiama websrv_authorized() prima di fare qualcosa.
 esp_err_t websrv_add_route(const httpd_uri_t *uri);
+// true se la richiesta porta il token della sessione autenticata, nell'header
+// X-Grillo-Token o nel parametro t (per i link di download). Il token arriva
+// alla pagina subito dopo "ok", nel messaggio "T<token>", e cambia a ogni
+// accesso: basarsi sull'IP non basterebbe, dietro un NAT più dispositivi lo
+// condividono.
+bool websrv_authorized(httpd_req_t *req);
+// Parametro `key` della query string, decodificato (%XX, +). false se manca
+// o non entra in `len`.
+bool websrv_query(httpd_req_t *req, const char *key, char *out, size_t len);
 // true se la richiesta arriva dall'indirizzo del client autenticato.
 bool websrv_is_client(httpd_req_t *req);
 

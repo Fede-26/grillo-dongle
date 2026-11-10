@@ -1,9 +1,11 @@
 #include "websrv.h"
 
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "esp_log.h"
+#include "esp_random.h"
 #include "esp_timer.h"
 #include "led.h"
 #include "lwip/sockets.h"
@@ -20,6 +22,9 @@ static websrv_config_t s_cfg;
 static char s_pin[8];
 static int s_client_fd = -1;
 static char s_client_ip[16];
+// Token delle rotte HTTP del client autenticato (vedi websrv_authorized):
+// nuovo a ogni accesso, vuoto senza sessione.
+static char s_token[33];
 // true durante websrv_stop: interrompe un lavoro lungo in corso nel task
 // httpd, che altrimenti httpd_stop aspetterebbe fino alla fine.
 static volatile bool s_stopping;
@@ -116,6 +121,7 @@ static void client_gone(httpd_handle_t hd, int fd)
         session_end();
         s_client_fd = -1;
         s_client_ip[0] = 0;
+        s_token[0] = 0;
         ESP_LOGI(TAG, "client disconnesso");
     }
     close(fd);
@@ -221,6 +227,12 @@ static void authenticate(httpd_req_t *req, int fd, const char *given)
     strlcpy(s_client_ip, ip, sizeof(s_client_ip));
     ESP_LOGI(TAG, "client autenticato: %s", s_client_ip);
     websrv_reply(req, "ok");
+    uint8_t rnd[16];
+    esp_fill_random(rnd, sizeof(rnd));
+    for (int i = 0; i < 16; i++) snprintf(s_token + 2 * i, 3, "%02x", rnd[i]);
+    char tok[40];
+    snprintf(tok, sizeof(tok), "T%s", s_token);
+    websrv_reply(req, tok);
     if (s_cfg.on_auth) s_cfg.on_auth(req);
 }
 
@@ -252,6 +264,7 @@ esp_err_t websrv_start(const websrv_config_t *cfg)
     strlcpy(s_pin, cfg->pin, sizeof(s_pin));
     s_client_fd = -1;
     s_client_ip[0] = 0;
+    s_token[0] = 0;
     memset(s_peers, 0, sizeof(s_peers));
     s_npages = 0;
     s_stopping = false;
@@ -295,6 +308,47 @@ esp_err_t websrv_add_file(const char *uri, const char *type, const uint8_t *data
     return httpd_register_uri_handler(s_server, &u);
 }
 
+// Decodifica %XX e '+' sul posto
+static void url_decode(char *s)
+{
+    char *o = s;
+    for (; *s; s++) {
+        if (*s == '+') *o++ = ' ';
+        else if (*s == '%' && isxdigit((unsigned char)s[1]) && isxdigit((unsigned char)s[2])) {
+            char hex[3] = {s[1], s[2], 0};
+            *o++ = (char)strtol(hex, NULL, 16);
+            s += 2;
+        } else *o++ = *s;
+    }
+    *o = 0;
+}
+
+bool websrv_query(httpd_req_t *req, const char *key, char *out, size_t len)
+{
+    size_t qlen = httpd_req_get_url_query_len(req);
+    if (qlen == 0) return false;
+    char *q = malloc(qlen + 1);
+    if (!q) return false;
+    bool ok = httpd_req_get_url_query_str(req, q, qlen + 1) == ESP_OK && httpd_query_key_value(q, key, out, len) == ESP_OK;
+    free(q);
+    if (ok) url_decode(out);
+    return ok;
+}
+
+bool websrv_authorized(httpd_req_t *req)
+{
+    char given[sizeof(s_token)] = "";
+    if (httpd_req_get_hdr_value_str(req, "X-Grillo-Token", given, sizeof(given)) != ESP_OK) {
+        websrv_query(req, "t", given, sizeof(given));
+    }
+    // Confronto a tempo costante, come per il PIN
+    size_t n = strlen(s_token);
+    if (n == 0 || strlen(given) != n) return false;
+    uint8_t diff = 0;
+    for (size_t i = 0; i < n; i++) diff |= given[i] ^ s_token[i];
+    return diff == 0;
+}
+
 esp_err_t websrv_add_route(const httpd_uri_t *uri)
 {
     if (!s_server) return ESP_ERR_INVALID_STATE;
@@ -308,5 +362,6 @@ void websrv_stop(void)
     s_server = NULL;
     s_client_fd = -1;
     s_client_ip[0] = 0;
+    s_token[0] = 0;
     session_end();
 }

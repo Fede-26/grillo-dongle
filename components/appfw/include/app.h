@@ -123,6 +123,11 @@ void app_message(app_ctx_t *ctx, const char *title, const char *text, uint32_t c
 // profilo nuovo fallisce TinyUSB resta spento e la SD torna al firmware.
 esp_err_t app_usb_apply(usb_profile_t profile);
 
+// L'app ha cambiato config.lua (es. il file browser web): va ricaricata. Non
+// subito, perché config_load libera le stringhe di config_str che le app
+// stanno usando: lo fa il sistema all'uscita dall'app.
+void app_config_changed(void);
+
 // --- Rete ---
 
 // net_acquire con la scelta della rete affidata all'utente: se più reti

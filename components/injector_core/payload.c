@@ -153,11 +153,18 @@ static const int_key_t s_int_keys[] = {
 
 bool payload_read_meta(const char *path, payload_meta_t *m)
 {
+    FILE *f = fopen(path, "r");
+    if (!f) return false;
+    payload_parse_meta(f, path, m);
+    fclose(f);
+    return true;
+}
+
+void payload_parse_meta(FILE *f, const char *path, payload_meta_t *m)
+{
     memset(m, 0, sizeof(*m));
     strlcpy(m->path, path, sizeof(m->path));
     m->key_delay = m->hold = m->jitter = m->line_delay = m->start_delay = m->timeout = -1;
-    FILE *f = fopen(path, "r");
-    if (!f) return false;
     char line[200];
     int lineno = 0;
     // L'intestazione è il blocco di commenti iniziale: ci si ferma alla
@@ -200,8 +207,6 @@ bool payload_read_meta(const char *path, payload_meta_t *m)
             if (!known) snprintf(m->error, sizeof(m->error), "line %d: unknown @%s", lineno, key);
         }
     }
-    fclose(f);
-    return true;
 }
 
 const char *payload_layout(const payload_entry_t *e)
