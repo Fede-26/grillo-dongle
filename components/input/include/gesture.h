@@ -7,7 +7,9 @@
 // dipendenze da ESP-IDF, così è testabile sul PC (test/host).
 
 #define GESTURE_LONG_MS        600  // da qui il rilascio è "lungo" (conferma)
-#define GESTURE_HOLD_START_MS  1000 // da qui compare l'anello di uscita
+// Da qui compare la barra di uscita. Fino a qui il rilascio vale ancora come
+// "lungo": 1,5 s lasciano tempo a chi rilascia con calma dopo il segnale.
+#define GESTURE_HOLD_START_MS  1500
 #define GESTURE_HOLD_MS        3000 // tenuto fin qui = esci dall'app
 #define GESTURE_DOUBLE_MS      250  // finestra per il secondo click
 

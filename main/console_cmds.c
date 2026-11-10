@@ -71,6 +71,8 @@ static int cmd_btn(int argc, char **argv)
         gesture_t g;
     } map[] = {
         {"click", GESTURE_CLICK}, {"double", GESTURE_DOUBLE}, {"long", GESTURE_LONG}, {"hold", GESTURE_HOLD_EXIT},
+        // Solo il segnale della pressione lunga, senza evento: serve agli screenshot
+        {"armed", GESTURE_LONG_ARMED},
     };
     for (size_t i = 0; argc > 1 && i < sizeof(map) / sizeof(map[0]); i++) {
         if (strcmp(argv[1], map[i].name) == 0) {
@@ -78,7 +80,7 @@ static int cmd_btn(int argc, char **argv)
             return 0;
         }
     }
-    devcon_printf("usage: btn click|double|long|hold\n");
+    devcon_printf("usage: btn click|double|long|hold|armed\n");
     return 1;
 }
 
@@ -216,7 +218,7 @@ void console_cmds_register(void)
     devcon_register("apps", "list apps", cmd_apps);
     devcon_register("launch", "<id> [arg]: start an app", cmd_launch);
     devcon_register("exit", "exit current app (like 3s hold)", cmd_exit);
-    devcon_register("btn", "click|double|long|hold: simulate button", cmd_btn);
+    devcon_register("btn", "click|double|long|hold|armed: simulate button", cmd_btn);
     devcon_register("shot", "dump screen (base64 RGB565)", cmd_shot);
     devcon_register("ls", "[path]: list directory", cmd_ls);
     devcon_register("cat", "<path>: print file (max 16 KB)", cmd_cat);

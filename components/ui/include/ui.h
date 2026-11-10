@@ -64,6 +64,11 @@ uint32_t ui_accent(void);
 void ui_set_indicator(ui_indicator_t ind, uint8_t value);
 // Avanzamento dell'hold di uscita 0..100; 0 = nascosto.
 void ui_set_hold(uint8_t progress);
+// Pressione lunga "armata": la linea sotto la status bar diventa bianca
+// finché il rilascio vale come conferma.
+void ui_set_armed(bool armed);
+// Lampo breve della status bar (pressione lunga riconosciuta).
+void ui_flash_bar(uint32_t ms);
 // Messaggio temporaneo al posto del titolo.
 void ui_toast(const char *msg, uint32_t color, uint32_t ms);
 // Nasconde la status bar (splash) o la ripristina.

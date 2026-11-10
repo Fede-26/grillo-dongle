@@ -141,18 +141,25 @@ static void on_gesture(gesture_t g, uint8_t progress)
     case GESTURE_LONG_ARMED:
         // Segnala che il rilascio adesso vale come "conferma"
         led_flash(0xFFFFFF, 50);
+        ui_set_armed(true);
         break;
     case GESTURE_LONG:
+        ui_set_armed(false);
+        ui_flash_bar(150);
         app_post(c, APP_EV_LONG, 0);
         break;
     case GESTURE_HOLD_PROGRESS:
+        // Da qui il rilascio annulla: la linea bianca non vale più
+        ui_set_armed(false);
         // Nel launcher non c'è niente da cui uscire: niente barra
         if (!in_launcher) ui_set_hold(progress + 1);
         break;
     case GESTURE_HOLD_CANCEL:
+        ui_set_armed(false);
         ui_set_hold(0);
         break;
     case GESTURE_HOLD_EXIT:
+        ui_set_armed(false); // già spenta dall'avanzamento, salvo `btn armed` + `btn hold`
         ui_set_hold(0);
         if (!in_launcher && c->exit_requested) {
             // L'uscita era già stata chiesta e l'app è ancora qui: un task

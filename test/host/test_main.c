@@ -227,6 +227,8 @@ static void test_gestures(void)
     CHECK(run(&g, false, &t, 400) == GESTURE_DOUBLE, "double");
     run(&g, true, &t, 800);
     CHECK(run(&g, false, &t, 400) == GESTURE_LONG, "long");
+    run(&g, true, &t, 1400);
+    CHECK(run(&g, false, &t, 400) == GESTURE_LONG, "long a 1,4 s");
     run(&g, true, &t, 2000);
     CHECK(run(&g, false, &t, 400) == GESTURE_HOLD_CANCEL, "hold cancel");
     CHECK(run(&g, true, &t, 3100) == GESTURE_HOLD_EXIT, "hold exit");

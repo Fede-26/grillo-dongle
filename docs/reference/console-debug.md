@@ -20,7 +20,7 @@ Opzioni: `--port /dev/cu.usbmodemXXX`, `-q` (nasconde le righe di log). Il clien
 | `apps` | Elenca le app. |
 | `launch <id> [arg]` | Avvia un'app (es. `launch injector`). |
 | `exit` | Esce dall'app corrente, come la pressione di 3 secondi. Se l'app non risponde, un secondo `btn hold` riavvia il dongle. |
-| `btn click\|double\|long\|hold` | Simula un gesto del pulsante. |
+| `btn click\|double\|long\|hold\|armed` | Simula un gesto del pulsante. `armed` mostra solo il segnale della pressione lunga (linea bianca), senza evento; la linea resta finché un `btn long` o un `btn hold` non la toglie. |
 | `shot` | Scarica lo schermo (RGB565 in base64). |
 | `ls [percorso]` | Elenca una cartella. |
 | `cat <percorso>` | Stampa un file (massimo 16 KB). |

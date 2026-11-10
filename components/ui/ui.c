@@ -11,6 +11,9 @@ static char s_title[24] = "Grillo";
 static uint32_t s_accent = UI_GRILLO;
 static uint8_t s_ind[UI_IND_COUNT];
 static uint8_t s_hold;
+static bool s_armed;
+static int64_t s_flash_until;
+static esp_timer_handle_t s_flash_timer;
 static char s_toast[40];
 static uint32_t s_toast_color;
 static int64_t s_toast_until;
@@ -62,8 +65,11 @@ static void draw_bar(void)
 {
     if (!s_bar_visible) return;
     gfx_reset_clip();
-    bool toast = s_toast_until > esp_timer_get_time();
+    int64_t now = esp_timer_get_time();
+    bool toast = s_toast_until > now;
     uint32_t bg = toast ? gfx_mix(UI_PANEL, s_toast_color, 70) : UI_PANEL;
+    // Il lampo schiarisce lo sfondo senza coprire il testo, che resta leggibile
+    if (s_flash_until > now) bg = gfx_mix(UI_PANEL, UI_TEXT, 110);
     gfx_fill_rect(0, 0, UI_W, UI_BAR_H, bg);
 
     int x = UI_W - 3;
@@ -103,6 +109,8 @@ static void draw_bar(void)
         int w = UI_W * s_hold / 100;
         gfx_fill_rect(0, UI_BAR_H, UI_W, 2, UI_FAINT);
         gfx_fill_rect(0, UI_BAR_H, w, 2, UI_ERR);
+    } else if (s_armed) {
+        gfx_fill_rect(0, UI_BAR_H, UI_W, 2, UI_TEXT);
     } else {
         gfx_hline(0, UI_BAR_H, UI_W, gfx_mix(UI_BG, s_accent, 160));
     }
@@ -126,6 +134,9 @@ void ui_init(void)
     s_lock = xSemaphoreCreateRecursiveMutex();
     esp_timer_create_args_t t = {.callback = toast_expired, .name = "toast"};
     esp_timer_create(&t, &s_toast_timer);
+    // Callback uguale al toast: a lampo scaduto basta ridisegnare la barra
+    esp_timer_create_args_t f = {.callback = toast_expired, .name = "barflash"};
+    esp_timer_create(&f, &s_flash_timer);
 }
 
 void ui_begin(void)
@@ -189,6 +200,23 @@ void ui_set_hold(uint8_t progress)
 {
     if (s_hold == progress) return;
     s_hold = progress;
+    refresh_bar();
+}
+
+void ui_set_armed(bool armed)
+{
+    if (s_armed == armed) return;
+    s_armed = armed;
+    refresh_bar();
+}
+
+void ui_flash_bar(uint32_t ms)
+{
+    lock();
+    s_flash_until = esp_timer_get_time() + ms * 1000LL;
+    unlock();
+    esp_timer_stop(s_flash_timer);
+    esp_timer_start_once(s_flash_timer, ms * 1000ULL + 1000);
     refresh_bar();
 }
 
