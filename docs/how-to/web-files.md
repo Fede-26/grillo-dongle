@@ -19,7 +19,7 @@ Toccare una cartella la apre; toccare un file di testo (`.lua`, `.csv`, `.txt`, 
 
 - **Edit**: solo per i file di testo fino a 64 KB.
 - **Download**: scarica il file.
-- **Rename / move**: il percorso completo è modificabile, quindi lo stesso campo serve a rinominare e a spostare (`/payloads/a.lua` → `/payloads/old/a.lua`). La cartella di destinazione deve esistere.
+- **Rename / move**: il percorso completo è modificabile, quindi lo stesso campo serve a rinominare e a spostare (`/payloads/a.lua` → `/payloads/old/a.lua`). La cartella di destinazione deve esistere. Si può anche cambiare solo maiuscole e minuscole (`readme.txt` → `README.txt`).
 - **Copy**: solo file.
 - **Move to trash**: vedi [Cestino](#cestino).
 - **Delete permanently**: dopo una conferma; una cartella viene eliminata con tutto il contenuto.
@@ -28,7 +28,7 @@ Toccare una cartella la apre; toccare un file di testo (`.lua`, `.csv`, `.txt`, 
 
 ## Caricare file
 
-**Upload** sceglie uno o più file, che vanno nella cartella aperta; da un computer si possono anche trascinare sulla pagina. La barra mostra l'avanzamento. Se un file con lo stesso nome esiste già, la pagina chiede se sostituirlo. Il file arriva prima in `<nome>.part` e prende il nome vero solo alla fine: se la connessione cade a metà, il file di prima resta intatto.
+**Upload** sceglie uno o più file, che vanno nella cartella aperta; da un computer si possono anche trascinare sulla pagina. La barra mostra l'avanzamento. Se un file con lo stesso nome esiste già, la pagina chiede se sostituirlo. Il file arriva prima in `<nome>.part` e prende il nome vero solo alla fine: se la connessione cade a metà, il file di prima resta intatto. Se a non riuscire è proprio il cambio di nome finale, il contenuto nuovo resta in `<nome>.part`.
 
 La velocità misurata sul dispositivo è di circa 90 KB/s in upload e 130 KB/s in download (file di 1,5 MB, WiFi a −50 dBm): adatta a script, CSV e log, lenta per file grandi. Per copiare molti dati usa [USB disk](copiare-file.md).
 
@@ -48,7 +48,7 @@ I file `.csv` e `.tsv` si aprono come tabella: ogni cella è modificabile, **+ R
 
 ### config.lua
 
-`config.lua` si apre con le password nascoste: al posto dei valori di `pass`/`password` (reti WiFi, hotspot) e di tutto ciò che sta in `secrets` compare `"<secret:1>"`, `"<secret:2>"`, ... Lascia i segnaposto dove sono (o spostali): al salvataggio il dongle rimette i valori veri presi dal file attuale. Per cambiare una password scrivi il valore nuovo al posto del segnaposto. **Show secrets** ricarica il file con i valori in chiaro.
+`config.lua` si apre con le password nascoste: al posto dei valori di `pass`/`password` (reti WiFi, hotspot) e di tutto ciò che sta in `secrets` compare `"<secret:1>"`, `"<secret:2>"`, ... Lascia i segnaposto dove sono (o spostali): al salvataggio il dongle rimette i valori veri presi dal file attuale. Per cambiare una password scrivi il valore nuovo al posto del segnaposto. I numeri seguono l'ordine delle password nel file: dopo il salvataggio l'editor ricarica il testo rinumerato, così anche i salvataggi successivi rimettono i valori giusti. Un segnaposto che il file non ha più (per esempio dopo aver modificato `config.lua` da [USB disk](copiare-file.md) con la pagina aperta) blocca il salvataggio: riapri il file. **Show secrets** ricarica il file con i valori in chiaro.
 
 La configurazione nuova entra in funzione quando esci da Web Files, perché le app in corso stanno usando quella vecchia. Prima di salvarlo la pagina controlla la sintassi e, se trova un errore, chiede conferma: un `config.lua` che non si carica fa comparire "config.lua error" all'uscita e lascia il dongle con i valori predefiniti, quindi senza reti note (crea l'hotspot con la password di default, `grillo-dongle`). Da lì puoi correggere il file con Web Files sull'hotspot. Il controllo trova gli errori di sintassi, non un valore sbagliato.
 

@@ -18,5 +18,6 @@ char *secrets_mask(const char *src);
 // Testo modificato dalla pagina con i segnaposto ancora dentro: ogni
 // letterale "<secret:N>" (in qualunque punto, non solo dove era) torna al
 // letterale N-esimo di `orig` così com'era scritto. Un N che `orig` non ha
-// resta com'è. Da liberare con free(); NULL senza memoria.
-char *secrets_unmask(const char *edited, const char *orig);
+// è un errore: NULL con `*unknown` a true. Da liberare con free(); NULL
+// anche senza memoria.
+char *secrets_unmask(const char *edited, const char *orig, bool *unknown);

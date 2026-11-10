@@ -373,15 +373,18 @@ async function upload(files) {
   if (uploading || !files.length) return;
   uploading = true;
   const total = files.reduce((s, f) => s + f.size, 0); let done = 0, n = 0;
+  // La cartella di partenza, anche se nel frattempo se ne apre un'altra. I
+  // nomi senza maiuscole: per la FAT "A.txt" sostituisce "a.txt"
+  const to = dir, names = new Map(entries.map(e => [e.name.toLowerCase(), e.dir]));
   $("up").style.display = "flex";
   const bar = $("up").querySelector(".prog div");
   for (const f of files) {
     n++;
     $("upname").textContent = `${n}/${files.length} · ${f.name} · ${human(f.size)}`;
-    const path = join(dir, f.name);
+    const path = join(to, f.name);
     let over = false;
-    if (entries.some(e => e.name === f.name)) {
-      if (entries.some(e => e.name === f.name && e.dir)) { toast(f.name + ": a folder has this name", true); done += f.size; continue; }
+    if (names.has(f.name.toLowerCase())) {
+      if (names.get(f.name.toLowerCase())) { toast(f.name + ": a folder has this name", true); done += f.size; continue; }
       if (!(await confirmBox("Replace " + f.name + "?", "A file with this name already exists here.", "Replace", "danger"))) { done += f.size; continue; }
       over = true;
     }
@@ -393,11 +396,13 @@ async function upload(files) {
   uploading = false;
   load();
 }
-document.addEventListener("dragover", e => { if (authed && $("files").style.display === "flex") { e.preventDefault(); $("list").classList.add("drop"); } });
+// Non con l'editor aperto: il file andrebbe nella cartella nascosta sotto
+const canDrop = () => authed && !ed && $("files").style.display === "flex";
+document.addEventListener("dragover", e => { if (canDrop()) { e.preventDefault(); $("list").classList.add("drop"); } });
 document.addEventListener("dragleave", e => { if (!e.relatedTarget) $("list").classList.remove("drop"); });
 document.addEventListener("drop", e => {
   e.preventDefault(); $("list").classList.remove("drop");
-  if (authed && $("files").style.display === "flex") upload([...e.dataTransfer.files].filter(f => f.size || f.type));
+  if (canDrop()) upload([...e.dataTransfer.files].filter(f => f.size || f.type));
 });
 
 // --- Cestino ---
@@ -432,7 +437,7 @@ $("tempty").onclick = async () => {
 // --- Editor ---
 const ta = $("ta"), hl = $("hl"), gut = $("gut");
 let ed = null; // {path, saved, lua, csv, config, revealed}
-const isConfig = p => p === "/config.lua";
+const isConfig = p => /^\/config\.lua$/i.test(p);
 async function openEditor(path, reveal) {
   let text;
   try { text = await (await api("GET", "file", { path, reveal: reveal ? 1 : 0 })).text(); }
@@ -466,8 +471,14 @@ async function closeEditor() {
   ed = null; $("edit").style.display = "none"; load();
 }
 $("eclose").onclick = closeEditor;
+let saving = false;
 async function save() {
+  if (saving) return;
+  saving = true;
   const text = current();
+  // Fermo durante il salvataggio: config.lua viene poi sostituito dal
+  // testo rimascherato, e ciò che si scrive nel frattempo andrebbe perso
+  ta.readOnly = true;
   try {
     // Un config.lua che non si carica lascia il dongle con i valori
     // predefiniti (niente reti note): prima si controlla la sintassi
@@ -477,9 +488,24 @@ async function save() {
           "\nIf you save it, the dongle falls back to the default settings (no known WiFi networks).", "Save anyway", "danger"))) return;
     }
     await put(ed.path, text, true);
-    ed.saved = ed.norm = text; markDirty();
+    ed.saved = ed.norm = text;
+    // I segnaposto sono numerati sull'ordine dei segreti nel file: dopo
+    // aver aggiunto o tolto una rete, quelli rimasti nell'editor
+    // indicherebbero il segreto sbagliato al salvataggio successivo
+    if (ed.config && !ed.revealed) {
+      const fresh = await (await api("GET", "file", { path: ed.path })).text();
+      if (fresh !== text) {
+        // Cursore alla stessa riga e colonna: i segnaposto cambiano la
+        // lunghezza delle righe, non il loro numero
+        const pre = text.slice(0, ta.selectionStart).split("\n"), ln = pre.length - 1, top = ta.scrollTop;
+        const fl = fresh.split("\n"), at = fl.slice(0, ln).reduce((n, l) => n + l.length + 1, 0) + Math.min(pre[ln].length, (fl[ln] || "").length);
+        ta.value = ed.saved = fresh; ta.setSelectionRange(at, at); ta.scrollTop = top; repaint();
+      }
+    }
+    markDirty();
     msg(ed.config ? "Saved. The new config.lua is loaded when you leave Web Files." : "Saved", "ok");
   } catch (e) { msg("Save failed: " + e.message, "err"); }
+  finally { saving = false; ta.readOnly = false; }
 }
 $("esave").onclick = save;
 $("ereveal").onclick = async () => {

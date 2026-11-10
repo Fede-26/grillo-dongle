@@ -87,7 +87,7 @@ I testi non UTF-8 validi (nomi di file, testi degli script) arrivano con `?` al 
 
 ## Web Files
 
-Stesse rotte, stesso accesso e stesse risposte. I percorsi sono relativi alla radice della microSD e iniziano con `/` (`/`, `/payloads/a.lua`); percorsi senza `/` iniziale o con `..`, `\` o `:` ricevono `{"t":"error","text":"Bad path"}`. Il cestino (`/.trash`) si gestisce solo con i comandi del cestino.
+Stesse rotte, stesso accesso e stesse risposte. I percorsi sono relativi alla radice della microSD e iniziano con `/` (`/`, `/payloads/a.lua`); percorsi senza `/` iniziale, con `\` o `:`, o con un nome che finisce con `.` o spazio (`..` compreso: FatFs toglie punti e spazi finali) ricevono `{"t":"error","text":"Bad path"}`. Il cestino (`/.trash`, con qualunque combinazione di maiuscole: la FAT non le distingue) si gestisce solo con i comandi del cestino.
 
 ### Client → dongle
 
@@ -126,7 +126,7 @@ Richiedono il token del messaggio `T<token>`, nell'header `X-Grillo-Token` o nel
 | Rotta | Metodo | Significato |
 | --- | --- | --- |
 | `/api/file?path=&reveal=` | GET | Testo di un file per l'editor, fino a 64 KB (`413` oltre, `404` se manca o è una cartella). `/config.lua` arriva con i segreti sostituiti da `"<secret:N>"`, in chiaro solo con `reveal=1`. |
-| `/api/file?path=&overwrite=` | PUT | Il corpo è il contenuto del file (salvataggio e upload, di qualunque dimensione). Se il file esiste serve `overwrite=1`, altrimenti `409`. Per `/config.lua` i segnaposto `"<secret:N>"` tornano ai valori del file attuale. Risposta `ok`. |
+| `/api/file?path=&overwrite=` | PUT | Il corpo è il contenuto del file (salvataggio e upload, di qualunque dimensione). Se il file esiste serve `overwrite=1`, altrimenti `409`. Per `/config.lua` i segnaposto `"<secret:N>"` tornano ai valori del file attuale; un N che il file non ha riceve `400` e il file non cambia. Risposta `ok`. |
 | `/api/download?path=&t=` | GET | Il file come allegato (`Content-Disposition` con il nome in UTF-8, RFC 5987). |
 | `/api/check?path=` | POST | Il corpo è il testo di uno script (fino a 64 KB), anche non salvato: lo compila senza eseguirlo. Risposta `{"t":"check","ok":...,"error":...,"line":...}`; per gli script in `/payloads` (esclusa `lib`) anche `header` con l'errore dell'intestazione, vuoto se è valida. |
 

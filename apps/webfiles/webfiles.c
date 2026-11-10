@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
@@ -71,15 +72,17 @@ extern const uint8_t page_gz_end[] asm("_binary_webfiles_html_gz_end");
 
 // Percorso mandato dalla pagina, relativo alla radice della SD ("/",
 // "/payloads/a.lua"), in percorso VFS ("/sd", "/sd/payloads/a.lua").
-// Rifiutati "..", "\" (separatore anche per FatFs) e ":" (prefisso di
-// volume FatFs): la pagina non deve uscire dalla scheda.
+// Rifiutati "\" (separatore anche per FatFs), ":" (prefisso di volume
+// FatFs) e i nomi che finiscono con "." o spazio: FatFs toglie punti e
+// spazi finali, quindi "/.trash." sarebbe il cestino senza sembrarlo, e
+// ".." uscirebbe dalla scheda.
 static bool sd_path(const char *rel, char *out, size_t len)
 {
     if (rel[0] != '/' || strpbrk(rel, "\\:")) return false;
     for (const char *p = rel + 1; *p;) {
         const char *q = strchr(p, '/');
         size_t n = q ? (size_t)(q - p) : strlen(p);
-        if (n == 2 && p[0] == '.' && p[1] == '.') return false;
+        if (n > 0 && (p[n - 1] == '.' || p[n - 1] == ' ')) return false;
         if (!q) break;
         p = q + 1;
     }
@@ -95,12 +98,27 @@ static bool is_root(const char *path)
     return strcmp(path, STORAGE_ROOT) == 0;
 }
 
+// La FAT non distingue maiuscole e minuscole: "/.Trash" è il cestino. I
+// confronti tra percorsi qui sotto sono quindi senza maiuscole (solo ASCII:
+// basta per ".trash" e "config.lua").
+
+// true se `path` è `dir` o sta dentro `dir`
+static bool under(const char *path, const char *dir)
+{
+    size_t n = strlen(dir);
+    return strncasecmp(path, dir, n) == 0 && (path[n] == 0 || path[n] == '/');
+}
+
 // true per il cestino e ciò che contiene: si gestisce solo con i comandi
 // del cestino, altrimenti eliminare un elemento lo sposterebbe dentro sé stesso
 static bool in_trash(const char *path)
 {
-    size_t n = strlen(TRASH_DIR);
-    return strncmp(path, TRASH_DIR, n) == 0 && (path[n] == 0 || path[n] == '/');
+    return under(path, TRASH_DIR);
+}
+
+static bool is_config(const char *path)
+{
+    return strcasecmp(path, CONFIG_PATH) == 0;
 }
 
 static bool exists(const char *path)
@@ -125,7 +143,7 @@ static const char *base_name(const char *path)
 // sistema lo ricarica all'uscita dall'app
 static void touched(const char *path)
 {
-    if (strcmp(path, CONFIG_PATH) == 0) app_config_changed();
+    if (is_config(path)) app_config_changed();
 }
 
 // Crea le cartelle mancanti di `path` (lui compreso)
@@ -421,16 +439,19 @@ static const char *write_op(char op, char *arg)
     case 'c': {
         if (!two_paths(arg, a, b) || is_root(a) || is_root(b) || in_trash(a) || in_trash(b)) return "Bad path";
         if (!exists(a)) return "Not found";
-        if (exists(b)) return "Already exists";
+        // Stesso nome con altre maiuscole: per la FAT è lo stesso elemento,
+        // e rename cambia solo come è scritto
+        bool recase = op == 'v' && strcasecmp(a, b) == 0;
+        if (exists(b) && !recase) return "Already exists";
         if (op == 'c') {
             if (is_dir(a)) return "Only files can be copied";
             if (!copy_file(a, b)) return "Copy failed";
             touched(b);
             return NULL;
         }
-        // Una cartella dentro sé stessa la staccherebbe dall'albero
-        size_t n = strlen(a);
-        if (strncmp(b, a, n) == 0 && b[n] == '/') return "Cannot move a folder into itself";
+        // Una cartella dentro sé stessa la staccherebbe dall'albero, e FatFs
+        // non lo controlla: la FAT resterebbe con cluster persi
+        if (under(b, a) && !recase) return "Cannot move a folder into itself";
         if (rename(a, b) != 0) return "Cannot rename";
         touched(a);
         touched(b);
@@ -561,9 +582,11 @@ static bool recv_body(httpd_req_t *req, char *buf, size_t len)
 }
 
 // config.lua dalla pagina arriva con i segnaposto dei segreti al posto dei
-// valori: li rimette prendendoli dal file attuale
-static char *config_body(httpd_req_t *req, size_t *out_len)
+// valori: li rimette prendendoli dal file attuale. NULL in caso di errore,
+// con il messaggio per la pagina in `why`.
+static char *config_body(httpd_req_t *req, size_t *out_len, const char **why)
 {
+    *why = "Cannot read config.lua";
     size_t len = req->content_len;
     char *edited = len <= EDIT_MAX ? malloc(len + 1) : NULL;
     if (!edited || !recv_body(req, edited, len)) {
@@ -572,9 +595,11 @@ static char *config_body(httpd_req_t *req, size_t *out_len)
     }
     edited[len] = 0;
     char *orig = read_text(CONFIG_PATH, EDIT_MAX, NULL);
-    char *text = secrets_unmask(edited, orig ? orig : "");
+    bool unknown = false;
+    char *text = secrets_unmask(edited, orig ? orig : "", &unknown);
     free(orig);
     free(edited);
+    if (unknown) *why = "A <secret:N> placeholder does not match config.lua any more: reopen the file";
     if (text) *out_len = strlen(text);
     return text;
 }
@@ -590,7 +615,7 @@ static esp_err_t file_get(httpd_req_t *req)
     char *text = read_text(path, EDIT_MAX, &len);
     if (!text) return send_status(req, "500 Internal Server Error", "Cannot read the file");
     // I segreti in chiaro solo su richiesta esplicita (pulsante della pagina)
-    if (strcmp(path, CONFIG_PATH) == 0 && !query_flag(req, "reveal")) {
+    if (is_config(path) && !query_flag(req, "reveal")) {
         char *masked = secrets_mask(text);
         free(text);
         if (!masked) return send_status(req, "500 Internal Server Error", "Out of memory");
@@ -617,11 +642,12 @@ static esp_err_t file_put(httpd_req_t *req)
     bool there = stat(path, &st) == 0;
     if (there && S_ISDIR(st.st_mode)) return send_status(req, "409 Conflict", "A folder with this name exists");
     if (there && !query_flag(req, "overwrite")) return send_status(req, "409 Conflict", "Already exists");
-    bool config = strcmp(path, CONFIG_PATH) == 0;
+    bool config = is_config(path);
     // Prima del lock: config_body legge dalla rete, e l'unmask serve intero
     size_t text_len = 0;
-    char *text = config ? config_body(req, &text_len) : NULL;
-    if (config && !text) return send_status(req, "400 Bad Request", "Cannot read config.lua");
+    const char *why = NULL;
+    char *text = config ? config_body(req, &text_len, &why) : NULL;
+    if (config && !text) return send_status(req, "400 Bad Request", why);
     char *buf = config ? NULL : malloc(CHUNK);
     if (!config && !buf) return send_status(req, "500 Internal Server Error", "Out of memory");
     if (!storage_begin_write()) {
@@ -641,14 +667,16 @@ static esp_err_t file_put(httpd_req_t *req)
     }
     if (f && fclose(f) != 0) ok = false;
     // FAT non sostituisce con rename: prima si toglie il vecchio
-    if (ok && there) ok = unlink(path) == 0;
+    bool gone = false;
+    if (ok && there) ok = gone = unlink(path) == 0;
     if (ok) ok = rename(tmp, path) == 0;
-    if (!ok) unlink(tmp);
+    // Vecchio già eliminato e rename fallito: il contenuto nuovo resta in .part
+    if (!ok && !gone) unlink(tmp);
     if (ok) touched(path);
     storage_end_write();
     free(text);
     free(buf);
-    if (!ok) return send_status(req, "500 Internal Server Error", "Write failed");
+    if (!ok) return send_status(req, "500 Internal Server Error", gone ? "Rename failed: the file is saved as .part" : "Write failed");
     return send_status(req, "200 OK", "ok");
 }
 
@@ -741,10 +769,8 @@ static esp_err_t check_post(httpd_req_t *req)
     }
     // Intestazione "--- @chiave": solo per gli script dell'injector, non
     // per le librerie né per config.lua
-    size_t pl = strlen(PAYLOAD_DIR "/");
     size_t n = strlen(path);
-    if (strncmp(path, PAYLOAD_DIR "/", pl) == 0 && strncmp(path, PAYLOAD_LIB_DIR "/", pl + 4) != 0 && n > 4 &&
-        strcmp(path + n - 4, ".lua") == 0) {
+    if (under(path, PAYLOAD_DIR) && !under(path, PAYLOAD_LIB_DIR) && n > 4 && strcasecmp(path + n - 4, ".lua") == 0) {
         payload_meta_t *m = malloc(sizeof(*m));
         FILE *f = m ? fmemopen(text, len, "r") : NULL;
         if (f) {

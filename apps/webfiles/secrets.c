@@ -181,6 +181,7 @@ typedef struct {
     buf_t b;
     const char *src;
     const list_t *orig;
+    bool unknown;
 } unmask_t;
 
 static void unmask_string(void *arg, const char *start, size_t len, bool secret)
@@ -195,14 +196,19 @@ static void unmask_string(void *arg, const char *start, size_t len, bool secret)
     char ph[24];
     int phl = snprintf(ph, sizeof(ph), "%c<secret:%d>%c", start[0], idx, start[0]);
     if ((size_t)phl != len || memcmp(ph, start, len) != 0) return;
-    if (idx < 1 || idx > u->orig->n) return;
+    // Senza valore il segnaposto finirebbe nel file come password
+    if (idx < 1 || idx > u->orig->n) {
+        u->unknown = true;
+        return;
+    }
     put(&u->b, u->src, (size_t)(start - u->src));
     put(&u->b, u->orig->start[idx - 1], u->orig->len[idx - 1]);
     u->src = start + len;
 }
 
-char *secrets_unmask(const char *edited, const char *orig)
+char *secrets_unmask(const char *edited, const char *orig, bool *unknown)
 {
+    *unknown = false;
     list_t *l = calloc(1, sizeof(*l));
     if (!l) return NULL;
     scan(orig, collect, l);
@@ -210,5 +216,9 @@ char *secrets_unmask(const char *edited, const char *orig)
     scan(edited, unmask_string, &u);
     put(&u.b, u.src, strlen(u.src));
     free(l);
+    if (u.unknown) {
+        *unknown = true;
+        u.b.fail = true;
+    }
     return finish(&u.b);
 }

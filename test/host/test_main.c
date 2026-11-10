@@ -238,7 +238,8 @@ static void expect_mask(const char *src, const char *want)
     char *m = secrets_mask(src);
     CHECK(m && strcmp(m, want) == 0, "mask\n  src:  %s\n  got:  %s\n  want: %s", src, m ? m : "(null)", want);
     // Salvare il testo mascherato senza toccarlo restituisce l'originale
-    char *u = m ? secrets_unmask(m, src) : NULL;
+    bool unknown;
+    char *u = m ? secrets_unmask(m, src, &unknown) : NULL;
     CHECK(u && strcmp(u, src) == 0, "unmask round trip\n  got:  %s\n  want: %s", u ? u : "(null)", src);
     free(m);
     free(u);
@@ -260,12 +261,20 @@ static void test_secrets(void)
     expect_mask("ssid = \"pass\", PASS = \"si\"", "ssid = \"pass\", PASS = \"<secret:1>\"");
     expect_mask("", "");
 
-    // Modifiche dalla pagina: valore nuovo, segnaposto spostato, indice inesistente
+    // Modifiche dalla pagina: valore nuovo, segnaposto spostato, testo che
+    // solo somiglia a un segnaposto
     const char *orig = "wifi = { { ssid = \"A\", pass = \"uno\" }, { ssid = \"B\", pass = \"due\" } }";
+    bool unknown;
     char *u = secrets_unmask("wifi = { { ssid = \"B\", pass = \"<secret:2>\" }, { ssid = \"C\", pass = \"nuova\" } }, "
-                             "x = '<secret:1>', y = \"<secret:9>\", z = \"<secret:1>x\"", orig);
-    CHECK(u && strcmp(u, "wifi = { { ssid = \"B\", pass = \"due\" }, { ssid = \"C\", pass = \"nuova\" } }, "
-                         "x = \"uno\", y = \"<secret:9>\", z = \"<secret:1>x\"") == 0, "unmask edit: %s", u ? u : "(null)");
+                             "x = '<secret:1>', z = \"<secret:1>x\"", orig, &unknown);
+    CHECK(u && !unknown && strcmp(u, "wifi = { { ssid = \"B\", pass = \"due\" }, { ssid = \"C\", pass = \"nuova\" } }, "
+                         "x = \"uno\", z = \"<secret:1>x\"") == 0, "unmask edit: %s", u ? u : "(null)");
+    free(u);
+
+    // Indice che il file non ha (editor rimasto ai numeri di un file
+    // precedente): errore, non il segnaposto scritto come password
+    u = secrets_unmask("pass = \"<secret:9>\"", orig, &unknown);
+    CHECK(!u && unknown, "unmask unknown index: %s", u ? u : "(null)");
     free(u);
 }
 
