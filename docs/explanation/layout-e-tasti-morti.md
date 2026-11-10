@@ -11,7 +11,7 @@ Il layout da solo non basta. Lo stesso layout produce caratteri diversi secondo 
 Per ogni layout (`us`, `it`, `colemak`) `tools/gen_layouts.py` genera:
 
 - una tabella principale (livelli: normale, Shift, AltGr, AltGr+Shift) valida per tutti i sistemi;
-- per ciascun sistema, una tabella supplementare di caratteri (`linux`, `mac`, `win`) che sovrascrive o integra la principale;
+- per ciascun sistema, una tabella supplementare di caratteri (`linux`, `mac`, `win`) che integra la principale: il generatore vi mette solo caratteri che la principale non ha. Fa eccezione `linux_extra`, scritta a mano, che può anche sovrascrivere;
 - per ciascun sistema, un elenco di sequenze con tasto morto: un tasto che non produce nulla da solo, seguito dalla lettera da accentare (es. AltGr+r poi `a` = `à` sul Colemak di Linux).
 
 `hid_translate` cerca prima nella tabella del sistema, poi in quella principale, poi nelle sequenze con tasto morto; se non trova nulla usa un ripiego, quando esiste.

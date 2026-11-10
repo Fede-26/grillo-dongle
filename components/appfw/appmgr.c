@@ -230,6 +230,9 @@ static void run_app(const app_desc_t *app, const char *arg)
     // Pulizia d'ufficio delle risorse condivise
     usbdev_apply(USB_PROFILE_NONE, NULL);
     if (storage_state() == STORAGE_LENT) storage_reclaim();
+    // Condivisione in sola lettura (HID + disco) lasciata attiva: senza,
+    // syslog non scriveva più sulla SD fino al riavvio.
+    storage_unshare();
     net_release_all();
     for (int i = 0; i < s_ncleanups; i++) s_cleanups[i]();
     led_clear(LED_LAYER_APP);

@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/images/logo.png" width="128" alt="Logo di Grillo: un grillo in pixel art verde"></p>
+
 # Grillo
 
 Firmware modulare ad app per il LilyGO T-Dongle-S3 (variante con LCD 160x80, senza PSRAM).
@@ -13,7 +15,19 @@ Il nome viene dal grillo parlante: un piccolo aiutante da tenere in tasca. Il pr
 | USB disk | Espone la microSD al PC come disco. | funzionante |
 | Netscan | Scanner di rete: reti WiFi, controlli di connettività, host della LAN con produttore e nome. Nessun port scan. Salva i risultati in CSV. | funzionante |
 
-Il pulsante del dongle è l'unico ingresso: click, doppio click, pressione lunga; tenuto premuto 3 secondi esce da qualunque app.
+Il pulsante del dongle è l'unico ingresso: click, doppio click, pressione lunga; tenuto premuto 3 secondi esce da qualunque app. Ogni app ha un colore, usato dall'interfaccia e dal LED.
+
+## Schermate
+
+Catture dal display (160x80, ingrandite 4 volte) fatte con `tools/grillo.py shot`.
+
+| | |
+| --- | --- |
+| ![Launcher: Injector](docs/images/launcher-injector.png) | ![Launcher: Web HID](docs/images/launcher-webhid.png) |
+| ![Launcher: Netscan](docs/images/launcher-netscan.png) | ![Launcher: USB Disk](docs/images/launcher-usbdisk.png) |
+| ![Injector: elenco degli script](docs/images/injector-list.png) | ![Injector: scheda dello script, la descrizione scorre da sola](docs/images/injector-card.png) |
+| ![Netscan: menu](docs/images/netscan-menu.png) | ![USB Disk: SD collegata al PC](docs/images/usbdisk-connected.png) |
+| ![USB Disk: conferma di uscita senza espulsione](docs/images/usbdisk-confirm.png) | |
 
 ## Requisiti
 
@@ -54,7 +68,7 @@ La documentazione in `docs/` segue il modello [Diátaxis](https://diataxis.fr/).
 ## Struttura del repository
 
 ```
-apps/         le app (injector, webhid, usbdisk, launcher)
+apps/         le app (injector, webhid, netscan, usbdisk, launcher)
 components/   i servizi condivisi (hid, usbdev, net, display, gfx, ui, storage, config, luart, ...)
 main/         avvio, tabella delle app, console di debug
 sd-template/  contenuto iniziale della microSD (config.lua, esempi, libreria)

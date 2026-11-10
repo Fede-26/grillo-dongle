@@ -9,9 +9,10 @@ Una volta collegato, il PC lo tratta come una tastiera e un mouse fidati. Può e
 ## Rischi accettati
 
 - **Password in chiaro sulla microSD.** `secrets` in `config.lua` non è cifrato. `kb.type_secret` evita solo che uno script le legga come stringa. Chi ha la scheda le legge. Usalo per credenziali di installazione che accetti di esporre così.
-- **Web HID senza PIN.** `webhid.pin = false` lascia che chiunque sulla stessa rete (o sull'hotspot) comandi il PC. Il PIN è comunque di 6 cifre, mostrato sul display, con blocco di 30 secondi dopo 5 errori, e il canale WebSocket non è cifrato (niente HTTPS): chi osserva la rete locale vede i comandi e il PIN. Per questo l'accesso è pensato per reti fidate.
+- **Web HID senza PIN.** `webhid.pin = false` lascia che chiunque sulla stessa rete (o sull'hotspot) comandi il PC. Il PIN è comunque di 6 cifre, mostrato sul display, con blocco di 30 secondi dopo 5 errori dallo stesso indirizzo IP (il blocco è per indirizzo: un altro host non può tenere fuori il proprietario sbagliando apposta). Il canale WebSocket non è cifrato (niente HTTPS): chi osserva la rete locale vede i comandi e il PIN. Per questo l'accesso è pensato per reti fidate.
 - **Hotspot con password di default.** Se non imposti `hotspot.pass` vale `grillo-dongle`, nota a chiunque legga questa documentazione.
-- **Un solo client** per volta sul Web HID: chi si collega per primo lo tiene.
+- **Un solo client** per volta sul Web HID: chi si collega per primo lo tiene. Un altro indirizzo riceve `busy` prima ancora del controllo del PIN, quindi durante una sessione non si possono provare PIN. Lo stesso indirizzo con il PIN giusto subentra alla sessione (serve al telefono che esce dallo standby): chi condivide l'IP del client, per esempio dietro lo stesso NAT, e conosce il PIN può prenderne il posto.
+- **Console di debug attiva anche nelle build di release, per ora.** Con `CONFIG_GRILLO_USB_DEBUG_CDC=y` (il default, tenuto durante lo sviluppo) la porta seriale CDC accetta i comandi della [console](../reference/console-debug.md), compresi `cat` e `ls`. Chi controlla il PC a cui il dongle è collegato può quindi leggere `config.lua`, password di `secrets` comprese. Una build di release senza console è prevista prima della versione 0.1.0.
 
 ## Cosa limita uno script Lua
 
@@ -23,10 +24,10 @@ Netscan emette traffico sulla rete a cui è collegato: richieste ARP a ogni indi
 
 SSID e nomi host li sceglie chi è sulla rete: sul display vengono ripuliti (solo ASCII stampabile) e nei CSV in `/scans/` i valori non numerici che iniziano con `=`, `+`, `-` o `@` hanno un apice davanti, così non diventano formule aprendoli con un foglio di calcolo. I CSV contengono i MAC e i nomi degli host della rete scansionata: trattali come dati del cliente.
 
-## Segnalare un problema
-
-Il repository è privato. Segnala problemi direttamente a chi lo gestisce.
-
 ## Il canale di ritorno
 
 Il canale `host` permette al PC di rispondere al dongle sulla seriale CDC. È limitato di proposito: il dongle accetta una sola forma di riga (`@G<nonce>:<codice>`), con il nonce che lo script ha atteso, e scarta tutto il resto; lo script riceve solo un codice di uscita numerico. Lo script può ricevere un piccolo valore di inventario (`host.get`, `host.log`): al massimo 256 caratteri, con tutto ciò che non è lettera, cifra, `. _ : -` o spazio sostituito da `_`. Il valore resta nella VM dello script, che non ha rete, e nei log in `/logs/host/`: il firmware compone il nome del file da un id ripulito, con tetto di 64 file e 256 KB ciascuno. Non esiste un modo per scaricare file o l'output completo di un comando. Il comando che scrive la risposta è digitato dallo script, quindi dipende da ciò che lo script fa già sul PC: il canale non aggiunge permessi.
+
+## Segnalare un problema
+
+Il repository è privato. Segnala problemi direttamente a chi lo gestisce.

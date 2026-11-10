@@ -135,12 +135,16 @@ static void key_arg(lua_State *L, int idx, uint8_t *key, uint8_t *mods)
     const char *name = luaL_checkstring(L, idx);
     *key = *mods = 0;
     if (hid_key_by_name(name, key, mods)) return;
-    // Un solo carattere UTF-8: lo si cerca nel layout corrente
+    // Un solo carattere UTF-8 (1..4 byte, es. "€"): lo si cerca nel layout corrente
     const unsigned char *p = (const unsigned char *)name;
-    uint32_t cp = p[0];
     size_t len = strlen(name);
-    if (len == 2 && (p[0] & 0xE0) == 0xC0) cp = ((p[0] & 0x1F) << 6) | (p[1] & 0x3F);
-    else if (len != 1) luaL_argerror(L, idx, "unknown key name");
+    int n = p[0] < 0x80 ? 1 : (p[0] & 0xE0) == 0xC0 ? 2 : (p[0] & 0xF0) == 0xE0 ? 3 : (p[0] & 0xF8) == 0xF0 ? 4 : 0;
+    if (n == 0 || (size_t)n != len) luaL_argerror(L, idx, "unknown key name");
+    uint32_t cp = n == 1 ? p[0] : p[0] & (0x7F >> n);
+    for (int i = 1; i < n; i++) {
+        if ((p[i] & 0xC0) != 0x80) luaL_argerror(L, idx, "unknown key name");
+        cp = (cp << 6) | (p[i] & 0x3F);
+    }
     // Lettera maiuscola in una combinazione: si intende il tasto, non lo Shift
     if (cp >= 'A' && cp <= 'Z') cp += 'a' - 'A';
     if (!hid_char_key(cp, key, mods)) luaL_argerror(L, idx, "key not in layout");

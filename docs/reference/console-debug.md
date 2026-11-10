@@ -19,12 +19,12 @@ Opzioni: `--port /dev/cu.usbmodemXXX`, `-q` (nasconde le righe di log). Il clien
 | `state` | App corrente, profilo USB, SD, heap. |
 | `apps` | Elenca le app. |
 | `launch <id> [arg]` | Avvia un'app (es. `launch injector`). |
-| `exit` | Esce dall'app corrente, come la pressione di 3 secondi. |
+| `exit` | Esce dall'app corrente, come la pressione di 3 secondi. Se l'app non risponde, un secondo `btn hold` riavvia il dongle. |
 | `btn click\|double\|long\|hold` | Simula un gesto del pulsante. |
 | `shot` | Scarica lo schermo (RGB565 in base64). |
 | `ls [percorso]` | Elenca una cartella. |
 | `cat <percorso>` | Stampa un file (massimo 16 KB). |
-| `config reload \| get <chiave>` | Ricarica `config.lua` o legge una chiave. |
+| `config reload \| get <chiave>` | Ricarica `config.lua` (solo dal launcher: con un'app aperta risponde `exit the app first`; gli errori compaiono sul display e in `state`) o legge una chiave. |
 | `log <tag\|*> <livello>` | Imposta il livello di log (`none`, `error`, `warn`, `info`, `debug`, `verbose`). |
 | `usb none\|hid\|hiddisk\|msc` | Cambia il profilo USB. |
 | `reboot` | Riavvia il dongle. |

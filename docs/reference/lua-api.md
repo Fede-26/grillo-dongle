@@ -9,11 +9,12 @@ Lo script gira in una VM Lua 5.4 sandbox, un solo script alla volta.
 - Librerie standard presenti: `base`, `coroutine`, `table`, `string`, `math`, `utf8`. Mancano `io`, `os`, `package`, `debug`; `dofile` e `loadfile` sono rimossi.
 - `print(...)` scrive nel log (livello info), non sul display.
 - Memoria massima della VM: 96 KB. Oltre il limite lo script termina con un errore di memoria.
-- Si può interrompere tenendo premuto il pulsante 3 secondi: la prossima chiamata a una funzione del dongle (o 1000 istruzioni Lua) solleva l'errore `aborted`.
-- È accettato solo codice sorgente testuale, mai bytecode precompilato.
+- Si può interrompere tenendo premuto il pulsante 3 secondi: la prossima chiamata a una funzione del dongle (o 1000 istruzioni Lua) solleva l'errore `aborted`, e un `ui.menu` o `ui.confirm` aperto si chiude. Lo stesso vale per `@timeout`. Dopo l'interruzione il display mostra "Aborted" con il punto in cui lo script si è fermato; si resta nell'injector.
+- È accettato solo codice sorgente testuale, mai bytecode precompilato: anche `load()` accetta solo testo, e `string.dump` non esiste.
+- Le chiamate annidate che passano dal C (`pcall` dentro `pcall`, callback di `string.gsub` e `table.sort`, metamethod, `require`) hanno un limite di stack: oltre, lo script termina con `C stack overflow (too many nested calls)` invece di bloccare il dongle. Con `pcall` annidati il limite è circa 24 livelli (misurato il 2026-11-10). La ricorsione Lua pura non ha questo limite, solo quello della memoria.
 - Prima dell'esecuzione il dongle attende che il PC abbia montato la tastiera, poi attende `start_delay`.
 
-Un errore Lua non gestito termina lo script e viene mostrato sul display con nome file e riga.
+Un errore Lua non gestito termina lo script e viene mostrato sul display con nome file e riga; se il messaggio è lungo scorre da solo. Il messaggio va anche nel log sulla microSD (`/logs/grillo.log`).
 
 ## `kb`: tastiera
 
@@ -29,11 +30,11 @@ kb.type("Hello ${who}!\n", {who = "Grillo"})
 
 ### `kb.type_secret(nome)`
 
-Digita la stringa `secrets.nome` di `config.lua` senza mai passarla per una stringa Lua: lo script non può stamparla né salvarla. Errore se la chiave non esiste. Vedi [Digitare una password](../how-to/password.md).
+Digita la stringa `secrets.nome` di `config.lua` senza mai passarla per una stringa Lua: lo script non può leggerla come valore. Errore se la chiave non esiste, oppure `secret 'nome' has a character not typeable with layout NOME` (il messaggio non dice quale carattere, per non rivelarlo). Vedi [Digitare una password](../how-to/password.md).
 
 ### `kb.tap(tasto [, n])`
 
-Preme e rilascia un tasto `n` volte (default 1). `tasto` è un nome della tabella sotto oppure un singolo carattere del layout corrente (`"r"`). Una lettera maiuscola indica il tasto, non lo Shift.
+Preme e rilascia un tasto `n` volte (default 1). `tasto` è un nome della tabella sotto oppure un singolo carattere UTF-8 del layout corrente (`"r"`, `"€"`). Una lettera maiuscola indica il tasto, non lo Shift.
 
 ### `kb.press(tasto, ...)`
 
@@ -82,7 +83,7 @@ Non disponibile mentre il disco USB è collegato (`disk.attach`): errore `no mou
 
 ## `ui`: display e pulsante
 
-- `ui.status(testo)`: riga di stato nella schermata dell'esecuzione.
+- `ui.status(testo)`: stato nella schermata dell'esecuzione, su due righe; un testo più lungo scorre da solo.
 - `ui.progress(valore [, massimo])`: barra di avanzamento, massimo 100 se omesso.
 - `ui.menu(titolo, voci)`: menu a lista (da 1 a 32 stringhe); click = giù, doppio click = su, pressione lunga = scegli. Restituisce l'indice scelto (da 1). Se l'utente esce (hold 3 s) lo script termina con `aborted`.
 - `ui.confirm(testo [, predefinito_sì [, timeout_ms]])`: domanda sì/no, restituisce un booleano. Predefinito `true`. Con `timeout_ms` (fino a 3600000) il display mostra i secondi residui e, se non c'è alcun gesto entro la scadenza, la risposta è quella predefinita: serve con l'autorun, dove nessuno potrebbe premere nulla. Un click disattiva la scadenza.
@@ -91,8 +92,8 @@ Non disponibile mentre il disco USB è collegato (`disk.attach`): errore `no mou
 ## `sys`
 
 - `sys.sleep(ms)`: pausa interrompibile.
-- `sys.wait_host([ms])`: attende che il PC abbia montato la tastiera; `true`, oppure `false` allo scadere (default: all'infinito).
-- `sys.log(testo)`: scrive nel log, anche sulla microSD.
+- `sys.wait_host([ms])`: attende che il PC abbia montato la tastiera; `true`, oppure `false` allo scadere (default: 24 ore, in pratica finché non si esce con 3 secondi di pressione).
+- `sys.log(testo)`: scrive nel log, anche sulla microSD (`/logs/grillo.log`, tag `script`).
 - `sys.serial()`: numero di serie USB del dongle (12 cifre esadecimali, il MAC); identifica la sua porta seriale sul PC.
 
 ## `led`
@@ -106,7 +107,7 @@ Non disponibile mentre il disco USB è collegato (`disk.attach`): errore `no mou
 Solo sotto `/payloads` e `/data` della microSD; ogni altro percorso, o uno che contiene `..`, è un errore.
 
 - `fs.read(percorso)`: contenuto del file come stringa, oppure `nil, "cannot open"`. File oltre 16 KB: errore.
-- `fs.lines(percorso)`: iteratore sulle righe (senza `\r\n`, righe fino a 255 caratteri). Errore se il file non si apre.
+- `fs.lines(percorso)`: iteratore sulle righe (senza `\r\n`). Una riga oltre 255 caratteri arriva divisa in più pezzi consecutivi, senza errore. Errore se il file non si apre.
 - `fs.list(percorso)`: tabella dei nomi (file nascosti esclusi), oppure `nil, "cannot open"`.
 - `fs.exists(percorso)`: booleano.
 
@@ -173,7 +174,7 @@ Legge un valore di `config.lua` come stringa (es. `cfg("keyboard.layout")`). Res
 
 ## `require(nome)`
 
-Carica `/payloads/lib/nome.lua` una volta sola (le chiamate successive restituiscono lo stesso valore). `nome` può contenere solo lettere, cifre, `_` e `-`.
+Carica `/payloads/lib/nome.lua` una volta sola (le chiamate successive restituiscono lo stesso valore). `nome` può contenere solo lettere, cifre, `_` e `-`. Due moduli che si richiedono a vicenda danno l'errore `require loop on module 'nome'`.
 
 ```lua
 local common = require("common")

@@ -8,6 +8,7 @@ Grillo è un firmware ESP-IDF v6.1 (C, FreeRTOS) per un dispositivo con vincoli 
 apps/         injector, webhid, netscan, usbdisk, launcher        <- una per attività
 components/   appfw  ui  gfx  display  input  led         <- interfaccia
               hid  usbdev  net  storage  config  luart    <- servizi
+              devcon  syslog  board  lua                  <- console, log, pin, interprete
 main/         avvio, tabella app, console di debug
 ```
 
@@ -17,7 +18,9 @@ Le app dipendono dai servizi, mai l'una dall'altra. Per questo ogni app può spa
 
 Un'app è un descrittore statico (`app_desc_t`) con una funzione `run()` in un task dedicato. Il gestore (`appmgr`) avvia un'app alla volta e, quando `run()` ritorna, rilascia d'ufficio tutte le risorse condivise: profilo USB, SD prestata, livello LED, rete. Il motivo è che un'app dimentica di rilasciare qualcosa soprattutto quando esce per un errore, e un dongle che resta in un profilo USB sbagliato è difficile da diagnosticare senza schermo grande né tastiera.
 
-L'ingresso è un solo pulsante, ridotto a gesti: click, doppio click, pressione lunga; 3 secondi di pressione escono sempre, dall'app o dallo script. L'uscita è un evento (`APP_EV_EXIT`) che ogni attesa bloccante consegna, così nessuna app può ignorarla.
+L'ingresso è un solo pulsante, ridotto a gesti: click, doppio click, pressione lunga; 3 secondi di pressione chiedono l'uscita, dall'app o dallo script. L'uscita è un evento (`APP_EV_EXIT`) che ogni attesa consegna, anche quando la coda degli eventi è piena, e che i dialoghi comuni rispettano. Consegnarlo però non basta: un task FreeRTOS non si può terminare dall'esterno in modo sicuro, quindi un'app in un calcolo lungo o in una chiamata bloccante esce solo quando torna ad attendere. Per quel caso, se dopo 3 secondi l'app è ancora lì, la barra di stato mostra "Hold again: reboot" e un secondo hold riavvia il dongle. È l'unica uscita davvero garantita.
+
+I testi più lunghi dello spazio disponibile (errori, descrizioni degli script, conferme) scorrono da soli una riga alla volta, perché con un solo pulsante non c'è un modo comodo di scorrere a mano.
 
 ## Profili USB
 
