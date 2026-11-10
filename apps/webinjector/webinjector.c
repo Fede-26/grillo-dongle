@@ -554,8 +554,8 @@ static void webinjector_run(app_ctx_t *ctx)
         goto out;
     }
 
-    // In hotspot si parte dalle credenziali WiFi, come nel Web HID
-    int page = -1;
+    // Pagina del QR: credenziali o indirizzo, vedi webui.h
+    webui_qr_t qr = WEBUI_QR_INIT;
     char last_client[16] = "";
     bool led_stale = true;
     for (;;) {
@@ -567,14 +567,14 @@ static void webinjector_run(app_ctx_t *ctx)
             led_set(LED_LAYER_APP, *client ? LED_FX_SOLID : LED_FX_PULSE, *client ? UI_OK : ACCENT, 2000);
             led_stale = false;
         }
-        if (ni.up && page < 0) page = ni.mode == NET_AP ? 1 : 0;
-        if (ni.up) webui_draw_main(&ni, pin, page, client, ACCENT);
+        webui_qr_update(&qr, &ni);
+        if (ni.up) webui_draw_main(&ni, pin, qr.page, client, ACCENT);
         else webui_draw_connecting(&icon_keyboard, ACCENT);
 
         app_event_t ev;
         if (!app_next_event(ctx, &ev, 500)) continue;
         if (ev.type == APP_EV_EXIT) break;
-        if (ev.type == APP_EV_CLICK && ni.mode == NET_AP) page ^= 1;
+        if (ev.type == APP_EV_CLICK) webui_qr_toggle(&qr, &ni);
         if (ev.type == APP_EV_USER) {
             run_pending(ctx, m);
             led_stale = true; // l'esecuzione ha usato il LED

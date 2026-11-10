@@ -69,9 +69,8 @@ static void webhid_run(app_ctx_t *ctx)
     }
 
     led_set(LED_LAYER_APP, LED_FX_PULSE, ACCENT, 2000);
-    // In hotspot si parte dalle credenziali WiFi: il QR dell'indirizzo non
-    // serve finché il telefono non è sulla rete del dongle.
-    int page = -1;
+    // Pagina del QR: credenziali o indirizzo, vedi webui.h
+    webui_qr_t qr = WEBUI_QR_INIT;
     char last_client[16] = "";
     for (;;) {
         net_info_t ni;
@@ -81,14 +80,14 @@ static void webhid_run(app_ctx_t *ctx)
             strlcpy(last_client, client, sizeof(last_client));
             led_set(LED_LAYER_APP, *client ? LED_FX_SOLID : LED_FX_PULSE, *client ? UI_OK : ACCENT, 2000);
         }
-        if (ni.up && page < 0) page = ni.mode == NET_AP ? 1 : 0;
-        if (ni.up) webui_draw_main(&ni, pin, page, client, ACCENT);
+        webui_qr_update(&qr, &ni);
+        if (ni.up) webui_draw_main(&ni, pin, qr.page, client, ACCENT);
         else webui_draw_connecting(&icon_mouse, ACCENT);
 
         app_event_t ev;
         if (!app_next_event(ctx, &ev, 500)) continue;
         if (ev.type == APP_EV_EXIT) break;
-        if (ev.type == APP_EV_CLICK && ni.mode == NET_AP) page ^= 1;
+        if (ev.type == APP_EV_CLICK) webui_qr_toggle(&qr, &ni);
     }
     web_stop();
 }

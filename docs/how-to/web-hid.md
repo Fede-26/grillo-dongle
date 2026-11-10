@@ -7,7 +7,7 @@ Il Web HID fa del dongle una tastiera e un touchpad comandati da una pagina web,
 1. Collega il dongle al PC da comandare.
 2. Nel launcher scegli **Web HID**. Il dongle si collega al WiFi (o crea l'hotspot): vedi [Collegare il dongle al WiFi](wifi.md).
 3. Sul display compaiono un QR, il nome della rete, l'indirizzo IP e un PIN di 6 cifre.
-4. Sul telefono o sul computer, collegati alla stessa rete (o all'hotspot `Grillo-XXXX`) e apri l'indirizzo, oppure inquadra il QR. Con l'hotspot i QR sono due: il primo mostrato contiene le credenziali del WiFi del dongle, e un click passa al QR dell'indirizzo della pagina (e viceversa). Su una rete nota c'è solo il QR dell'indirizzo.
+4. Sul telefono o sul computer, collegati alla stessa rete (o all'hotspot `Grillo-XXXX`) e apri l'indirizzo, oppure inquadra il QR. Con l'hotspot i QR sono due: il primo mostrato contiene le credenziali del WiFi del dongle; appena un dispositivo si collega all'hotspot il display passa da solo al QR dell'indirizzo della pagina. Un click alterna i due QR, per esempio per collegare un secondo telefono. Su una rete nota c'è solo il QR dell'indirizzo.
 5. Inserisci il PIN.
 
 Tieni premuto il pulsante 3 secondi per uscire.

@@ -88,3 +88,16 @@ void webui_draw_main(const net_info_t *ni, const char *pin, int page, const char
     else gfx_text_fit(&gfx_font_small, x, y + 58, w, ni->mode == NET_AP ? "click: swap QR" : "hold 3s: exit", UI_DIM);
     ui_end();
 }
+
+void webui_qr_update(webui_qr_t *q, const net_info_t *ni)
+{
+    if (!ni->up) return;
+    if (q->page < 0) q->page = ni->mode == NET_AP ? 1 : 0;
+    else if (ni->mode == NET_AP && ni->clients > q->clients) q->page = 0;
+    q->clients = ni->clients;
+}
+
+void webui_qr_toggle(webui_qr_t *q, const net_info_t *ni)
+{
+    if (ni->mode == NET_AP && q->page >= 0) q->page ^= 1;
+}

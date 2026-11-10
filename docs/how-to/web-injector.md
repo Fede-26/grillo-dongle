@@ -6,7 +6,7 @@ Il Web Injector esegue gli script dell'injector scelti da una pagina web, dal te
 
 1. Collega il dongle al PC su cui far girare lo script.
 2. Nel launcher scegli **Web Injector**. Il dongle si collega al WiFi (o crea l'hotspot): vedi [Collegare il dongle al WiFi](wifi.md).
-3. Sul display compaiono un QR, il nome della rete, l'indirizzo IP e un PIN di 6 cifre, come nel [Web HID](web-hid.md). Con l'hotspot un click alterna il QR delle credenziali WiFi e quello dell'indirizzo.
+3. Sul display compaiono un QR, il nome della rete, l'indirizzo IP e un PIN di 6 cifre, come nel [Web HID](web-hid.md). Con l'hotspot si parte dal QR delle credenziali WiFi e, appena un dispositivo si collega, il display passa da solo a quello dell'indirizzo; un click alterna i due.
 4. Apri l'indirizzo dal telefono (o inquadra il QR) e inserisci il PIN.
 
 Tieni premuto il pulsante 3 secondi per uscire.
