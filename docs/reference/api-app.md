@@ -49,7 +49,7 @@ L'uscita arriva all'app solo quando attende un evento. Se l'app non torna ad att
 
 ## Dialoghi bloccanti
 
-- `app_menu(ctx, titolo, voci, n, selezionata)`: click = giù, doppio = su, lungo = scegli; restituisce l'indice o -1 se l'app deve uscire.
+- `app_menu(ctx, titolo, voci, n, selezionata)`: click = giù, doppio = su, lungo = scegli; restituisce l'indice o -1 se l'app deve uscire. La riga selezionata che non entra nel display scorre in orizzontale: un secondo ferma, poi fino alla fine, un secondo ferma, da capo. Le altre righe restano troncate con i puntini.
 - `app_menu_ex(...)`: come sopra, con una colonna di testo a destra di ogni riga.
 - `app_menu_timeout(..., timeout_ms)`: come `app_menu_ex`; senza gesti entro la scadenza restituisce la voce selezionata. I secondi residui sono nel titolo; un click li ferma.
 - `app_confirm(ctx, titolo, testo, predefinito_sì)`.

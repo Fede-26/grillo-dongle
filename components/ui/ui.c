@@ -254,6 +254,41 @@ int ui_list_scroll(int top, int sel, int count)
     return top < 0 ? 0 : top;
 }
 
+// Scorrimento orizzontale della riga selezionata che non entra: pausa sul
+// principio, scorrimento fino alla fine, pausa, poi da capo.
+#define MARQUEE_PAUSE_MS 1000
+#define MARQUEE_PX_S     30
+static const char *s_mq_text;
+static int64_t s_mq_t0;
+static bool s_mq_active;
+
+void ui_marquee_reset(void)
+{
+    s_mq_text = NULL;
+}
+
+bool ui_marquee_active(void)
+{
+    return s_mq_active;
+}
+
+// Spostamento in pixel per un testo che supera lo spazio di `over` pixel. Il
+// ciclo riparte quando cambia la riga selezionata (cambia il puntatore).
+static int marquee_offset(const char *text, int over)
+{
+    int64_t now = esp_timer_get_time() / 1000;
+    if (text != s_mq_text) {
+        s_mq_text = text;
+        s_mq_t0 = now;
+    }
+    s_mq_active = true;
+    int run = over * 1000 / MARQUEE_PX_S;
+    int t = (now - s_mq_t0) % (MARQUEE_PAUSE_MS + run + MARQUEE_PAUSE_MS);
+    if (t < MARQUEE_PAUSE_MS) return 0;
+    if (t >= MARQUEE_PAUSE_MS + run) return over;
+    return (t - MARQUEE_PAUSE_MS) * MARQUEE_PX_S / 1000;
+}
+
 void ui_draw_row(int y, const char *text, const char *right, bool selected, bool enabled)
 {
     int w = UI_W - 6;
@@ -268,11 +303,21 @@ void ui_draw_row(int y, const char *text, const char *right, bool selected, bool
         gfx_text(&gfx_font_small, 2 + w - rw - 4, y + 2, right, selected ? s_accent : UI_DIM);
         rw += 6;
     }
-    gfx_text_fit(&gfx_font_small, 8, y + 2, w - 10 - rw, text, c);
+    int avail = w - 10 - rw, over = gfx_text_width(&gfx_font_small, text) - avail;
+    if (!selected || over <= 0) {
+        gfx_text_fit(&gfx_font_small, 8, y + 2, avail, text, c);
+        return;
+    }
+    gfx_set_clip(8, y, avail, UI_ROW_H);
+    gfx_text(&gfx_font_small, 8 - marquee_offset(text, over), y + 2, text, c);
+    // Di nuovo il clipping di ui_begin
+    int cy = s_bar_visible ? UI_CONTENT_Y : 0;
+    gfx_set_clip(0, cy, UI_W, UI_H - cy);
 }
 
 void ui_draw_list(int top, int sel, int count, ui_label_fn label, void *arg)
 {
+    s_mq_active = false; // lo riaccende ui_draw_row se la riga selezionata scorre
     int vis = ui_list_visible_rows();
     int y0 = UI_CONTENT_Y + (UI_CONTENT_H - vis * UI_ROW_H) / 2;
     for (int i = 0; i < vis && top + i < count; i++) {

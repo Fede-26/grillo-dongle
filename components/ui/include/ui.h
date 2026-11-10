@@ -79,6 +79,11 @@ void ui_bar_visible(bool visible);
 // Riga di lista alta UI_ROW_H; `selected` la evidenzia con l'accento.
 #define UI_ROW_H 11
 void ui_draw_row(int y, const char *text, const char *right, bool selected, bool enabled);
+// La riga selezionata che non entra scorre in orizzontale. Chi disegna la
+// lista la ridisegna di continuo finché ui_marquee_active() è vero (vale per
+// l'ultimo ui_draw_list); ui_marquee_reset() fa ripartire la pausa iniziale.
+void ui_marquee_reset(void);
+bool ui_marquee_active(void);
 // Lista scrollabile: disegna `visible` righe a partire da `top`.
 typedef const char *(*ui_label_fn)(int index, void *arg, const char **right, bool *enabled);
 void ui_draw_list(int top, int sel, int count, ui_label_fn label, void *arg);

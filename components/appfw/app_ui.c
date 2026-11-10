@@ -70,6 +70,7 @@ int app_menu_timeout(app_ctx_t *ctx, const char *title, const char *const *items
     if (title) ui_set_title(title, ctx->app->accent);
     stash_t st = {0};
     int result = -1;
+    ui_marquee_reset();
     for (;;) {
         if (deadline) {
             // Secondi residui nel titolo, aggiornati solo quando cambiano
@@ -88,7 +89,9 @@ int app_menu_timeout(app_ctx_t *ctx, const char *title, const char *const *items
         ui_end();
 
         app_event_t ev;
-        if (!app_next_event(ctx, &ev, deadline ? 250 : portMAX_DELAY)) {
+        // ~30 fotogrammi al secondo mentre la riga selezionata scorre
+        uint32_t wait = ui_marquee_active() ? 33 : (deadline ? 250 : portMAX_DELAY);
+        if (!app_next_event(ctx, &ev, wait)) {
             if (deadline && esp_timer_get_time() >= deadline) {
                 result = sel; // scaduto: vale la voce selezionata
                 break;
