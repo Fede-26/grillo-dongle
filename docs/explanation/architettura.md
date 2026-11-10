@@ -5,8 +5,9 @@ Grillo è un firmware ESP-IDF v6.1 (C, FreeRTOS) per un dispositivo con vincoli 
 ## Strati
 
 ```
-apps/         injector, webhid, netscan, usbdisk, launcher        <- una per attività
-components/   appfw  ui  gfx  display  input  led  qr     <- interfaccia
+apps/         injector, webinjector, webhid, netscan, usbdisk, launcher  <- una per attività
+components/   injector_core                               <- esecuzione degli script
+              appfw  ui  gfx  display  input  led  qr  webui  <- interfaccia
               hid  usbdev  net  websrv  storage  config  luart  <- servizi
               devcon  syslog  clock  board  lua           <- console, log, ora, pin, interprete
 main/         avvio, tabella app, console di debug
@@ -45,6 +46,10 @@ Misure sul dispositivo (a memoria di sessione, non riprodotte in un test automat
 Il gestore WiFi (`net`) è a lease: ogni app che ne ha bisogno lo richiede e lo rilascia; il WiFi resta acceso finché c'è almeno un lease. Ogni lease appartiene al task che l'ha preso: all'uscita di un'app il sistema rilascia solo quelli del suo task, così un servizio in un task proprio non perderebbe la connessione. L'attesa della connessione si interrompe quando l'utente chiede l'uscita, invece di durare fino alla scadenza.
 
 Il server delle pagine web (`websrv`) e il QR code (`qr`) sono componenti a parte, non codice del Web HID: autenticazione con PIN, blocco per indirizzo dopo 5 errori, una sola sessione con subentro dallo stesso dispositivo, pagina compressa. Servono così anche alle app web future (file browser, injector web) senza ripetere la parte che riguarda la sicurezza. In modalità automatica cerca le reti, sceglie la migliore tra quelle note in `config.lua`, e se non ne trova crea un hotspot. Il risparmio energetico del WiFi è disattivato: attiva, la pagina web del Web HID impiegava secondi a rispondere.
+
+## Injector e Web Injector
+
+Le due app eseguono gli stessi script con lo stesso codice: `injector_core` contiene l'elenco e le intestazioni dei payload, l'engine Lua, la schermata di esecuzione e l'esito. Cambia solo come si sceglie lo script, dal display o da una pagina web. Il nucleo chiama agganci facoltativi del front-end (stato, log, apertura e chiusura dei dialoghi, esito): l'Injector non li usa, il Web Injector li inoltra al telefono. Le risposte del telefono arrivano all'app come evento `APP_EV_ANSWER`, che i dialoghi comuni trattano come una scelta col pulsante: così display e pagina restano attivi insieme senza dialoghi duplicati, e vale la prima risposta. Lo script gira nel task dell'app e i messaggi alla pagina partono con `websrv_send`, che li consegna dal task del server solo se il client autenticato è ancora lo stesso.
 
 ## Ora
 

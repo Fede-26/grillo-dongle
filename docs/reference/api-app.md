@@ -39,7 +39,7 @@ void app_post(app_ctx_t *ctx, app_ev_type_t type, int32_t arg);
 void app_cancel_exit(app_ctx_t *ctx);
 ```
 
-Tipi: `APP_EV_CLICK`, `APP_EV_DOUBLE`, `APP_EV_LONG`, `APP_EV_EXIT` (hold 3 s: terminare al più presto), `APP_EV_USB`, `APP_EV_NET`, `APP_EV_TICK` e `APP_EV_USER` (generati dall'app con `app_post`, utile da timer e task secondari).
+Tipi: `APP_EV_CLICK`, `APP_EV_DOUBLE`, `APP_EV_LONG`, `APP_EV_EXIT` (hold 3 s: terminare al più presto), `APP_EV_USB`, `APP_EV_NET`, `APP_EV_TICK` e `APP_EV_USER` (generati dall'app con `app_post`, utile da timer e task secondari), `APP_EV_ANSWER` (risposta data da fuori al dialogo aperto: `app_menu*` lo prende come indice della voce, `app_confirm*` come no/sì, `app_message` si chiude; fuori da un dialogo è scartato). Con `APP_EV_ANSWER` una pagina web risponde ai dialoghi dello stesso display, e vale la prima risposta.
 
 `APP_EV_EXIT` è consegnato anche se quando arriva la coda è piena. `app_post(ctx, APP_EV_EXIT, 0)` è anche il modo di chiedere l'uscita dall'interno dell'app (per esempio da un timer di timeout): imposta `exit_requested` e chiude i dialoghi aperti. `app_cancel_exit` annulla una richiesta già ricevuta, quando l'app decide di restare (l'utente risponde "No" a "Uscire?", oppure l'hold ha solo interrotto un lavoro), e scarta gli EXIT ancora in coda.
 
@@ -105,6 +105,7 @@ esp_err_t websrv_add_page(const char *uri, const char *type, const uint8_t *gz, 
 esp_err_t websrv_add_route(const httpd_uri_t *uri);  // rotta propria: non protetta dal PIN
 bool websrv_is_client(httpd_req_t *req);             // la richiesta viene dal client autenticato?
 void websrv_reply(httpd_req_t *req, const char *msg); // messaggio WebSocket al client
+esp_err_t websrv_send(const char *msg);              // al client autenticato, da qualunque task
 const char *websrv_client_ip(void);                  // "" se nessuno è collegato
 bool websrv_stopping(void);                          // da controllare nei lavori lunghi di on_message
 void websrv_stop(void);

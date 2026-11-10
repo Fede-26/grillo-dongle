@@ -1,6 +1,6 @@
-# Protocollo WebSocket del Web HID
+# Protocollo WebSocket delle app web
 
-L'app Web HID serve una pagina e un canale WebSocket che trasporta i comandi. Il server è il componente `websrv` (sopra `esp_http_server`); un solo client alla volta. Le rotte `/cfg` e `/ws`, l'accesso con `p<PIN>` e le risposte `ok`, `no`, `locked` e `busy` sono del componente e valgono per ogni app web; i comandi sono del Web HID.
+Il Web HID e il Web Injector servono una pagina e un canale WebSocket che trasporta i comandi. Il server è il componente `websrv` (sopra `esp_http_server`); un solo client alla volta. Le rotte `/cfg` e `/ws`, l'accesso con `p<PIN>` e le risposte `ok`, `no`, `locked` e `busy` sono del componente e valgono per ogni app web; i comandi sono di ciascuna app (Web HID qui sotto, [Web Injector](#web-injector) in fondo).
 
 ## Endpoint
 
@@ -48,3 +48,38 @@ I frame sono limitati in dimensione; un frame vuoto o troppo lungo chiude il can
 
 - Il PIN è di 6 cifre, generato a ogni avvio dell'app e mostrato sul display. L'indirizzo IP del client è mostrato sul display (abbreviato).
 - Il canale non è cifrato: la protezione sta nel PIN e nella rete scelta. Vedi [Sicurezza](../explanation/sicurezza.md).
+
+## Web Injector
+
+Stesse rotte, stesso accesso e stesse risposte `ok`, `no`, `locked`, `busy`. Dal client arrivano comandi di testo (un carattere più gli argomenti); il dongle risponde con oggetti JSON, un messaggio per oggetto, con il tipo nel campo `t`. I percorsi sono relativi a `/payloads`: percorsi assoluti e `..` ricevono `{"t":"error","text":"Bad path"}`.
+
+### Client → dongle
+
+| Messaggio | Significato |
+| --- | --- |
+| `l<cartella>` | Elenco di una cartella (`l` da solo = `/payloads`): un `entry` per voce, poi `end`. |
+| `s` | Tutti gli script (fino a 3 livelli), per le viste per OS e per tag: `entry` con `path`, poi `end`. |
+| `m<script>` | Scheda dello script: `meta`. |
+| `r<script>` | Esegue lo script. Con un altro script in corso: `error`. |
+| `a<id>:<n>` | Risposta al dialogo `id`: indice della voce (`menu`), 0/1 per no/sì (`confirm`), 0/1/2 per click/doppio/lungo (`button`), 0 per l'esito (`done`). Un `id` che non è quello del dialogo aperto è ignorato: il dialogo è già stato chiuso dal pulsante. |
+| `x` | Interrompe lo script in corso (come 3 secondi di pressione). |
+
+### Dongle → client
+
+| `t` | Campi | Significato |
+| --- | --- | --- |
+| `hello` | `phase`: `idle`, `run`, `done` | Dopo ogni accesso. Con uno script in corso seguono l'ultimo `state` e il dialogo aperto. |
+| `entry` | `name`, `title`, `dir`; per gli script `layout`, `os`, `tags` (effettivi); con `s` anche `path` | Una voce dell'elenco. |
+| `end` | `scan`, `full` (elenco troncato a 48 voci) | Fine dell'elenco. |
+| `meta` | `path`, `name`, `desc`, `layout`, `os`, `tags`, `timeout` (-1 se assente), `error` | Intestazione dello script. |
+| `state` | `name`, `status`, `p`, `max` (0 = niente barra), `wait` (attesa dell'host USB) | Stato dello script cambiato. |
+| `log` | `text` | Riga di `sys.log`. |
+| `menu` | `id`, `title`, `items` | `ui.menu` aperto. |
+| `confirm` | `id`, `title`, `text`, `yes` (risposta predefinita) | `ui.confirm` aperto. |
+| `button` | `id` | `ui.wait_button` in attesa. |
+| `done` | `id`, `name`, `ok`, `aborted`, `timeout`, `error` | Esito: resta aperto finché qualcuno risponde. |
+| `close` | `id` | Dialogo chiuso, da qualunque parte sia arrivata la risposta. |
+| `idle` | | Esito chiuso: si può avviare un altro script. |
+| `error` | `text` | Comando rifiutato. |
+
+I testi non UTF-8 validi (nomi di file, testi degli script) arrivano con `?` al posto dei byte non validi: il browser chiuderebbe il canale.

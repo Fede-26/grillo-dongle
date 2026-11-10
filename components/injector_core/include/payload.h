@@ -42,3 +42,14 @@ bool payload_read_meta(const char *path, payload_meta_t *m);
 int payload_scan(const char *dir, payload_entry_t *out, int max);
 // true se `tag` compare in `tags` (confronto senza maiuscole, parole intere).
 bool payload_has_tag(const char *tags, const char *tag);
+
+// Layout e OS effettivi dello script: intestazione, altrimenti config.lua.
+// payload_os restituisce un hid_os_t.
+const char *payload_layout(const payload_entry_t *e);
+int payload_os(const payload_entry_t *e);
+
+// Tag distinti presenti negli script, in ordine alfabetico, al massimo `max`.
+// PAYLOAD_TAG_LEN come il campo tags: un tag troncato non combaciava più con
+// payload_has_tag.
+#define PAYLOAD_TAG_LEN sizeof(((payload_entry_t *)0)->tags)
+int payload_collect_tags(const payload_entry_t *e, int n, char tags[][PAYLOAD_TAG_LEN], int max);

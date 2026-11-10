@@ -16,7 +16,9 @@ typedef struct {
 
 static void stash_put(stash_t *s, const app_event_t *ev)
 {
-    if (ev->type == APP_EV_CLICK || ev->type == APP_EV_DOUBLE || ev->type == APP_EV_LONG || ev->type == APP_EV_EXIT) {
+    // Una risposta esterna in ritardo non deve rispondere al dialogo successivo
+    if (ev->type == APP_EV_CLICK || ev->type == APP_EV_DOUBLE || ev->type == APP_EV_LONG || ev->type == APP_EV_EXIT ||
+        ev->type == APP_EV_ANSWER) {
         return;
     }
     if (s->n < (int)(sizeof(s->ev) / sizeof(s->ev[0]))) s->ev[s->n++] = *ev;
@@ -106,6 +108,9 @@ int app_menu_timeout(app_ctx_t *ctx, const char *title, const char *const *items
         else if (ev.type == APP_EV_LONG) {
             result = sel;
             break;
+        } else if (ev.type == APP_EV_ANSWER && ev.arg >= 0 && ev.arg < count) {
+            result = ev.arg;
+            break;
         } else stash_put(&st, &ev);
     }
     if (title || timeout_ms) ui_set_title(saved, saved_accent);
@@ -169,6 +174,9 @@ bool app_confirm_timeout(app_ctx_t *ctx, const char *title, const char *text, bo
         } else if (ev.type == APP_EV_LONG) {
             result = yes;
             break;
+        } else if (ev.type == APP_EV_ANSWER) {
+            result = ev.arg != 0;
+            break;
         } else stash_put(&st, &ev);
     }
     stash_restore(ctx, &st);
@@ -190,7 +198,7 @@ void app_message(app_ctx_t *ctx, const char *title, const char *text, uint32_t c
             ui_scroll_tick(&sc);
             continue;
         }
-        if (ev.type == APP_EV_CLICK || ev.type == APP_EV_LONG || ev.type == APP_EV_EXIT) break;
+        if (ev.type == APP_EV_CLICK || ev.type == APP_EV_LONG || ev.type == APP_EV_EXIT || ev.type == APP_EV_ANSWER) break;
         stash_put(&st, &ev);
     }
     stash_restore(ctx, &st);

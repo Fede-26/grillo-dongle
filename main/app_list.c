@@ -7,9 +7,11 @@
 #include "netscan.h"
 #include "usbdisk.h"
 #include "webhid.h"
+#include "webinjector.h"
 
 const app_desc_t *const g_apps[] = {
     &injector_app,
+    &webinjector_app,
     &webhid_app,
     &netscan_app,
     &usbdisk_app,

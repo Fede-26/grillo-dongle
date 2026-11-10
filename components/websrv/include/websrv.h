@@ -51,6 +51,10 @@ bool websrv_is_client(httpd_req_t *req);
 
 // Messaggio di testo al client della richiesta in corso.
 void websrv_reply(httpd_req_t *req, const char *msg);
+// Messaggio di testo al client autenticato, da un task qualunque (per
+// esempio quello dell'app). Copiato: il buffer si può riusare subito.
+// ESP_ERR_INVALID_STATE se nessuno è collegato.
+esp_err_t websrv_send(const char *msg);
 // IP del client autenticato, stringa vuota se nessuno.
 const char *websrv_client_ip(void);
 // true da quando è stata chiamata websrv_stop: httpd_stop attende che le

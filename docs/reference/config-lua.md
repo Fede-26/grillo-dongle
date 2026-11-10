@@ -34,6 +34,7 @@ Il modello è `sd-template/config.lua`.
 | `ui.brightness` | 0..100 | 80 | Luminosità del display. |
 | `ui.rotation` | 0 o 180 | 0 | Rotazione del display (90 e 270 non sono supportati). |
 | `webhid.pin` | booleano | `true` | `false`: il Web HID non chiede il PIN. Vedi [Sicurezza](../explanation/sicurezza.md). |
+| `webinjector.pin` | booleano | `true` | `false`: il Web Injector non chiede il PIN. Vedi [Sicurezza](../explanation/sicurezza.md). |
 | `timezone` | stringa POSIX | `CET-1CEST,M3.5.0,M10.5.0/3` | Fuso orario (il default è Europe/Rome, con l'ora legale) per le date di `/logs/grillo.log`, `sys.date()` e i nomi dei file di Netscan. |
 | `ntp` | host | `pool.ntp.org` | Server NTP da cui il dongle prende l'ora quando è collegato a una rete come client. |
 | `netscan.probe_host` | host | `connectivitycheck.gstatic.com` | Host contattato dal controllo "Web" di Network info (deve rispondere 204 a `/generate_204`). |

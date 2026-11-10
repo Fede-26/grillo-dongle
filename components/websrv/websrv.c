@@ -141,6 +141,41 @@ void websrv_reply(httpd_req_t *req, const char *msg)
     httpd_ws_send_frame(req, &f);
 }
 
+typedef struct {
+    int fd;
+    size_t len;
+    char text[];
+} outgoing_t;
+
+// Gira nel task httpd, dove s_client_fd è aggiornato: se nel frattempo il
+// client è cambiato, il messaggio non va a un socket che ora appartiene a
+// qualcun altro (il numero di un socket chiuso viene riusato).
+static void send_work(void *arg)
+{
+    outgoing_t *o = arg;
+    if (o->fd == s_client_fd && s_server) {
+        httpd_ws_frame_t f = {.type = HTTPD_WS_TYPE_TEXT, .payload = (uint8_t *)o->text, .len = o->len};
+        httpd_ws_send_frame_async(s_server, o->fd, &f);
+    }
+    free(o);
+}
+
+esp_err_t websrv_send(const char *msg)
+{
+    int fd = s_client_fd;
+    if (!s_server || fd < 0) return ESP_ERR_INVALID_STATE;
+    size_t len = strlen(msg);
+    // Copia: il chiamante può riusare il buffer prima che il task httpd invii
+    outgoing_t *o = malloc(sizeof(*o) + len);
+    if (!o) return ESP_ERR_NO_MEM;
+    o->fd = fd;
+    o->len = len;
+    memcpy(o->text, msg, len);
+    esp_err_t err = httpd_queue_work(s_server, send_work, o);
+    if (err != ESP_OK) free(o);
+    return err;
+}
+
 static void authenticate(httpd_req_t *req, int fd, const char *given)
 {
     char ip[sizeof(s_client_ip)];

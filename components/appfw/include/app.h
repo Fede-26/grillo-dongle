@@ -36,6 +36,11 @@ typedef enum {
     APP_EV_NET,    // arg = evento di rete (vedi net.h)
     APP_EV_TICK,   // generato dall'app stessa con app_post (timer, task)
     APP_EV_USER,   // libero per l'app
+    // Risposta al dialogo aperto (app_menu*, app_confirm*, app_message) data
+    // da fuori, per esempio da una pagina web: arg = indice della voce, o
+    // 0/1 per no/sì. Il dialogo la tratta come la scelta col pulsante, così
+    // vince la prima risposta. Fuori da un dialogo viene scartata.
+    APP_EV_ANSWER,
 } app_ev_type_t;
 
 typedef struct {

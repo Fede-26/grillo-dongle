@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include "config.h"
 #include "hid_layout.h"
 
 static int cmp_entry(const void *a, const void *b)
@@ -201,4 +202,47 @@ bool payload_read_meta(const char *path, payload_meta_t *m)
     }
     fclose(f);
     return true;
+}
+
+const char *payload_layout(const payload_entry_t *e)
+{
+    return e->layout[0] ? e->layout : config_str("keyboard.layout", "us");
+}
+
+int payload_os(const payload_entry_t *e)
+{
+    // Stessi nomi accettati dall'esecuzione (win, macos...): prima "macos"
+    // finiva nel gruppo windows del browser.
+    hid_os_t os;
+    if (hid_os_parse(e->os[0] ? e->os : config_str("keyboard.os", "windows"), &os)) return os;
+    return HID_OS_WINDOWS;
+}
+
+int payload_collect_tags(const payload_entry_t *e, int n, char tags[][PAYLOAD_TAG_LEN], int max)
+{
+    int count = 0;
+    for (int i = 0; i < n; i++) {
+        const char *p = e[i].tags;
+        while (*p) {
+            while (*p == ',' || isspace((unsigned char)*p)) p++;
+            const char *q = p;
+            while (*q && *q != ',' && !isspace((unsigned char)*q)) q++;
+            if (q > p && count < max) {
+                char t[PAYLOAD_TAG_LEN];
+                strlcpy(t, p, (size_t)(q - p) + 1 < sizeof(t) ? (size_t)(q - p) + 1 : sizeof(t));
+                bool dup = false;
+                for (int j = 0; j < count; j++) dup |= !strcasecmp(tags[j], t);
+                if (!dup) strlcpy(tags[count++], t, PAYLOAD_TAG_LEN);
+            }
+            p = q;
+        }
+    }
+    for (int i = 1; i < count; i++) { // insertion sort: max 16 elementi
+        char t[PAYLOAD_TAG_LEN];
+        strlcpy(t, tags[i], sizeof(t));
+        int j = i - 1;
+        for (; j >= 0 && strcasecmp(tags[j], t) > 0; j--) strlcpy(tags[j + 1], tags[j], PAYLOAD_TAG_LEN);
+        strlcpy(tags[j + 1], t, PAYLOAD_TAG_LEN);
+    }
+    return count;
 }

@@ -1,5 +1,7 @@
 // Engine Lua dell'injector: VM sandbox (luart) più i moduli kb, mouse,
-// led, ui, sys, fs, cfg e require.
+// led, ui, sys, fs, cfg e require. Ciò che lo script mostra sul display
+// passa anche dagli agganci del front-end (INJ_HOOK), che il Web Injector
+// rispecchia sul telefono.
 
 #include <ctype.h>
 #include <stddef.h>
@@ -339,6 +341,7 @@ static int ui_status(lua_State *L)
     strlcpy(s_run->status, luaL_optstring(L, 1, ""), sizeof(s_run->status));
     s_run->status_scroll.text = NULL; // testo nuovo: inj_redraw riparte dall'inizio
     inj_redraw(s_run);
+    INJ_HOOK(s_run, state, s_run);
     return 0;
 }
 
@@ -347,6 +350,7 @@ static int ui_progress(lua_State *L)
     s_run->progress = luaL_checkinteger(L, 1);
     s_run->progress_max = luaL_optinteger(L, 2, 100);
     inj_redraw(s_run);
+    INJ_HOOK(s_run, state, s_run);
     return 0;
 }
 
@@ -363,7 +367,9 @@ static int ui_menu(lua_State *L)
         lua_geti(L, 2, i + 1);
         items[i] = luaL_checkstring(L, -1); // resta sullo stack: la stringa non viene raccolta
     }
+    INJ_HOOK(s_run, menu, title, items, n);
     int sel = app_menu(s_run->ctx, title, items, n, 0);
+    INJ_HOOK(s_run, dialog_end);
     inj_redraw(s_run);
     if (sel < 0) luaL_error(L, "aborted");
     lua_pushinteger(L, sel + 1);
@@ -375,8 +381,11 @@ static int ui_confirm(lua_State *L)
     const char *text = luaL_checkstring(L, 1);
     lua_Integer ms = luaL_optinteger(L, 3, 0);
     luaL_argcheck(L, ms >= 0 && ms <= 3600000, 3, "0..3600000 ms");
-    bool yes = app_confirm_timeout(s_run->ctx, s_run->meta->name[0] ? s_run->meta->name : "Confirm", text,
-                                   lua_isnoneornil(L, 2) || lua_toboolean(L, 2), (uint32_t)ms);
+    const char *title = s_run->meta->name[0] ? s_run->meta->name : "Confirm";
+    bool def = lua_isnoneornil(L, 2) || lua_toboolean(L, 2);
+    INJ_HOOK(s_run, confirm, title, text, def);
+    bool yes = app_confirm_timeout(s_run->ctx, title, text, def, (uint32_t)ms);
+    INJ_HOOK(s_run, dialog_end);
     if (s_run->ctx->exit_requested) luaL_error(L, "aborted");
     inj_redraw(s_run);
     lua_pushboolean(L, yes);
@@ -387,8 +396,12 @@ static int ui_confirm(lua_State *L)
 static int ui_wait_button(lua_State *L)
 {
     uint32_t c = s_run->clicks, d = s_run->doubles, l = s_run->longs;
+    INJ_HOOK(s_run, wait_button);
     for (;;) {
-        if (!inj_pump(s_run)) luaL_error(L, "aborted");
+        if (!inj_pump(s_run)) {
+            INJ_HOOK(s_run, dialog_end);
+            luaL_error(L, "aborted");
+        }
         if (s_run->clicks != c) lua_pushliteral(L, "click");
         else if (s_run->doubles != d) lua_pushliteral(L, "double");
         else if (s_run->longs != l) lua_pushliteral(L, "long");
@@ -396,6 +409,7 @@ static int ui_wait_button(lua_State *L)
             vTaskDelay(pdMS_TO_TICKS(20));
             continue;
         }
+        INJ_HOOK(s_run, dialog_end);
         return 1;
     }
 }
@@ -439,7 +453,9 @@ static int sys_serial(lua_State *L)
 
 static int sys_log(lua_State *L)
 {
-    ESP_LOGI("script", "%s", luaL_checkstring(L, 1));
+    const char *text = luaL_checkstring(L, 1);
+    ESP_LOGI("script", "%s", text);
+    INJ_HOOK(s_run, log, text);
     return 0;
 }
 
@@ -974,10 +990,12 @@ static void lua_run(inj_run_t *r)
     // Attesa dell'host, poi start_delay: l'host deve aver caricato il driver
     r->waiting_host = true;
     inj_redraw(r);
+    INJ_HOOK(r, state, r);
     hid_result_t hr = hid_wait_host(HOST_WAIT_MS);
     r->waiting_host = false;
     r->started_us = esp_timer_get_time();
     inj_redraw(r);
+    INJ_HOOK(r, state, r);
     if (hr == HID_OK) hr = hid_sleep(m->start_delay >= 0 ? m->start_delay : config_ms("keyboard.start_delay", 1000));
 
     if (hr == HID_OK) {

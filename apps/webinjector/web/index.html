@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Grillo Web Injector</title>
+<style>
+:root{color-scheme:dark;--bg:#0b0f14;--panel:#1a2029;--hi:#252d38;--text:#e6edf3;--dim:#7d8590;--acc:#b060ff;--ok:#3fb950;--err:#f85149;--warn:#d29922}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--text);font:18px system-ui,sans-serif;-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{display:flex;flex-direction:column;padding:8px;gap:8px;min-height:100vh;min-height:100dvh}
+button,input{font:inherit;color:inherit}
+button{background:var(--panel);border:1px solid var(--hi);border-radius:10px;min-height:48px;padding:0 12px}
+button:active,button.on{background:var(--acc);color:#000}
+button.main{background:var(--acc);color:#000;font-weight:600}
+button.danger{background:var(--err);color:#000;font-weight:600}
+header{display:flex;justify-content:space-between;align-items:center}
+h1{margin:0;font-size:18px;color:var(--acc)}
+#st{font-size:14px;color:var(--dim)}
+#st.ok{color:var(--ok)}#st.bad{color:var(--err)}
+#login{margin:auto;display:flex;flex-direction:column;gap:10px;width:min(260px,100%)}
+#pin{background:var(--panel);border:1px solid var(--hi);border-radius:8px;padding:12px;font-size:28px;text-align:center;letter-spacing:6px}
+#msg{min-height:1.2em;color:var(--err);text-align:center;font-size:16px}
+#app{display:none;flex-direction:column;gap:8px}
+nav{display:flex;gap:6px}nav button{flex:1}
+#where{color:var(--dim);font-size:15px;min-height:1.2em;overflow-wrap:anywhere}
+#list{display:flex;flex-direction:column;gap:6px}
+.item{display:flex;justify-content:space-between;align-items:center;gap:8px;text-align:left;width:100%}
+.item .r{color:var(--dim);font-size:14px;white-space:nowrap}
+.item.dir .l{color:var(--acc)}
+.l{overflow-wrap:anywhere}
+.note{color:var(--warn);font-size:15px}
+.panel{background:var(--panel);border:1px solid var(--hi);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px}
+.panel h2{margin:0;font-size:20px;color:var(--acc);overflow-wrap:anywhere}
+.info{color:var(--dim);font-size:15px}
+.desc{white-space:pre-wrap;overflow-wrap:anywhere}
+.err{color:var(--err);overflow-wrap:anywhere}
+.row{display:flex;gap:8px}.row button{flex:1}
+.col{display:flex;flex-direction:column;gap:8px}
+#run{display:none}
+#bar{height:8px;background:var(--hi);border-radius:4px;overflow:hidden;display:none}
+#bar div{height:100%;width:0;background:var(--acc)}
+#log{margin:0;max-height:40vh;overflow:auto;font:14px ui-monospace,monospace;color:var(--dim);white-space:pre-wrap;overflow-wrap:anywhere}
+#ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);padding:16px;align-items:center;justify-content:center;z-index:5}
+#ov .panel{width:min(420px,100%);max-height:90vh;overflow:auto}
+#toast{position:fixed;left:8px;right:8px;bottom:8px;display:none;background:var(--err);color:#000;border-radius:10px;padding:10px;z-index:9}
+</style>
+</head>
+<body>
+<header><h1>Web Injector</h1><span id="st">offline</span></header>
+
+<form id="login">
+  <input id="pin" inputmode="numeric" autocomplete="off" placeholder="PIN" maxlength="6">
+  <button class="main">Connect</button>
+  <div id="msg"></div>
+</form>
+
+<div id="app">
+  <section id="run" class="panel">
+    <h2 id="rname"></h2>
+    <div id="rstatus" class="desc"></div>
+    <div id="bar"><div></div></div>
+    <pre id="log"></pre>
+    <button id="abort" class="danger">Abort</button>
+  </section>
+  <div id="browse" class="col">
+    <nav><button id="v0" class="on">Folders</button><button id="v1">By OS</button><button id="v2">By tag</button></nav>
+    <div id="where"></div>
+    <div id="list"></div>
+  </div>
+</div>
+
+<div id="ov"><div class="panel" id="box"></div></div>
+<div id="toast"></div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+let ws = null, pin = "", authed = false, retry = 0;
+
+function setSt(t, c) { $("st").textContent = t; $("st").className = c || ""; }
+function tx(s) { if (ws && ws.readyState === 1 && authed) ws.send(s); }
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
+function toast(t) { const e = $("toast"); e.textContent = t; e.style.display = "block"; clearTimeout(toast.t); toast.t = setTimeout(() => e.style.display = "none", 4000); }
+
+// --- Connessione: come il Web HID (PIN, riconnessione automatica) ---
+function connect() {
+  ws = new WebSocket("ws://" + location.host + "/ws");
+  setSt("connecting…");
+  ws.onopen = () => ws.send("p" + pin);
+  ws.onmessage = e => {
+    const m = e.data;
+    if (m === "ok") {
+      authed = true; retry = 0; setSt("connected", "ok");
+      $("login").style.display = "none"; $("app").style.display = "flex";
+    } else if (m === "no") fail("Wrong PIN");
+    else if (m === "busy") fail("Another client is connected");
+    else if (m === "locked") fail("Too many tries, wait 30 s");
+    else if (m[0] === "{") handle(JSON.parse(m));
+  };
+  ws.onclose = () => {
+    const was = authed; authed = false;
+    if (!pin) return;
+    setSt("offline", "bad");
+    if (was) retry = 0;
+    setTimeout(connect, Math.min(1000 * ++retry, 5000));
+  };
+}
+function fail(t) { pin = ""; $("msg").textContent = t; $("login").style.display = ""; $("app").style.display = "none"; setSt("offline", "bad"); if (ws) ws.close(); }
+fetch("/cfg").then(r => r.text()).then(t => { if (t === "nopin") { pin = "-"; connect(); } }).catch(() => {});
+$("login").onsubmit = e => { e.preventDefault(); pin = $("pin").value.trim(); $("msg").textContent = ""; if (pin) connect(); };
+
+// --- Messaggi del dongle ---
+let entries = [], dialogId = 0;
+function handle(m) {
+  switch (m.t) {
+  case "hello":
+    showRun(m.phase !== "idle");
+    if (m.phase === "idle") { hideDialog(); refresh(); }
+    break;
+  case "entry": entries.push(m); break;
+  case "end": listDone(m); break;
+  case "meta": showCard(m); break;
+  case "state": showRun(true); runState(m); break;
+  case "log": logLine(m.text); break;
+  case "menu": case "confirm": case "button": case "done": showDialog(m); break;
+  case "close": if (m.id === dialogId) hideDialog(); break;
+  case "idle": showRun(false); refresh(); break;
+  case "error": loading = false; toast(m.text); break;
+  }
+}
+
+// --- Elenco: cartelle vere, oppure viste per OS e per tag da tutti gli script ---
+let view = 0, dir = "", group = null, loading = false, scan = [];
+for (const i of [0, 1, 2]) $("v" + i).onclick = () => { view = i; group = null; refresh(); };
+function refresh() {
+  for (const i of [0, 1, 2]) $("v" + i).classList.toggle("on", view === i);
+  if (loading) return;
+  loading = true; entries = [];
+  // Le viste virtuali si costruiscono qui dalla scansione completa, come fa l'Injector sul display
+  tx(view === 0 ? "l" + dir : "s");
+}
+function listDone(m) {
+  loading = false;
+  const list = $("list"); list.textContent = "";
+  if (m.full) list.appendChild(el("div", "note", "Only 48 items: use subfolders"));
+  if (view === 0) {
+    $("where").textContent = "/payloads" + (dir ? "/" + dir : "");
+    if (dir) addItem("..", "", true, () => { dir = dir.includes("/") ? dir.slice(0, dir.lastIndexOf("/")) : ""; refresh(); });
+    for (const e of entries) {
+      const path = dir ? dir + "/" + e.name : e.name;
+      if (e.dir) addItem(e.title, "", true, () => { dir = path; refresh(); });
+      else addItem(e.title, e.layout + "/" + e.os.slice(0, 3), false, () => tx("m" + path));
+    }
+    if (!entries.length) list.appendChild(el("div", "info", "No scripts here"));
+    return;
+  }
+  scan = entries;
+  const key = view === 1 ? (e => [e.os]) : (e => e.tags.split(/[\s,]+/).filter(Boolean).map(t => t.toLowerCase()));
+  if (group === null) {
+    $("where").textContent = view === 1 ? "By OS" : "By tag";
+    const count = new Map();
+    for (const e of scan) for (const k of key(e)) count.set(k, (count.get(k) || 0) + 1);
+    for (const k of [...count.keys()].sort()) addItem(k, String(count.get(k)), true, () => { group = k; listDone({}); });
+    if (!count.size) list.appendChild(el("div", "info", view === 1 ? "No scripts" : "No @tags in scripts"));
+    return;
+  }
+  $("where").textContent = (view === 1 ? "By OS / " : "By tag / ") + group;
+  addItem("..", "", true, () => { group = null; listDone({}); });
+  for (const e of scan) if (key(e).includes(group)) addItem(e.title, view === 1 ? e.layout : e.layout + "/" + e.os.slice(0, 3), false, () => tx("m" + e.path));
+}
+function addItem(label, right, isDir, onclick) {
+  const b = el("button", "item" + (isDir ? " dir" : ""));
+  b.appendChild(el("span", "l", (isDir && label !== ".." ? "/" : "") + label));
+  b.appendChild(el("span", "r", right));
+  b.onclick = onclick;
+  $("list").appendChild(b);
+}
+
+// --- Scheda dello script ---
+function showCard(m) {
+  const box = $("box"); box.textContent = "";
+  box.appendChild(el("h2", "", m.name || m.path));
+  let info = m.layout + " · " + m.os;
+  if (m.tags) info += " · " + m.tags;
+  if (m.timeout > 0) info += " · timeout " + m.timeout + " s";
+  box.appendChild(el("div", "info", info));
+  if (m.desc) box.appendChild(el("div", "desc", m.desc));
+  if (m.error) box.appendChild(el("div", "err", m.error));
+  const row = el("div", "row");
+  const back = el("button", "", "Back"); back.onclick = hideDialog;
+  row.appendChild(back);
+  if (!m.error) {
+    const run = el("button", "main", "Run");
+    run.onclick = () => { hideDialog(); $("log").textContent = ""; tx("r" + m.path); };
+    row.appendChild(run);
+  }
+  box.appendChild(row);
+  dialogId = 0;
+  $("ov").style.display = "flex";
+}
+
+// --- Esecuzione ---
+function showRun(on) {
+  $("run").style.display = on ? "flex" : "none";
+  $("browse").style.display = on ? "none" : "flex";
+}
+function runState(m) {
+  $("rname").textContent = m.name;
+  $("rstatus").textContent = m.wait ? "Waiting for the USB host…" : m.status;
+  $("bar").style.display = m.max > 0 ? "block" : "none";
+  if (m.max > 0) $("bar").firstChild.style.width = Math.max(0, Math.min(100, 100 * m.p / m.max)) + "%";
+}
+function logLine(t) {
+  const log = $("log");
+  log.textContent += t + "\n";
+  // Ultime 200 righe: lo script può scrivere per ore
+  const lines = log.textContent.split("\n");
+  if (lines.length > 201) log.textContent = lines.slice(-201).join("\n");
+  log.scrollTop = log.scrollHeight;
+}
+$("abort").onclick = () => tx("x");
+
+// --- Dialoghi dello script: rispondere qui o col pulsante del dongle, vale il primo ---
+function showDialog(m) {
+  const box = $("box"); box.textContent = "";
+  dialogId = m.id;
+  const answer = v => () => { tx("a" + m.id + ":" + v); hideDialog(); };
+  const col = el("div", "col");
+  if (m.t === "menu") {
+    box.appendChild(el("h2", "", m.title));
+    m.items.forEach((it, i) => { const b = el("button", "item", it); b.onclick = answer(i); col.appendChild(b); });
+  } else if (m.t === "confirm") {
+    box.appendChild(el("h2", "", m.title));
+    box.appendChild(el("div", "desc", m.text));
+    const row = el("div", "row");
+    const no = el("button", m.yes ? "" : "main", "No"); no.onclick = answer(0);
+    const yes = el("button", m.yes ? "main" : "", "Yes"); yes.onclick = answer(1);
+    row.appendChild(no); row.appendChild(yes); col.appendChild(row);
+  } else if (m.t === "button") {
+    box.appendChild(el("h2", "", "Waiting for the button"));
+    const row = el("div", "row");
+    ["Click", "Double", "Long"].forEach((n, i) => { const b = el("button", "", n); b.onclick = answer(i); row.appendChild(b); });
+    col.appendChild(row);
+  } else {
+    box.appendChild(el("h2", "", m.ok ? "Done" : m.aborted ? "Aborted" : "Error"));
+    box.appendChild(el("div", "info", m.name));
+    if (!m.ok) box.appendChild(el("div", "err", m.timeout ? "timeout" : m.error || "failed"));
+    const ok = el("button", "main", "OK"); ok.onclick = answer(0); col.appendChild(ok);
+  }
+  box.appendChild(col);
+  $("ov").style.display = "flex";
+}
+function hideDialog() { $("ov").style.display = "none"; dialogId = 0; }
+</script>
+</body>
+</html>

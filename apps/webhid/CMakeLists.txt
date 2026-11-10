@@ -1,7 +1,7 @@
 idf_component_register(SRCS "webhid.c" "web_server.c"
                        INCLUDE_DIRS "include"
                        REQUIRES appfw
-                       PRIV_REQUIRES ui led usbdev hid net config websrv qr)
+                       PRIV_REQUIRES ui led usbdev hid net config websrv webui)
 
 # La pagina viene compressa in fase di build: in flash resta solo il gzip,
 # che il browser decomprime da sé (Content-Encoding: gzip).
