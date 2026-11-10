@@ -12,6 +12,7 @@ Il nome viene dal grillo parlante: un piccolo aiutante da tenere in tasca. Il pr
 | --- | --- | --- |
 | Injector | Esegue script Lua dalla microSD che digitano testo, premono combinazioni di tasti e muovono il mouse. Ogni script dichiara layout della tastiera e sistema operativo del PC di destinazione. | funzionante |
 | Web Injector | Gli stessi script dell'Injector, scelti e seguiti da una pagina web protetta da PIN: elenco per cartelle, OS e tag, stato, log, dialoghi e abort dal telefono. | funzionante |
+| Web Files | La microSD da una pagina web protetta da PIN: sfoglia, carica, scarica, rinomina, sposta, copia, cestino ed eliminazione definitiva; editor per script Lua (con controllo della sintassi sul dongle) e CSV a tabella. | funzionante |
 | Web HID | Tastiera e touchpad comandati da una pagina web (PC o telefono), protetta da PIN. Layout e OS si scelgono dalla pagina. | funzionante |
 | USB disk | Espone la microSD al PC come disco. | funzionante |
 | Netscan | Scanner di rete: reti WiFi, controlli di connettività, host della LAN con produttore e nome. Nessun port scan. Salva i risultati in CSV. | funzionante |
@@ -30,7 +31,7 @@ Catture dal display (160x80, ingrandite 4 volte) fatte con `tools/grillo.py shot
 | ![Netscan: menu](docs/images/netscan-menu.png) | ![USB Disk: SD collegata al PC](docs/images/usbdisk-connected.png) |
 | ![USB Disk: conferma di uscita senza espulsione](docs/images/usbdisk-confirm.png) | |
 
-Le pagine web (Web HID, Web Injector) hanno un tema comune in tre modalità, scelte dal pulsante in alto a destra. Qui il Web Injector durante uno script, su un telefono (dati di esempio):
+Le pagine web (Web HID, Web Injector, Web Files) hanno un tema comune in tre modalità, scelte dal pulsante in alto a destra. Qui il Web Injector durante uno script, su un telefono (dati di esempio):
 
 | Plain | Arcade | Retro |
 | --- | --- | --- |
@@ -63,6 +64,7 @@ La documentazione in `docs/` segue il modello [Diátaxis](https://diataxis.fr/).
   - [Collegare il dongle al WiFi](docs/how-to/wifi.md)
   - [Usare il Web HID](docs/how-to/web-hid.md)
   - [Usare il Web Injector](docs/how-to/web-injector.md)
+  - [Usare Web Files](docs/how-to/web-files.md)
   - [Usare Netscan](docs/how-to/netscan.md)
   - [Scegliere layout e sistema operativo](docs/how-to/layout-e-os.md)
   - [Avviare uno script all'accensione](docs/how-to/autorun.md)
@@ -76,7 +78,7 @@ La documentazione in `docs/` segue il modello [Diátaxis](https://diataxis.fr/).
 ## Struttura del repository
 
 ```
-apps/         le app (injector, webinjector, webhid, netscan, usbdisk, launcher)
+apps/         le app (injector, webinjector, webhid, webfiles, netscan, usbdisk, launcher)
 components/   i servizi condivisi (hid, usbdev, net, display, gfx, ui, storage, config, luart, ...)
 main/         avvio, tabella delle app, console di debug
 sd-template/  contenuto iniziale della microSD (config.lua, esempi, libreria)

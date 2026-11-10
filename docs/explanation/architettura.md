@@ -5,7 +5,7 @@ Grillo è un firmware ESP-IDF v6.1 (C, FreeRTOS) per un dispositivo con vincoli 
 ## Strati
 
 ```
-apps/         injector, webinjector, webhid, netscan, usbdisk, launcher  <- una per attività
+apps/         injector, webinjector, webhid, webfiles, netscan, usbdisk, launcher  <- una per attività
 components/   injector_core                               <- esecuzione degli script
               appfw  ui  gfx  display  input  led  qr  webui  webtheme  <- interfaccia
               hid  usbdev  net  websrv  storage  config  luart  <- servizi
@@ -45,7 +45,7 @@ Misure sul dispositivo (a memoria di sessione, non riprodotte in un test automat
 
 Il gestore WiFi (`net`) è a lease: ogni app che ne ha bisogno lo richiede e lo rilascia; il WiFi resta acceso finché c'è almeno un lease. Ogni lease appartiene al task che l'ha preso: all'uscita di un'app il sistema rilascia solo quelli del suo task, così un servizio in un task proprio non perderebbe la connessione. L'attesa della connessione si interrompe quando l'utente chiede l'uscita, invece di durare fino alla scadenza.
 
-Il server delle pagine web (`websrv`), il QR code (`qr`), la schermata di connessione (`webui`) e il tema delle pagine (`webtheme`) sono componenti a parte, non codice del Web HID: autenticazione con PIN, blocco per indirizzo dopo 5 errori, una sola sessione con subentro dallo stesso dispositivo, pagina compressa. Servono così anche alle app web future (file browser, injector web) senza ripetere la parte che riguarda la sicurezza. In modalità automatica cerca le reti, sceglie la migliore tra quelle note in `config.lua`, e se non ne trova crea un hotspot. Il risparmio energetico del WiFi è disattivato: attiva, la pagina web del Web HID impiegava secondi a rispondere.
+Il server delle pagine web (`websrv`), il QR code (`qr`), la schermata di connessione (`webui`) e il tema delle pagine (`webtheme`) sono componenti a parte, non codice del Web HID: autenticazione con PIN, blocco per indirizzo dopo 5 errori, una sola sessione con subentro dallo stesso dispositivo, pagina compressa. Li usano tutte le app web (Web HID, Web Injector, Web Files) senza ripetere la parte che riguarda la sicurezza; `webjson` costruisce i messaggi JSON del Web Injector e di Web Files. In modalità automatica cerca le reti, sceglie la migliore tra quelle note in `config.lua`, e se non ne trova crea un hotspot. Il risparmio energetico del WiFi è disattivato: attiva, la pagina web del Web HID impiegava secondi a rispondere.
 
 ## Pagine web
 
@@ -55,10 +55,14 @@ Le pagine stanno nella flash, compresse, insieme al tema comune: con l'hotspot i
 
 Le due app eseguono gli stessi script con lo stesso codice: `injector_core` contiene l'elenco e le intestazioni dei payload, l'engine Lua, la schermata di esecuzione e l'esito. Cambia solo come si sceglie lo script, dal display o da una pagina web. Il nucleo chiama agganci facoltativi del front-end (stato, log, apertura e chiusura dei dialoghi, esito): l'Injector non li usa, il Web Injector li inoltra al telefono. Le risposte del telefono arrivano all'app come evento `APP_EV_ANSWER`, che i dialoghi comuni trattano come una scelta col pulsante: così display e pagina restano attivi insieme senza dialoghi duplicati, e vale la prima risposta. Lo script gira nel task dell'app e i messaggi alla pagina partono con `websrv_send`, che li consegna dal task del server solo se il client autenticato è ancora lo stesso.
 
+## Web Files
+
+Tutto il lavoro di Web Files gira nel task del server: il task dell'app disegna solo la schermata. Le operazioni brevi (elenco, cartelle, rinomina, cestino) passano dal WebSocket; il contenuto dei file da rotte HTTP con il token della sessione, perché un file intero non entra comodamente in un messaggio WebSocket e il download deve poter partire da un link. Un file caricato o salvato va prima in `<nome>.part` e sostituisce il vecchio solo alla fine; ogni scrittura tiene il lock della scheda (`storage_begin_write`), così un prestito all'host via console aspetta la fine. Il cestino è una cartella numerata per elemento in `/.trash`, con il percorso d'origine accanto: eliminare è un rename, istantaneo anche per una cartella intera. Le password di `config.lua` sono nascoste con un'analisi del testo come Lua (commenti, stringhe con escape, stringhe lunghe), non con ricerche testuali, e tornate al loro posto al salvataggio (`apps/webfiles/secrets.c`, con test sul PC). Il controllo degli script compila il testo in una VM senza eseguirlo; il parser Lua è ricorsivo, quindi il task del server ha 16 KB di stack come quello dell'Injector. Web Files non usa la USB: la scheda resta al firmware.
+
 ## Ora
 
 Il dongle non ha una batteria per l'orologio: all'accensione l'ora è ignota. La imposta SNTP ogni volta che una qualunque app si collega a una rete come client (non con l'hotspot, che non ha internet), oppure uno script con `host.clock()`, che la legge dal PC con il canale di ritorno. Dal PC si prende l'ora UTC e la si mostra con il fuso di `config.lua` (`timezone`, default Europe/Rome con l'ora legale): così un PC con il fuso sbagliato non sposta le date. L'ora resta valida ai riavvii software e si perde togliendo l'alimentazione. Finché è ignota, le righe di `/logs/grillo.log` hanno solo i millisecondi dall'avvio, `sys.time()` e `sys.date()` restituiscono `nil` e i CSV di Netscan hanno un numero progressivo al posto della data.
 
 ## Test
 
-La logica pura (tabelle dei layout, gesti del pulsante, parsing di NBNS e mDNS, ricerca OUI, CSV di Netscan) gira sul PC: `make -C test/host`. Il resto si verifica sul dispositivo con la console di debug e gli screenshot (`tools/grillo.py shot`).
+La logica pura (tabelle dei layout, gesti del pulsante, parsing di NBNS e mDNS, ricerca OUI, CSV di Netscan, segreti di `config.lua` per Web Files) gira sul PC: `make -C test/host`. Il resto si verifica sul dispositivo con la console di debug e gli screenshot (`tools/grillo.py shot`).

@@ -1,6 +1,6 @@
 # Protocollo WebSocket delle app web
 
-Il Web HID e il Web Injector servono una pagina e un canale WebSocket che trasporta i comandi. Il server è il componente `websrv` (sopra `esp_http_server`); un solo client alla volta. Le rotte `/cfg` e `/ws`, l'accesso con `p<PIN>` e le risposte `ok`, `no`, `locked` e `busy` sono del componente e valgono per ogni app web; i comandi sono di ciascuna app (Web HID qui sotto, [Web Injector](#web-injector) in fondo).
+Il Web HID, il Web Injector e Web Files servono una pagina e un canale WebSocket che trasporta i comandi. Il server è il componente `websrv` (sopra `esp_http_server`); un solo client alla volta. Le rotte `/cfg` e `/ws`, l'accesso con `p<PIN>` e le risposte `ok`, `no`, `locked` e `busy` sono del componente e valgono per ogni app web; i comandi sono di ciascuna app (Web HID qui sotto, poi [Web Injector](#web-injector) e [Web Files](#web-files)).
 
 ## Endpoint
 
@@ -84,3 +84,49 @@ Stesse rotte, stesso accesso e stesse risposte `ok`, `no`, `locked`, `busy`. Dal
 | `error` | `text` | Comando rifiutato. |
 
 I testi non UTF-8 validi (nomi di file, testi degli script) arrivano con `?` al posto dei byte non validi: il browser chiuderebbe il canale.
+
+## Web Files
+
+Stesse rotte, stesso accesso e stesse risposte. I percorsi sono relativi alla radice della microSD e iniziano con `/` (`/`, `/payloads/a.lua`); percorsi senza `/` iniziale o con `..`, `\` o `:` ricevono `{"t":"error","text":"Bad path"}`. Il cestino (`/.trash`) si gestisce solo con i comandi del cestino.
+
+### Client → dongle
+
+| Messaggio | Significato |
+| --- | --- |
+| `l<cartella>` | Elenco: un `entry` per voce (al massimo 1000), poi `end`. |
+| `f` | Spazio della scheda: `space`. |
+| `k<cartella>` | Nuova cartella. |
+| `n<file>` | Nuovo file vuoto. |
+| `v<da>\t<a>` | Rinomina o sposta (anche cartelle). La destinazione non deve esistere. |
+| `c<da>\t<a>` | Copia un file. |
+| `d<percorso>` | Sposta nel cestino. |
+| `D<percorso>` | Elimina definitivamente, cartelle comprese con il contenuto. |
+| `L` | Elenco del cestino: un `trash` per elemento, poi `end`. |
+| `R<id>` | Ripristina l'elemento `id` del cestino. |
+| `E<id>` | Elimina definitivamente l'elemento `id` del cestino. |
+| `X` | Svuota il cestino. |
+
+Ogni comando ha una sola risposta finale (`end`, `space`, `ok` o `error`) e il dongle li esegue nell'ordine di arrivo: la pagina abbina le risposte ai comandi in coda.
+
+### Dongle → client
+
+| `t` | Campi | Significato |
+| --- | --- | --- |
+| `entry` | `name`, `dir`, `size` (byte), `mtime` (secondi dal 1970, UTC) | Una voce della cartella. |
+| `trash` | `id`, `origin` (percorso d'origine), `date` (vuota se l'ora non era nota), `dir`, `size` | Un elemento del cestino. |
+| `end` | `full` (elenco troncato) | Fine dell'elenco. |
+| `space` | `total`, `free` (byte) | Spazio della scheda. |
+| `ok` | | Comando eseguito. |
+| `error` | `text` | Comando rifiutato o fallito. |
+
+### Rotte HTTP
+
+Richiedono il token del messaggio `T<token>`, nell'header `X-Grillo-Token` o nel parametro `t`; senza, `403`. Il percorso è nel parametro `path`, codificato come una query string.
+
+| Rotta | Metodo | Significato |
+| --- | --- | --- |
+| `/api/file?path=&reveal=` | GET | Testo di un file per l'editor, fino a 64 KB (`413` oltre, `404` se manca o è una cartella). `/config.lua` arriva con i segreti sostituiti da `"<secret:N>"`, in chiaro solo con `reveal=1`. |
+| `/api/file?path=&overwrite=` | PUT | Il corpo è il contenuto del file (salvataggio e upload, di qualunque dimensione). Se il file esiste serve `overwrite=1`, altrimenti `409`. Per `/config.lua` i segnaposto `"<secret:N>"` tornano ai valori del file attuale. Risposta `ok`. |
+| `/api/download?path=&t=` | GET | Il file come allegato (`Content-Disposition` con il nome in UTF-8, RFC 5987). |
+| `/api/check?path=` | POST | Il corpo è il testo di uno script (fino a 64 KB), anche non salvato: lo compila senza eseguirlo. Risposta `{"t":"check","ok":...,"error":...,"line":...}`; per gli script in `/payloads` (esclusa `lib`) anche `header` con l'errore dell'intestazione, vuoto se è valida. |
+

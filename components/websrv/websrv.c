@@ -272,6 +272,9 @@ esp_err_t websrv_start(const websrv_config_t *cfg)
     httpd_config_t hc = HTTPD_DEFAULT_CONFIG();
     hc.stack_size = cfg->stack_size;
     hc.max_open_sockets = 4;
+    // /ws, /cfg, i file statici (MAX_PAGES) e le rotte delle app: il default
+    // di 8 bastava appena per pagina e tema
+    hc.max_uri_handlers = 2 + MAX_PAGES + 8;
     hc.lru_purge_enable = true;
     hc.close_fn = client_gone;
     // Keep-alive TCP: un client sparito senza chiudere (WiFi perso) viene

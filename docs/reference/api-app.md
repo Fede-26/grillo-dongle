@@ -30,6 +30,8 @@ Per cambiare profilo mentre l'app gira: `esp_err_t app_usb_apply(usb_profile_t p
 
 `ctx->arg` è l'argomento di avvio (per l'autorun, il percorso dello script); può essere `NULL`.
 
+Un'app che modifica `/config.lua` chiama `app_config_changed()`: il sistema lo ricarica quando l'app esce, non subito, perché ricaricarlo libera le stringhe di `config_str` che le app in corso stanno usando.
+
 ## Eventi
 
 ```c
@@ -97,13 +99,15 @@ Le richieste sono a conteggio di riferimenti (lease): il WiFi resta acceso finch
 
 ## Server web e QR code
 
-Per le app comandate da una pagina web (componenti `websrv`, `qr`, `webui` e `webtheme`; gli esempi sono `apps/webhid` e `apps/webinjector`):
+Per le app comandate da una pagina web (componenti `websrv`, `qr`, `webui`, `webtheme` e `webjson`; gli esempi sono `apps/webhid`, `apps/webinjector` e `apps/webfiles`):
 
 ```c
 esp_err_t websrv_start(const websrv_config_t *cfg); // pin, stack_size, max_frame, on_message, on_auth, on_session_end
 esp_err_t websrv_add_page(const char *uri, const char *type, const uint8_t *gz, size_t len); // pagina già in gzip
 esp_err_t websrv_add_file(const char *uri, const char *type, const uint8_t *data, size_t len, unsigned flags); // WEBSRV_GZIP, WEBSRV_CACHE
 esp_err_t websrv_add_route(const httpd_uri_t *uri);  // rotta propria: non protetta dal PIN
+bool websrv_authorized(httpd_req_t *req);           // la richiesta porta il token della sessione?
+bool websrv_query(httpd_req_t *req, const char *key, char *out, size_t len); // parametro decodificato
 bool websrv_is_client(httpd_req_t *req);             // la richiesta viene dal client autenticato?
 void websrv_reply(httpd_req_t *req, const char *msg); // messaggio WebSocket al client
 esp_err_t websrv_send(const char *msg);              // al client autenticato, da qualunque task
@@ -119,6 +123,6 @@ void webui_draw_main(const net_info_t *ni, const char *pin, int page, const char
 esp_err_t webtheme_register(void);                   // /theme.css, /theme.js, /grillo.svg, /fonts/*
 ```
 
-Il server serve al massimo 8 file compresa la pagina. `webtheme_register` (dopo `websrv_start`) aggiunge il tema comune: la pagina lo include con `<link rel="stylesheet" href="/theme.css">` e `<script src="/theme.js"></script>`, imposta `--acc` con il colore dell'app e mette nell'intestazione `<img class="logo" src="/grillo.svg">` e il pulsante `<button id="theme" class="chip">` che cambia modalità. Il tema regola solo l'aspetto; la disposizione resta della pagina.
+Il server serve al massimo 8 file compresa la pagina, più 8 rotte aggiunte con `websrv_add_route`. `webtheme_register` (dopo `websrv_start`) aggiunge il tema comune: la pagina lo include con `<link rel="stylesheet" href="/theme.css">` e `<script src="/theme.js"></script>`, imposta `--acc` con il colore dell'app e mette nell'intestazione `<img class="logo" src="/grillo.svg">` e il pulsante `<button id="theme" class="chip">` che cambia modalità. Il tema regola solo l'aspetto; la disposizione resta della pagina.
 
-Il server ha due rotte fisse: `/cfg` dice alla pagina se serve il PIN, `/ws` è il WebSocket. Il primo messaggio deve essere `p<PIN>`; le risposte e le regole (blocco per indirizzo, una sessione per volta, subentro dallo stesso IP) sono in [Protocollo WebSocket](protocollo-websocket.md). Dopo l'autenticazione ogni messaggio di testo arriva a `on_message`, nel task del server: un lavoro lungo blocca le altre richieste e deve smettere quando `websrv_stopping()` diventa vero. `on_session_end` è chiamata quando il client se ne va, quando un altro lo sostituisce e a ogni `websrv_stop`: è il posto dove rilasciare ciò che la sessione teneva (il Web HID lascia i tasti).
+Il server ha due rotte fisse: `/cfg` dice alla pagina se serve il PIN, `/ws` è il WebSocket. Il primo messaggio deve essere `p<PIN>`; le risposte e le regole (blocco per indirizzo, una sessione per volta, subentro dallo stesso IP) sono in [Protocollo WebSocket](protocollo-websocket.md). Dopo l'autenticazione ogni messaggio di testo arriva a `on_message`, nel task del server: un lavoro lungo blocca le altre richieste e deve smettere quando `websrv_stopping()` diventa vero. Una rotta aggiunta con `websrv_add_route` non è protetta: l'handler chiama `websrv_authorized` prima di fare qualcosa. Il token arriva alla pagina dopo il PIN (`T<token>`) e cambia a ogni accesso. Per i messaggi JSON c'è `webjson` (`jb_begin`, `jb_kstr`, `jb_kint`, `jb_kbool`, `jb_end`), che sostituisce i byte non UTF-8 validi: il browser chiuderebbe il WebSocket. `on_session_end` è chiamata quando il client se ne va, quando un altro lo sostituisce e a ogni `websrv_stop`: è il posto dove rilasciare ciò che la sessione teneva (il Web HID lascia i tasti).

@@ -1,0 +1,688 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,interactive-widget=resizes-content">
+<title>Grillo Web Files</title>
+<link rel="icon" href="/grillo.svg">
+<link rel="stylesheet" href="/theme.css">
+<script src="/theme.js"></script>
+<style>
+:root{--acc:#f5d547}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;font-size:18px;-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{display:flex;flex-direction:column;padding:8px;gap:8px;min-height:100vh;min-height:100dvh}
+button,input,select{font:inherit;color:inherit}
+button{min-height:44px;padding:0 12px}
+/* Sotto i 16px i browser mobili zoomano la pagina quando compare la tastiera */
+input,select{min-height:44px;padding:0 10px;font-size:18px}
+header{display:flex;align-items:center}
+#st{font-size:12px;color:var(--dim)}
+#st.ok{color:var(--ok)}#st.bad{color:var(--err)}
+#login{margin:auto;display:flex;flex-direction:column;gap:10px;width:min(260px,100%)}
+#pin{padding:12px;font-size:28px;text-align:center;letter-spacing:6px}
+#msg{min-height:1.2em;color:var(--err);text-align:center;font-size:16px}
+.view{display:none;flex-direction:column;gap:8px;min-width:0}
+.bar{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.bar .grow{flex:1}
+#crumbs{display:flex;flex-wrap:wrap;gap:2px 0;font-size:16px;overflow-wrap:anywhere}
+#crumbs a{color:var(--acc);cursor:pointer;text-decoration:none;padding:4px 2px}
+#crumbs span{color:var(--dim);padding:4px 2px}
+.info{color:var(--dim);font-size:15px}
+.note{color:var(--warn);font-size:15px}
+label.chk{display:flex;align-items:center;gap:6px;font-size:16px;color:var(--dim);cursor:pointer}
+label.chk input{min-height:0;width:20px;height:20px;clip-path:none}
+#list,#tlist{display:flex;flex-direction:column;gap:6px}
+.row{display:flex;gap:6px}
+.item{display:flex;justify-content:space-between;align-items:center;gap:8px;text-align:left;flex:1;min-width:0}
+.item .l{overflow-wrap:anywhere;min-width:0}
+.item .r{color:var(--dim);font-size:14px;white-space:nowrap;text-align:right}
+.item.dir .l{color:var(--acc)}
+.more{flex:none;width:48px;padding:0}
+.drop{outline:3px dashed var(--acc);outline-offset:-3px}
+#up{padding:10px;display:none;flex-direction:column;gap:6px}
+.prog{height:10px;background:var(--hi);overflow:hidden}
+.prog div{height:100%;width:0;background:var(--acc)}
+html.arcade .prog div{background:repeating-linear-gradient(90deg,var(--acc) 0 8px,transparent 8px 10px)}
+
+/* Editor: a tutta pagina, alto quanto la parte visibile (meno la tastiera) */
+#edit{position:fixed;left:0;top:0;width:100%;height:100vh;background:var(--bg);padding:8px;z-index:4}
+#edit.view{gap:6px}
+#ename{font-family:var(--f-mono);font-size:16px;overflow-wrap:anywhere;min-width:0}
+#ename.dirty::before{content:"● ";color:var(--warn)}
+#emsg{font-size:15px;min-height:1.2em;overflow-wrap:anywhere}
+#emsg.err{color:var(--err)}#emsg.ok{color:var(--ok)}
+#find{display:none}
+#find input{flex:1;min-width:0}
+.ed{display:flex;flex:1;min-height:0;border:2px solid var(--hi);background:var(--panel);overflow:hidden}
+#gut,#hl,#ta{font:16px/1.5 var(--f-mono);font-variant-ligatures:none;tab-size:4;letter-spacing:0;margin:0;padding:8px}
+#gut{flex:none;min-width:3.2em;text-align:right;color:var(--dim);overflow:hidden;user-select:none;-webkit-user-select:none;border-right:1px solid var(--hi);white-space:pre}
+#gut b{color:#000;background:var(--err);font-weight:400}
+.edw{position:relative;flex:1;min-width:0}
+#hl,#ta{position:absolute;inset:0;width:100%;height:100%;white-space:pre;overflow:auto;border:0}
+#hl{pointer-events:none;color:var(--text);overflow:hidden}
+/* Il testo vero è trasparente: si vede quello colorato sotto, il cursore resta */
+#ta{background:transparent;color:transparent;caret-color:var(--text);resize:none;outline:0;clip-path:none;text-shadow:none;-webkit-text-fill-color:transparent}
+#ta::selection{background:color-mix(in srgb,var(--acc) 35%,transparent)}
+#hl .k{color:var(--acc)}#hl .s{color:var(--ok)}#hl .c{color:var(--dim);font-style:italic}#hl .n{color:var(--warn)}#hl .b{color:#79c0ff}
+html.retro #hl .b{color:var(--text);text-decoration:underline}
+#hl mark{background:var(--warn);color:#000}
+#grid{flex:1;min-height:0;overflow:auto;border:2px solid var(--hi);display:none}
+#grid table{border-collapse:collapse}
+#grid td{padding:0;border:1px solid var(--hi)}
+#grid th{font:12px var(--f-mono);color:var(--dim);padding:2px 4px;background:var(--panel);position:sticky;top:0}
+#grid th.rn{position:sticky;left:0}
+#grid input{border:0;clip-path:none;min-height:36px;width:9em;font:16px var(--f-mono);background:transparent}
+#grid tr:first-child input{font-weight:700}
+#grid input:focus{background:var(--hi)}
+
+#ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);padding:16px;align-items:center;justify-content:center;z-index:10}
+#box{width:min(440px,100%);max-height:90vh;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:10px}
+/* Nomi di file nel titolo: il font pixel è tutto maiuscolo e confonderebbe le maiuscole del nome */
+#box h2{margin:0;font:16px var(--f-mono);color:var(--acc);overflow-wrap:anywhere}
+#box .desc{white-space:pre-wrap;overflow-wrap:anywhere}
+#box .col{display:flex;flex-direction:column;gap:6px}
+#box .row button{flex:1}
+#box input{width:100%}
+#toast{position:fixed;left:8px;right:8px;bottom:8px;display:none;color:#000;clip-path:var(--notch);padding:10px;z-index:60}
+</style>
+</head>
+<body>
+<header><img class="logo" src="/grillo.svg" alt=""><h1>Web Files</h1><span id="st">offline</span><button id="theme" class="chip" type="button">Plain</button></header>
+
+<form id="login">
+  <input id="pin" inputmode="numeric" autocomplete="off" placeholder="PIN" maxlength="6">
+  <button class="main">Connect</button>
+  <div id="msg"></div>
+</form>
+
+<section id="files" class="view">
+  <div id="crumbs"></div>
+  <div class="bar">
+    <button id="bup" class="main">Upload</button>
+    <button id="bdir">+ Folder</button>
+    <button id="bfile">+ File</button>
+    <button id="btrash">Trash</button>
+  </div>
+  <div class="bar">
+    <select id="sort" aria-label="Sort"><option value="name">Name</option><option value="size">Size</option><option value="mtime">Date</option></select>
+    <label class="chk"><input type="checkbox" id="hidden"> Hidden</label>
+    <span class="grow"></span><span id="space" class="info"></span>
+  </div>
+  <div id="up" class="panel"><div id="upname" class="info"></div><div class="prog"><div></div></div></div>
+  <div id="list"></div>
+  <input type="file" id="picker" multiple hidden>
+</section>
+
+<section id="trash" class="view">
+  <div class="bar"><button id="tback">Back</button><span class="grow"></span><button id="tempty" class="danger">Empty trash</button></div>
+  <div class="info">Deleted items stay here until you empty the trash.</div>
+  <div id="tlist"></div>
+</section>
+
+<section id="edit" class="view">
+  <div class="bar"><span id="ename" class="grow"></span></div>
+  <div class="bar">
+    <button id="eclose">Close</button>
+    <button id="esave" class="main">Save</button>
+    <button id="echeck">Check</button>
+    <button id="efind">Find</button>
+    <button id="ereveal">Show secrets</button>
+    <button id="emode">Text</button>
+  </div>
+  <div id="csvbar" class="bar">
+    <select id="sep" aria-label="Separator"><option value=",">, comma</option><option value=";">; semicolon</option><option value="&#9;">tab</option></select>
+    <button data-op="r+">+ Row</button><button data-op="r-">− Row</button><button data-op="c+">+ Col</button><button data-op="c-">− Col</button>
+  </div>
+  <div id="find" class="bar"><input id="fq" placeholder="Find" autocomplete="off" autocapitalize="off" spellcheck="false"><button id="fnext">Next</button><button id="fclose">×</button></div>
+  <div id="emsg"></div>
+  <div class="ed" id="ed"><pre id="gut" aria-hidden="true"></pre><div class="edw"><pre id="hl" aria-hidden="true"></pre><textarea id="ta" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" wrap="off" aria-label="File contents"></textarea></div></div>
+  <div id="grid"></div>
+</section>
+
+<div id="ov"><div class="panel" id="box"></div></div>
+<div id="toast"></div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+let ws = null, pin = "", authed = false, retry = 0, token = "";
+
+function setSt(t, c) { $("st").textContent = t; $("st").className = c || ""; }
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
+function toast(t, bad) {
+  const e = $("toast"); e.textContent = t; e.style.background = bad ? "var(--err)" : "var(--acc)"; e.style.display = "block";
+  clearTimeout(toast.t); toast.t = setTimeout(() => e.style.display = "none", bad ? 5000 : 2500);
+}
+function show(id) { for (const v of ["files", "trash"]) $(v).style.display = v === id ? "flex" : "none"; }
+const store = { get(k, d) { try { return localStorage.getItem(k) ?? d; } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
+
+// --- Connessione: come il Web HID (PIN, riconnessione automatica) ---
+function connect() {
+  ws = new WebSocket("ws://" + location.host + "/ws");
+  setSt("connecting…");
+  ws.onopen = () => ws.send("p" + pin);
+  ws.onmessage = e => {
+    const m = e.data;
+    if (m === "ok") {
+      authed = true; retry = 0; setSt("connected", "ok"); grilloLive(true);
+      $("login").style.display = "none";
+      if ($("trash").style.display !== "flex") { show("files"); load(); } else loadTrash();
+    } else if (m[0] === "T") token = m.slice(1);
+    else if (m === "no") fail("Wrong PIN");
+    else if (m === "busy") fail("Another client is connected");
+    else if (m === "locked") fail("Too many tries, wait 30 s");
+    else if (m[0] === "{") handle(JSON.parse(m));
+  };
+  ws.onclose = () => {
+    const was = authed; authed = false; grilloLive(false);
+    while (queue.length) queue.shift().rej(new Error("Connection lost"));
+    if (!pin) return;
+    setSt("offline", "bad");
+    if (was) retry = 0;
+    setTimeout(connect, Math.min(1000 * ++retry, 5000));
+  };
+}
+function fail(t) { pin = ""; $("msg").textContent = t; $("login").style.display = ""; show(null); setSt("offline", "bad"); if (ws) ws.close(); }
+fetch("/cfg").then(r => r.text()).then(t => { if (t === "nopin") { pin = "-"; connect(); } }).catch(() => {});
+$("login").onsubmit = e => { e.preventDefault(); pin = $("pin").value.trim(); $("msg").textContent = ""; if (pin) connect(); };
+
+// --- Comandi: il dongle risponde nell'ordine in cui li riceve, una
+// risposta finale per comando ("end", "space", "ok", "error") ---
+const queue = [];
+function cmd(s) {
+  return new Promise((res, rej) => {
+    if (!authed) return rej(new Error("Not connected"));
+    queue.push({ res, rej, items: [] });
+    ws.send(s);
+  });
+}
+function handle(m) {
+  const q = queue[0];
+  if (m.t === "entry" || m.t === "trash") { if (q) q.items.push(m); return; }
+  queue.shift();
+  if (!q) return;
+  if (m.t === "error") q.rej(new Error(m.text)); else { m.items = q.items; q.res(m); }
+}
+// Rotte HTTP: contenuti dei file, con il token ricevuto dopo il PIN
+async function api(method, name, q, body) {
+  const r = await fetch("/api/" + name + "?" + new URLSearchParams(q), { method, body, headers: { "X-Grillo-Token": token } });
+  if (!r.ok) { const e = new Error((await r.text()) || r.statusText); e.status = r.status; throw e; }
+  return r;
+}
+// Con XMLHttpRequest per la barra di avanzamento dell'upload
+function put(path, body, overwrite, onprog) {
+  return new Promise((res, rej) => {
+    const x = new XMLHttpRequest();
+    x.open("PUT", "/api/file?" + new URLSearchParams({ path, overwrite: overwrite ? 1 : 0 }));
+    x.setRequestHeader("X-Grillo-Token", token);
+    if (onprog) x.upload.onprogress = e => onprog(e.loaded);
+    x.onload = () => x.status === 200 ? res() : rej(Object.assign(new Error(x.responseText || "Error " + x.status), { status: x.status }));
+    x.onerror = () => rej(new Error("Upload failed"));
+    x.send(body);
+  });
+}
+const err = e => toast(e.message, true);
+
+// --- Dialoghi ---
+let dlgDone = null;
+function dialog(title, opts) {
+  const box = $("box"); box.textContent = "";
+  box.appendChild(el("h2", "", title));
+  if (opts.text) box.appendChild(el("div", "desc", opts.text));
+  let input = null;
+  if (opts.value !== undefined) {
+    input = el("input"); input.value = opts.value; input.autocapitalize = "off"; input.spellcheck = false; input.autocomplete = "off";
+    box.appendChild(input);
+  }
+  return new Promise(res => {
+    const close = v => { $("ov").style.display = "none"; dlgDone = null; res(v); };
+    dlgDone = () => close(null);
+    const wrap = el("div", opts.column ? "col" : "row");
+    for (const [label, cls, v] of opts.buttons) {
+      const b = el("button", cls, label);
+      b.onclick = () => close(v === undefined ? null : input ? (v ? input.value.trim() : null) : v);
+      wrap.appendChild(b);
+    }
+    box.appendChild(wrap);
+    if (input) input.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); wrap.lastChild.click(); } };
+    $("ov").style.display = "flex";
+    if (input) {
+      input.focus();
+      // Selezionato il nome senza estensione: di solito si cambia quello
+      const s = input.value.lastIndexOf("/") + 1, d = input.value.lastIndexOf(".");
+      input.setSelectionRange(s, d > s ? d : input.value.length);
+    }
+  });
+}
+const confirmBox = (title, text, label, cls) => dialog(title, { text, buttons: [["Cancel", ""], [label, cls || "main", true]] });
+const askPath = (title, value, label) => dialog(title, { value, buttons: [["Cancel", "", false], [label, "main", true]] });
+$("ov").onclick = e => { if (e.target === $("ov") && dlgDone) dlgDone(); };
+document.addEventListener("keydown", e => { if (e.key === "Escape" && dlgDone) dlgDone(); });
+
+// --- Elenco della cartella ---
+let dir = "/", entries = [];
+const join = (d, n) => (d === "/" ? "" : d) + "/" + n;
+const parent = p => p.slice(0, p.lastIndexOf("/")) || "/";
+const isHidden = n => n[0] === "." || n === "System Volume Information";
+const TEXT = /\.(lua|csv|tsv|txt|md|json|log|ini|cfg|conf|xml|html?|css|js|py|sh|ps1|bat|cmd|ya?ml|toml)$/i;
+function human(n) {
+  const u = ["B", "KB", "MB", "GB"]; let i = 0;
+  while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+  return (i ? n.toFixed(n < 10 ? 1 : 0) : n) + " " + u[i];
+}
+function when(t) {
+  // FAT senza ora valida al momento della scrittura: date del 1980
+  if (t < 946684800) return "";
+  return new Date(t * 1000).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
+}
+$("sort").value = store.get("grillo.files.sort", "name");
+$("hidden").checked = store.get("grillo.files.hidden", "0") === "1";
+$("sort").onchange = () => { store.set("grillo.files.sort", $("sort").value); render(); };
+$("hidden").onchange = () => { store.set("grillo.files.hidden", $("hidden").checked ? "1" : "0"); render(); };
+
+async function load(to) {
+  if (to !== undefined) dir = to;
+  try {
+    const m = await cmd("l" + dir);
+    entries = m.items; entries.full = m.full;
+    render();
+  } catch (e) {
+    err(e);
+    if (dir !== "/") { dir = parent(dir); return load(); }
+  }
+  cmd("f").then(s => $("space").textContent = human(s.free) + " free of " + human(s.total)).catch(() => {});
+}
+function render() {
+  const c = $("crumbs"); c.textContent = "";
+  const parts = dir.split("/").filter(Boolean);
+  const a = el("a", "", "SD"); a.onclick = () => load("/"); c.appendChild(a);
+  parts.forEach((p, i) => {
+    c.appendChild(el("span", "", "/"));
+    const x = el("a", "", p); x.onclick = () => load("/" + parts.slice(0, i + 1).join("/")); c.appendChild(x);
+  });
+  const key = $("sort").value, coll = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+  const list = entries.filter(e => $("hidden").checked || !isHidden(e.name)).sort((a, b) =>
+    (b.dir - a.dir) || (key === "name" ? coll.compare(a.name, b.name) : (b[key] - a[key]) || coll.compare(a.name, b.name)));
+  const box = $("list"); box.textContent = "";
+  if (entries.full) box.appendChild(el("div", "note", "Only the first 1000 items are shown"));
+  if (dir !== "/") addRow(box, "..", "", true, () => load(parent(dir)));
+  for (const e of list) {
+    const path = join(dir, e.name);
+    const right = e.dir ? when(e.mtime) : human(e.size) + (when(e.mtime) ? "\n" + when(e.mtime) : "");
+    addRow(box, e.name, right, e.dir, () => e.dir ? load(path) : TEXT.test(e.name) ? openEditor(path) : actions(e, path), () => actions(e, path));
+  }
+  if (!list.length) box.appendChild(el("div", "info", entries.length ? "Only hidden items here" : "Empty folder"));
+}
+function addRow(box, name, right, isDir, open, more) {
+  const row = el("div", "row");
+  const b = el("button", "item" + (isDir ? " dir" : ""));
+  b.appendChild(el("span", "l", (isDir && name !== ".." ? "/" : "") + name));
+  const r = el("span", "r"); r.style.whiteSpace = "pre"; r.textContent = right; b.appendChild(r);
+  b.onclick = open; row.appendChild(b);
+  if (more) { const m = el("button", "more", "⋯"); m.title = "Actions"; m.setAttribute("aria-label", "Actions for " + name); m.onclick = more; row.appendChild(m); }
+  box.appendChild(row);
+}
+
+// --- Azioni su un elemento ---
+async function actions(e, path) {
+  const opts = [];
+  if (!e.dir && TEXT.test(e.name)) opts.push(["Edit", "main", "edit"]);
+  if (!e.dir) opts.push(["Download", "", "down"]);
+  opts.push(["Rename / move", "", "mv"]);
+  if (!e.dir) opts.push(["Copy", "", "cp"]);
+  opts.push(["Move to trash", "", "trash"], ["Delete permanently", "danger", "rm"], ["Cancel", ""]);
+  const info = e.dir ? "Folder" : human(e.size);
+  const what = await dialog(e.name, { text: info + (when(e.mtime) ? " · " + when(e.mtime) : ""), buttons: opts, column: true });
+  try {
+    if (what === "edit") openEditor(path);
+    else if (what === "down") download(path);
+    else if (what === "mv") {
+      const to = await askPath("Rename or move", path, "Rename");
+      if (to && to !== path) { await cmd("v" + path + "\t" + to); load(); }
+    } else if (what === "cp") {
+      const d = e.name.lastIndexOf("."), copy = d > 0 ? e.name.slice(0, d) + " copy" + e.name.slice(d) : e.name + " copy";
+      const to = await askPath("Copy to", join(dir, copy), "Copy");
+      if (to) { await cmd("c" + path + "\t" + to); load(); }
+    } else if (what === "trash") { await cmd("d" + path); toast("Moved to the trash"); load(); }
+    else if (what === "rm") {
+      const text = e.dir ? "The folder and everything in it will be deleted. This cannot be undone." : "This cannot be undone.";
+      if (await confirmBox("Delete " + e.name + "?", text, "Delete", "danger")) { await cmd("D" + path); load(); }
+    }
+  } catch (x) { err(x); load(); }
+}
+function download(path) {
+  const a = el("a"); a.href = "/api/download?" + new URLSearchParams({ path, t: token }); a.download = path.slice(path.lastIndexOf("/") + 1);
+  document.body.appendChild(a); a.click(); a.remove();
+}
+$("bdir").onclick = async () => {
+  const p = await askPath("New folder", join(dir, ""), "Create");
+  if (p && p !== join(dir, "")) cmd("k" + p).then(() => load()).catch(err);
+};
+$("bfile").onclick = async () => {
+  const p = await askPath("New file", join(dir, "new.lua"), "Create");
+  if (!p) return;
+  try { await cmd("n" + p); await load(); if (TEXT.test(p)) openEditor(p); } catch (e) { err(e); }
+};
+
+// --- Upload: pulsante o trascinamento (desktop), un file alla volta ---
+$("bup").onclick = () => $("picker").click();
+$("picker").onchange = () => { upload([...$("picker").files]); $("picker").value = ""; };
+let uploading = false;
+async function upload(files) {
+  if (uploading || !files.length) return;
+  uploading = true;
+  const total = files.reduce((s, f) => s + f.size, 0); let done = 0, n = 0;
+  $("up").style.display = "flex";
+  const bar = $("up").querySelector(".prog div");
+  for (const f of files) {
+    n++;
+    $("upname").textContent = `${n}/${files.length} · ${f.name} · ${human(f.size)}`;
+    const path = join(dir, f.name);
+    let over = false;
+    if (entries.some(e => e.name === f.name)) {
+      if (entries.some(e => e.name === f.name && e.dir)) { toast(f.name + ": a folder has this name", true); done += f.size; continue; }
+      if (!(await confirmBox("Replace " + f.name + "?", "A file with this name already exists here.", "Replace", "danger"))) { done += f.size; continue; }
+      over = true;
+    }
+    try { await put(path, f, over, b => bar.style.width = (100 * (done + b) / (total || 1)) + "%"); }
+    catch (e) { toast(f.name + ": " + e.message, true); }
+    done += f.size;
+  }
+  $("up").style.display = "none"; bar.style.width = "0";
+  uploading = false;
+  load();
+}
+document.addEventListener("dragover", e => { if (authed && $("files").style.display === "flex") { e.preventDefault(); $("list").classList.add("drop"); } });
+document.addEventListener("dragleave", e => { if (!e.relatedTarget) $("list").classList.remove("drop"); });
+document.addEventListener("drop", e => {
+  e.preventDefault(); $("list").classList.remove("drop");
+  if (authed && $("files").style.display === "flex") upload([...e.dataTransfer.files].filter(f => f.size || f.type));
+});
+
+// --- Cestino ---
+$("btrash").onclick = () => { show("trash"); loadTrash(); };
+$("tback").onclick = () => { show("files"); load(); };
+async function loadTrash() {
+  const box = $("tlist"); box.textContent = "";
+  let m;
+  try { m = await cmd("L"); } catch (e) { return err(e); }
+  const items = m.items.sort((a, b) => b.id - a.id);
+  for (const t of items) {
+    const right = (t.dir ? "folder" : human(t.size)) + (t.date ? "\n" + t.date : "");
+    addRow(box, t.origin, right, t.dir, () => trashItem(t), () => trashItem(t));
+  }
+  if (!items.length) box.appendChild(el("div", "info", "The trash is empty"));
+  $("tempty").disabled = !items.length;
+}
+async function trashItem(t) {
+  const what = await dialog(t.origin, { text: "Deleted " + (t.date || "(date unknown)"), column: true,
+    buttons: [["Restore", "main", "r"], ["Delete permanently", "danger", "e"], ["Cancel", ""]] });
+  try {
+    if (what === "r") { await cmd("R" + t.id); toast("Restored"); }
+    else if (what === "e" && await confirmBox("Delete permanently?", t.origin + "\nThis cannot be undone.", "Delete", "danger")) await cmd("E" + t.id);
+  } catch (e) { err(e); }
+  loadTrash();
+}
+$("tempty").onclick = async () => {
+  if (!(await confirmBox("Empty the trash?", "Everything in the trash will be deleted. This cannot be undone.", "Empty", "danger"))) return;
+  cmd("X").then(loadTrash).catch(err);
+};
+
+// --- Editor ---
+const ta = $("ta"), hl = $("hl"), gut = $("gut");
+let ed = null; // {path, saved, lua, csv, config, revealed}
+const isConfig = p => p === "/config.lua";
+async function openEditor(path, reveal) {
+  let text;
+  try { text = await (await api("GET", "file", { path, reveal: reveal ? 1 : 0 })).text(); }
+  catch (e) { return toast(e.status === 413 ? "Too large for the editor (max 64 KB): download it instead" : e.message, true); }
+  ed = { path, saved: text, lua: /\.lua$/i.test(path), csv: /\.(csv|tsv)$/i.test(path), config: isConfig(path), revealed: !!reveal };
+  $("ename").textContent = path;
+  $("echeck").style.display = ed.lua ? "" : "none";
+  $("ereveal").style.display = ed.config && !reveal ? "" : "none";
+  $("emode").style.display = ed.csv ? "" : "none";
+  msg(ed.config && !reveal ? "Secrets are hidden as \"<secret:N>\": leave them as they are to keep the values." : "");
+  errLine = 0; findHit = null; closeFind();
+  // Cursore all'inizio: dopo value è alla fine, e il focus scorrerebbe fin là
+  ta.value = text; ta.setSelectionRange(0, 0);
+  $("edit").style.display = "flex"; fit();
+  if (ed.csv) {
+    $("sep").value = ed.sep = /\.tsv$/i.test(path) ? "\t" : guessSep(text);
+    rows = csvRead(text, ed.sep); ed.norm = csvWrite();
+    setMode(true);
+  } else setMode(false);
+  if (!ed.csv && matchMedia("(pointer:fine)").matches) ta.focus({ preventScroll: true });
+  ta.scrollTop = ta.scrollLeft = 0; sync();
+}
+function msg(t, cls) { $("emsg").textContent = t; $("emsg").className = cls || ""; }
+function current() { return ed.table ? csvWrite() : ta.value; }
+// In tabella le virgolette superflue spariscono: il testo riscritto senza
+// modifiche (norm) non conta come modifica
+function dirty() { if (!ed) return false; const c = current(); return c !== ed.saved && c !== ed.norm; }
+function markDirty() { $("ename").classList.toggle("dirty", dirty()); }
+async function closeEditor() {
+  if (dirty() && !(await confirmBox("Discard changes?", ed.path + " has unsaved changes.", "Discard", "danger"))) return;
+  ed = null; $("edit").style.display = "none"; load();
+}
+$("eclose").onclick = closeEditor;
+async function save() {
+  const text = current();
+  try {
+    // Un config.lua che non si carica lascia il dongle con i valori
+    // predefiniti (niente reti note): prima si controlla la sintassi
+    if (ed.config) {
+      const r = await (await api("POST", "check", { path: ed.path }, text)).json();
+      if (!r.ok && !(await confirmBox("config.lua has an error", (r.line ? "Line " + r.line + ": " : "") + r.error +
+          "\nIf you save it, the dongle falls back to the default settings (no known WiFi networks).", "Save anyway", "danger"))) return;
+    }
+    await put(ed.path, text, true);
+    ed.saved = ed.norm = text; markDirty();
+    msg(ed.config ? "Saved. The new config.lua is loaded when you leave Web Files." : "Saved", "ok");
+  } catch (e) { msg("Save failed: " + e.message, "err"); }
+}
+$("esave").onclick = save;
+$("ereveal").onclick = async () => {
+  if (dirty() && !(await confirmBox("Discard changes?", "Showing the secrets reloads the file.", "Discard", "danger"))) return;
+  openEditor(ed.path, true);
+};
+window.addEventListener("beforeunload", e => { if (dirty()) e.preventDefault(); });
+
+// Alto quanto la parte visibile: sul telefono la tastiera la riduce
+function fit() { const v = window.visualViewport; $("edit").style.height = (v ? v.height : innerHeight) + "px"; if (v) $("edit").style.top = v.offsetTop + "px"; }
+if (window.visualViewport) { visualViewport.addEventListener("resize", fit); visualViewport.addEventListener("scroll", fit); }
+
+// Controllo sul dongle: compila senza eseguire, e per gli script
+// dell'injector legge l'intestazione
+let errLine = 0;
+$("echeck").onclick = async () => {
+  try {
+    const r = await (await api("POST", "check", { path: ed.path }, ta.value)).json();
+    errLine = r.ok ? 0 : r.line || 0;
+    if (!r.ok) { msg((r.line ? "Line " + r.line + ": " : "") + r.error, "err"); if (r.line) goLine(r.line); }
+    else if (r.header) msg("Header: " + r.header, "err");
+    else msg("No errors", "ok");
+  } catch (e) { msg("Check failed: " + e.message, "err"); }
+  paint();
+};
+function goLine(n) {
+  let i = 0;
+  for (let k = 1; k < n && i >= 0; k++) i = ta.value.indexOf("\n", i) + 1 || -1;
+  if (i < 0) return;
+  ta.focus(); ta.setSelectionRange(i, i);
+  ta.scrollTop = Math.max(0, (n - 4) * lineH());
+}
+const lineH = () => parseFloat(getComputedStyle(ta).lineHeight) || 24;
+
+// Evidenziazione Lua: commenti e stringhe lunghe, stringhe, numeri, parole
+const LUA = /--\[(=*)\[[\s\S]*?(?:\]\1\]|$)|--[^\n]*|\[(=*)\[[\s\S]*?(?:\]\2\]|$)|"(?:\\[\s\S]|[^"\\\n])*"?|'(?:\\[\s\S]|[^'\\\n])*'?|\b(?:0[xX][\da-fA-F]+|\d+\.?\d*(?:[eE][+-]?\d+)?)\b|[A-Za-z_]\w*/g;
+const KW = new Set("and break do else elseif end false for function goto if in local nil not or repeat return then true until while".split(" "));
+const BI = new Set("sys kb mouse ui host disk fs led cfg require print pairs ipairs pcall error type tostring tonumber select assert next string table math utf8 coroutine setmetatable getmetatable rawget rawset".split(" "));
+function cls(t) {
+  if (t.startsWith("--")) return "c";
+  const c = t[0];
+  if (c === '"' || c === "'" || c === "[") return "s";
+  if (c >= "0" && c <= "9") return "n";
+  return KW.has(t) ? "k" : BI.has(t) ? "b" : "";
+}
+const esc = s => s.replace(/[&<>]/g, c => c === "&" ? "&amp;" : c === "<" ? "&lt;" : "&gt;");
+let findHit = null, painting = false, lines = 0, gutErr = -1;
+function paint() {
+  painting = false;
+  if (!ed || ed.table) return;
+  const t = ta.value, segs = [];
+  let last = 0;
+  if (ed.lua) for (const m of t.matchAll(LUA)) {
+    if (m.index > last) segs.push([last, m.index, ""]);
+    segs.push([m.index, m.index + m[0].length, cls(m[0])]); last = m.index + m[0].length;
+  }
+  if (last < t.length) segs.push([last, t.length, ""]);
+  const [ms, me] = findHit || [-1, -1];
+  let h = "";
+  for (const [a, b, c] of segs) {
+    // Il risultato della ricerca può cadere a metà di un elemento
+    const cuts = [a, b, ms, me].filter(x => x >= a && x <= b).sort((x, y) => x - y);
+    for (let i = 0; i < cuts.length - 1; i++) {
+      const x = cuts[i], y = cuts[i + 1];
+      if (x === y) continue;
+      let s = esc(t.slice(x, y));
+      if (c) s = `<span class="${c}">${s}</span>`;
+      if (x >= ms && y <= me) s = "<mark>" + s + "</mark>";
+      h += s;
+    }
+  }
+  hl.innerHTML = h + "\n ";
+  const n = (t.match(/\n/g) || []).length + 1;
+  if (n !== lines || errLine !== gutErr) {
+    lines = n; gutErr = errLine;
+    let g = "";
+    for (let i = 1; i <= n; i++) g += (i === errLine ? "<b>" + i + "</b>" : i) + "\n";
+    gut.innerHTML = g + " ";
+  }
+  sync();
+}
+function repaint() { if (!painting) { painting = true; requestAnimationFrame(paint); } }
+function sync() { hl.scrollTop = gut.scrollTop = ta.scrollTop; hl.scrollLeft = ta.scrollLeft; }
+ta.addEventListener("scroll", sync);
+ta.addEventListener("input", () => { findHit = null; repaint(); markDirty(); });
+
+// Inserimenti con execCommand: restano nella cronologia dell'annulla
+function insert(text) {
+  if (!document.execCommand("insertText", false, text)) { ta.setRangeText(text, ta.selectionStart, ta.selectionEnd, "end"); repaint(); markDirty(); }
+}
+const IND = "    ";
+function indent(out) {
+  const v = ta.value, s = ta.selectionStart, e = ta.selectionEnd;
+  if (!out && s === e) return insert(IND);
+  const ls = v.lastIndexOf("\n", s - 1) + 1;
+  let le = v.indexOf("\n", e > s && v[e - 1] === "\n" ? e - 1 : e); if (le < 0) le = v.length;
+  const block = v.slice(ls, le).split("\n").map(l => out ? l.replace(/^( {1,4}|\t)/, "") : IND + l).join("\n");
+  ta.setSelectionRange(ls, le); insert(block); ta.setSelectionRange(ls, ls + block.length);
+}
+ta.addEventListener("keydown", e => {
+  if (e.key === "Tab") { e.preventDefault(); indent(e.shiftKey); }
+  else if (e.key === "Enter" && !e.isComposing && !e.ctrlKey && !e.metaKey) {
+    // Nuova riga con il rientro di quella attuale
+    const v = ta.value, s = ta.selectionStart, ls = v.lastIndexOf("\n", s - 1) + 1;
+    e.preventDefault(); insert("\n" + /^[ \t]*/.exec(v.slice(ls, s))[0]);
+  } else if (e.key === "Escape") ta.blur(); // per uscire con Tab dalla textarea
+});
+document.addEventListener("keydown", e => {
+  if (!ed || !(e.ctrlKey || e.metaKey)) return;
+  if (e.key === "s") { e.preventDefault(); save(); }
+  else if (e.key === "f" && !ed.table) { e.preventDefault(); openFind(); }
+});
+
+// Ricerca: senza maiuscole, dal cursore in avanti e poi dall'inizio
+function openFind() { $("find").style.display = "flex"; const s = ta.value.slice(ta.selectionStart, ta.selectionEnd); if (s && !s.includes("\n")) $("fq").value = s; $("fq").focus(); $("fq").select(); }
+function closeFind() { $("find").style.display = "none"; findHit = null; repaint(); }
+function findNext() {
+  const q = $("fq").value.toLowerCase(); if (!q) return;
+  const t = ta.value.toLowerCase(), from = findHit ? findHit[1] : ta.selectionEnd;
+  let i = t.indexOf(q, from); if (i < 0) i = t.indexOf(q);
+  if (i < 0) { findHit = null; msg("Not found: " + $("fq").value, "err"); repaint(); return; }
+  msg(""); findHit = [i, i + q.length];
+  ta.setSelectionRange(i, i + q.length);
+  const line = (ta.value.slice(0, i).match(/\n/g) || []).length;
+  ta.scrollTop = Math.max(0, (line - 4) * lineH());
+  paint();
+}
+$("efind").onclick = openFind; $("fclose").onclick = closeFind; $("fnext").onclick = findNext;
+$("fq").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); findNext(); } else if (e.key === "Escape") { closeFind(); ta.focus(); } });
+
+// --- CSV: tabella modificabile (RFC 4180) o testo ---
+let rows = [], cur = { r: 0, c: 0 }, eol = "\n", tailEol = true;
+function guessSep(t) { const l = t.split("\n", 1)[0]; return (l.split(";").length > l.split(",").length) ? ";" : l.includes("\t") && !l.includes(",") ? "\t" : ","; }
+function csvRead(t, sep) {
+  eol = t.includes("\r\n") ? "\r\n" : "\n"; tailEol = /\n$/.test(t);
+  const out = []; let row = [], f = "", q = false, i = 0;
+  for (; i < t.length; i++) {
+    const c = t[i];
+    if (q) { if (c === '"') { if (t[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += c; }
+    else if (c === '"' && f === "") q = true;
+    else if (c === sep) { row.push(f); f = ""; }
+    else if (c === "\n" || c === "\r") { if (c === "\r" && t[i + 1] === "\n") i++; row.push(f); out.push(row); row = []; f = ""; }
+    else f += c;
+  }
+  if (f !== "" || row.length) { row.push(f); out.push(row); }
+  return out;
+}
+function csvWrite(sep = $("sep").value) {
+  const q = f => /["\r\n]/.test(f) || f.includes(sep) ? '"' + f.replace(/"/g, '""') + '"' : f;
+  const t = rows.map(r => r.map(q).join(sep)).join(eol);
+  return t + (tailEol && rows.length ? eol : "");
+}
+function setMode(table) {
+  if (table && !ed.table) rows = csvRead(ta.value, $("sep").value);
+  if (!table && ed.table) { ta.value = csvWrite(); }
+  ed.table = table;
+  $("emode").textContent = table ? "Text" : "Table";
+  $("ed").style.display = table ? "none" : "flex";
+  $("grid").style.display = table ? "block" : "none";
+  $("csvbar").style.display = table ? "flex" : "none";
+  $("efind").style.display = table ? "none" : "";
+  if (table) grid(); else { lines = 0; paint(); }
+  markDirty();
+}
+$("emode").onclick = () => setMode(!ed.table);
+// Separatore sbagliato all'apertura: il testo si rilegge con quello scelto
+$("sep").onchange = () => {
+  const t = ed.table ? csvWrite(ed.sep) : ta.value;
+  ed.sep = $("sep").value;
+  ed.norm = (rows = csvRead(ed.saved, ed.sep), csvWrite());
+  if (ed.table) { rows = csvRead(t, ed.sep); grid(); }
+  markDirty();
+};
+function grid() {
+  const cols = Math.max(1, ...rows.map(r => r.length)), tb = el("table"), head = el("tr");
+  head.appendChild(el("th", "rn", ""));
+  for (let c = 0; c < cols; c++) head.appendChild(el("th", "", c < 26 ? String.fromCharCode(65 + c) : String(c + 1)));
+  tb.appendChild(head);
+  if (!rows.length) rows.push([""]);
+  rows.forEach((r, ri) => {
+    const tr = el("tr"); tr.appendChild(el("th", "rn", String(ri + 1)));
+    for (let c = 0; c < cols; c++) {
+      const td = el("td"), inp = el("input"); inp.value = r[c] ?? ""; inp.spellcheck = false; inp.autocapitalize = "off";
+      inp.onfocus = () => cur = { r: ri, c };
+      // Le righe corte restano corte finché non si scrive oltre la loro fine
+      inp.oninput = () => { while (rows[ri].length <= c) rows[ri].push(""); rows[ri][c] = inp.value; markDirty(); };
+      td.appendChild(inp); tr.appendChild(td);
+    }
+    tb.appendChild(tr);
+  });
+  $("grid").textContent = ""; $("grid").appendChild(tb);
+}
+$("csvbar").addEventListener("click", e => {
+  const op = e.target.dataset && e.target.dataset.op; if (!op) return;
+  const cols = Math.max(1, ...rows.map(r => r.length)), { r, c } = cur;
+  if (op === "r+") rows.splice(r + 1, 0, Array(cols).fill(""));
+  else if (op === "r-" && rows.length > 1) rows.splice(r, 1);
+  else if (op === "c+") rows.forEach(x => { if (x.length > c) x.splice(c + 1, 0, ""); });
+  else if (op === "c-") rows.forEach(x => x.splice(c, 1));
+  grid(); markDirty();
+  const inp = $("grid").querySelectorAll("tr")[Math.min(op === "r+" ? r + 2 : r + 1, rows.length)]?.querySelectorAll("input")[op === "c+" ? c + 1 : Math.min(c, cols - 1)];
+  if (inp) inp.focus();
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,856 @@
+// Web Files: la microSD sfogliata e modificata da una pagina web.
+//
+// Come il Web HID: lease di rete (rete nota o hotspot), server con PIN, QR
+// code e PIN sul display. La pagina vede tutta la SD: elenco, upload,
+// download, nuova cartella o file, rinomina e sposta, copia, cestino ed
+// eliminazione definitiva, editor di testo (Lua e CSV) con controllo degli
+// script sul dongle. Tutto il lavoro gira nel task httpd; il task dell'app
+// disegna soltanto la schermata.
+//
+// Le operazioni brevi passano dal WebSocket; i contenuti dei file dalle
+// rotte HTTP, protette dal token della sessione (websrv_authorized):
+//   GET  /api/file?path=&reveal=      testo per l'editor (max EDIT_MAX)
+//   PUT  /api/file?path=&overwrite=   salvataggio e upload (corpo grezzo)
+//   GET  /api/download?path=&t=       download come allegato
+//   POST /api/check?path=             compila uno script Lua senza eseguirlo
+//
+// Cestino: un elemento eliminato va in /.trash/<n>/<nome>, con accanto
+// /.trash/<n>/.origin (riga 1 percorso originale, riga 2 data). Un rename,
+// quindi istantaneo anche per una cartella intera.
+
+#include <dirent.h>
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <time.h>
+#include <unistd.h>
+#include "clock.h"
+#include "config.h"
+#include "esp_random.h"
+#include "icons.h"
+#include "lauxlib.h"
+#include "led.h"
+#include "luart.h"
+#include "net.h"
+#include "payload.h"
+#include "secrets.h"
+#include "storage.h"
+#include "ui.h"
+#include "usbdev.h"
+#include "webfiles.h"
+#include "webjson.h"
+#include "websrv.h"
+#include "webtheme.h"
+#include "webui.h"
+
+#define ACCENT      0xF5D547
+#define TRASH_DIR   STORAGE_ROOT "/.trash"
+// "/sd" più un percorso FAT: un nome lungo arriva a 255 caratteri
+#define PATH_LEN    300
+// L'editor della pagina lavora su una textarea: oltre diventa lento, e il
+// testo intero deve stare in RAM per il controllo e per i segreti
+#define EDIT_MAX    (64 * 1024)
+#define CHUNK       4096
+// Due percorsi relativi (rinomina, copia) e il comando
+#define MAX_FRAME   (2 * PATH_LEN + 8)
+// Oltre, la cartella si vede troncata (la pagina lo dice)
+#define MAX_LIST    1000
+// Profondità massima di una cartella eliminata o svuotata: la ricorsione
+// tiene aperta una DIR per livello
+#define MAX_DEPTH   16
+// Memoria della VM usata solo per compilare (POST /api/check)
+#define CHECK_MEM   (80 * 1024)
+
+extern const uint8_t page_gz_start[] asm("_binary_webfiles_html_gz_start");
+extern const uint8_t page_gz_end[] asm("_binary_webfiles_html_gz_end");
+
+// ---------------------------------------------------------------------------
+// Percorsi
+
+// Percorso mandato dalla pagina, relativo alla radice della SD ("/",
+// "/payloads/a.lua"), in percorso VFS ("/sd", "/sd/payloads/a.lua").
+// Rifiutati "..", "\" (separatore anche per FatFs) e ":" (prefisso di
+// volume FatFs): la pagina non deve uscire dalla scheda.
+static bool sd_path(const char *rel, char *out, size_t len)
+{
+    if (rel[0] != '/' || strpbrk(rel, "\\:")) return false;
+    for (const char *p = rel + 1; *p;) {
+        const char *q = strchr(p, '/');
+        size_t n = q ? (size_t)(q - p) : strlen(p);
+        if (n == 2 && p[0] == '.' && p[1] == '.') return false;
+        if (!q) break;
+        p = q + 1;
+    }
+    int w = snprintf(out, len, "%s%s", STORAGE_ROOT, rel);
+    if (w >= (int)len) return false;
+    // Niente "/" finale: "/sd/" e "/sd/x/" diventano "/sd" e "/sd/x"
+    while (w > (int)strlen(STORAGE_ROOT) && out[w - 1] == '/') out[--w] = 0;
+    return true;
+}
+
+static bool is_root(const char *path)
+{
+    return strcmp(path, STORAGE_ROOT) == 0;
+}
+
+// true per il cestino e ciò che contiene: si gestisce solo con i comandi
+// del cestino, altrimenti eliminare un elemento lo sposterebbe dentro sé stesso
+static bool in_trash(const char *path)
+{
+    size_t n = strlen(TRASH_DIR);
+    return strncmp(path, TRASH_DIR, n) == 0 && (path[n] == 0 || path[n] == '/');
+}
+
+static bool exists(const char *path)
+{
+    struct stat st;
+    return stat(path, &st) == 0;
+}
+
+static bool is_dir(const char *path)
+{
+    struct stat st;
+    return stat(path, &st) == 0 && S_ISDIR(st.st_mode);
+}
+
+static const char *base_name(const char *path)
+{
+    const char *s = strrchr(path, '/');
+    return s ? s + 1 : path;
+}
+
+// config.lua cambiato (salvato, rinominato, eliminato, ripristinato): il
+// sistema lo ricarica all'uscita dall'app
+static void touched(const char *path)
+{
+    if (strcmp(path, CONFIG_PATH) == 0) app_config_changed();
+}
+
+// Crea le cartelle mancanti di `path` (lui compreso)
+static bool mkdir_p(const char *path)
+{
+    char p[PATH_LEN];
+    strlcpy(p, path, sizeof(p));
+    for (char *s = p + strlen(STORAGE_ROOT) + 1; *s; s++) {
+        if (*s != '/') continue;
+        *s = 0;
+        if (mkdir(p, 0777) != 0 && errno != EEXIST) return false;
+        *s = '/';
+    }
+    return mkdir(p, 0777) == 0 || errno == EEXIST;
+}
+
+// Elimina un file o una cartella con tutto il contenuto. `path` è un buffer
+// di PATH_LEN che si allunga e si accorcia durante la discesa.
+static bool rm_tree(char *path, int depth)
+{
+    struct stat st;
+    if (stat(path, &st) != 0) return false;
+    if (!S_ISDIR(st.st_mode)) return unlink(path) == 0;
+    if (depth >= MAX_DEPTH) return false;
+    DIR *d = opendir(path);
+    if (!d) return false;
+    size_t len = strlen(path);
+    bool ok = true;
+    struct dirent *e;
+    while (ok && !websrv_stopping() && (e = readdir(d))) {
+        if (snprintf(path + len, PATH_LEN - len, "/%s", e->d_name) >= (int)(PATH_LEN - len)) ok = false;
+        else ok = rm_tree(path, depth + 1);
+        path[len] = 0;
+    }
+    closedir(d);
+    return ok && rmdir(path) == 0;
+}
+
+static bool copy_file(const char *from, const char *to)
+{
+    FILE *in = fopen(from, "rb");
+    if (!in) return false;
+    FILE *out = fopen(to, "wb");
+    char *buf = malloc(CHUNK);
+    bool ok = out && buf;
+    size_t n;
+    while (ok && !websrv_stopping() && (n = fread(buf, 1, CHUNK, in)) > 0) ok = fwrite(buf, 1, n, out) == n;
+    ok = ok && !ferror(in) && !websrv_stopping();
+    free(buf);
+    fclose(in);
+    if (out && fclose(out) != 0) ok = false;
+    if (!ok && out) unlink(to); // niente copie a metà
+    return ok;
+}
+
+// ---------------------------------------------------------------------------
+// Cestino
+
+// Cartella della voce <id> del cestino
+static void slot_path(int id, char *out, size_t len)
+{
+    snprintf(out, len, "%s/%d", TRASH_DIR, id);
+}
+
+// Percorso originale e data dal file .origin, nome dell'elemento dall'unica
+// altra voce della cartella. false se la voce non è valida.
+static bool slot_read(int id, char *origin, size_t olen, char *date, size_t dlen, char *item, size_t ilen)
+{
+    char p[PATH_LEN];
+    slot_path(id, p, sizeof(p));
+    size_t n = strlen(p);
+    strlcpy(p + n, "/.origin", sizeof(p) - n);
+    FILE *f = fopen(p, "r");
+    if (!f) return false;
+    origin[0] = date[0] = 0;
+    if (fgets(origin, olen, f)) origin[strcspn(origin, "\r\n")] = 0;
+    if (fgets(date, dlen, f)) date[strcspn(date, "\r\n")] = 0;
+    fclose(f);
+    p[n] = 0;
+    DIR *d = opendir(p);
+    if (!d) return false;
+    item[0] = 0;
+    struct dirent *e;
+    while ((e = readdir(d))) {
+        if (strcmp(e->d_name, ".origin") != 0) {
+            strlcpy(item, e->d_name, ilen);
+            break;
+        }
+    }
+    closedir(d);
+    return origin[0] && item[0];
+}
+
+// Sposta `path` nel cestino, in una cartella numerata nuova
+static const char *trash_put(const char *path)
+{
+    if (!mkdir_p(TRASH_DIR)) return "Cannot create the trash folder";
+    int id = 0;
+    DIR *d = opendir(TRASH_DIR);
+    if (d) {
+        struct dirent *e;
+        while ((e = readdir(d))) {
+            int n = atoi(e->d_name);
+            if (n > id) id = n;
+        }
+        closedir(d);
+    }
+    id++;
+    char slot[40], p[PATH_LEN];
+    slot_path(id, slot, sizeof(slot));
+    if (mkdir(slot, 0777) != 0) return "Cannot create the trash folder";
+    snprintf(p, sizeof(p), "%s/.origin", slot);
+    FILE *f = fopen(p, "w");
+    bool ok = f != NULL;
+    if (f) {
+        // La data solo con l'ora valida: altrimenti sarebbe il 1970
+        char date[24] = "";
+        time_t now = time(NULL);
+        if (clock_valid()) strftime(date, sizeof(date), "%Y-%m-%d %H:%M", localtime(&now));
+        ok = fprintf(f, "%s\n%s\n", path + strlen(STORAGE_ROOT), date) > 0;
+        if (fclose(f) != 0) ok = false;
+    }
+    if (ok && snprintf(p, sizeof(p), "%s/%s", slot, base_name(path)) < (int)sizeof(p)) ok = rename(path, p) == 0;
+    else ok = false;
+    if (ok) return NULL;
+    slot_path(id, p, sizeof(p));
+    rm_tree(p, 0);
+    return "Cannot move to the trash";
+}
+
+// Rimette la voce <id> al suo posto. Se nel frattempo lì è comparso un
+// elemento con lo stesso nome, si aggiunge " (2)", " (3)"... prima
+// dell'estensione; la cartella d'origine, se manca, viene ricreata.
+static const char *trash_restore(int id)
+{
+    char origin[PATH_LEN], date[24], item[256], from[PATH_LEN], to[PATH_LEN];
+    if (!slot_read(id, origin, sizeof(origin), date, sizeof(date), item, sizeof(item))) return "No such trash item";
+    if (!sd_path(origin, to, sizeof(to)) || is_root(to) || in_trash(to)) return "Bad original path";
+    char slot[40];
+    slot_path(id, slot, sizeof(slot));
+    snprintf(from, sizeof(from), "%s/%s", slot, item);
+    // Cartella d'origine
+    char *sl = strrchr(to, '/');
+    *sl = 0;
+    if (!is_root(to) && !mkdir_p(to)) return "Cannot recreate the original folder";
+    *sl = '/';
+    if (exists(to)) {
+        char stem[256];
+        strlcpy(stem, sl + 1, sizeof(stem));
+        // L'estensione di un file, non di una cartella e non un nome che inizia con "."
+        char *dot = is_dir(from) ? NULL : strrchr(stem, '.');
+        if (dot == stem) dot = NULL;
+        const char *ext = "";
+        char extbuf[64] = "";
+        if (dot && strlen(dot) < sizeof(extbuf)) {
+            strlcpy(extbuf, dot, sizeof(extbuf));
+            *dot = 0;
+            ext = extbuf;
+        }
+        int n = 2;
+        for (; n < 100; n++) {
+            *sl = 0;
+            int w = snprintf(to + strlen(to), sizeof(to) - strlen(to), "/%s (%d)%s", stem, n, ext);
+            if (w < 0 || !exists(to)) break;
+        }
+        if (n == 100) return "Too many items with the same name";
+    }
+    if (rename(from, to) != 0) return "Cannot restore";
+    touched(to);
+    rm_tree(slot, 0);
+    return NULL;
+}
+
+// ---------------------------------------------------------------------------
+// Comandi del WebSocket (task httpd)
+
+static void reply_owned(httpd_req_t *req, char *msg)
+{
+    if (msg) websrv_reply(req, msg);
+    free(msg);
+}
+
+static void reply_result(httpd_req_t *req, const char *err)
+{
+    jbuf_t b = {0};
+    jb_begin(&b, err ? "error" : "ok");
+    if (err) jb_kstr(&b, "text", err);
+    reply_owned(req, jb_end(&b));
+}
+
+// Una voce per messaggio, poi "end": niente buffer grandi per cartelle piene
+static void send_list(httpd_req_t *req, const char *dir)
+{
+    DIR *d = opendir(dir);
+    if (!d) {
+        reply_result(req, "Cannot open the folder");
+        return;
+    }
+    char p[PATH_LEN];
+    size_t len = strlcpy(p, dir, sizeof(p));
+    int n = 0;
+    struct dirent *e;
+    while (!websrv_stopping() && n < MAX_LIST && (e = readdir(d))) {
+        struct stat st;
+        snprintf(p + len, sizeof(p) - len, "/%s", e->d_name);
+        bool ok = stat(p, &st) == 0;
+        jbuf_t b = {0};
+        jb_begin(&b, "entry");
+        jb_kstr(&b, "name", e->d_name);
+        jb_kbool(&b, "dir", ok ? S_ISDIR(st.st_mode) : e->d_type == DT_DIR);
+        jb_kint(&b, "size", ok ? (long long)st.st_size : 0);
+        jb_kint(&b, "mtime", ok ? (long long)st.st_mtime : 0);
+        reply_owned(req, jb_end(&b));
+        n++;
+    }
+    closedir(d);
+    jbuf_t b = {0};
+    jb_begin(&b, "end");
+    jb_kbool(&b, "full", n == MAX_LIST);
+    reply_owned(req, jb_end(&b));
+}
+
+static void send_trash(httpd_req_t *req)
+{
+    DIR *d = opendir(TRASH_DIR);
+    if (d) {
+        struct dirent *e;
+        while (!websrv_stopping() && (e = readdir(d))) {
+            int id = atoi(e->d_name);
+            char origin[PATH_LEN], date[24], item[256], p[PATH_LEN];
+            if (id <= 0 || !slot_read(id, origin, sizeof(origin), date, sizeof(date), item, sizeof(item))) continue;
+            snprintf(p, sizeof(p), "%s/%d/%s", TRASH_DIR, id, item);
+            struct stat st;
+            bool ok = stat(p, &st) == 0;
+            jbuf_t b = {0};
+            jb_begin(&b, "trash");
+            jb_kint(&b, "id", id);
+            jb_kstr(&b, "origin", origin);
+            jb_kstr(&b, "date", date);
+            jb_kbool(&b, "dir", ok && S_ISDIR(st.st_mode));
+            jb_kint(&b, "size", ok ? (long long)st.st_size : 0);
+            reply_owned(req, jb_end(&b));
+        }
+        closedir(d);
+    }
+    // Cestino che non esiste ancora: vuoto, non un errore
+    jbuf_t b = {0};
+    jb_begin(&b, "end");
+    jb_kbool(&b, "full", false);
+    reply_owned(req, jb_end(&b));
+}
+
+static void send_space(httpd_req_t *req)
+{
+    uint64_t total, free_b;
+    if (!storage_info(&total, &free_b)) {
+        reply_result(req, "Cannot read the card size");
+        return;
+    }
+    jbuf_t b = {0};
+    jb_begin(&b, "space");
+    jb_kint(&b, "total", (long long)total);
+    jb_kint(&b, "free", (long long)free_b);
+    reply_owned(req, jb_end(&b));
+}
+
+// Separa "<da>\t<a>" e converte entrambi i percorsi
+static bool two_paths(char *arg, char *from, char *to)
+{
+    char *tab = strchr(arg, '\t');
+    if (!tab) return false;
+    *tab = 0;
+    return sd_path(arg, from, PATH_LEN) && sd_path(tab + 1, to, PATH_LEN);
+}
+
+// Le operazioni che scrivono sulla scheda. NULL se riuscita, altrimenti il
+// messaggio per la pagina.
+static const char *write_op(char op, char *arg)
+{
+    char a[PATH_LEN], b[PATH_LEN];
+    switch (op) {
+    case 'k':
+    case 'n': {
+        if (!sd_path(arg, a, sizeof(a)) || is_root(a) || in_trash(a)) return "Bad path";
+        if (exists(a)) return "Already exists";
+        if (op == 'k') return mkdir(a, 0777) == 0 ? NULL : "Cannot create the folder";
+        FILE *f = fopen(a, "w");
+        if (!f) return "Cannot create the file";
+        fclose(f);
+        return NULL;
+    }
+    case 'v':
+    case 'c': {
+        if (!two_paths(arg, a, b) || is_root(a) || is_root(b) || in_trash(a) || in_trash(b)) return "Bad path";
+        if (!exists(a)) return "Not found";
+        if (exists(b)) return "Already exists";
+        if (op == 'c') {
+            if (is_dir(a)) return "Only files can be copied";
+            if (!copy_file(a, b)) return "Copy failed";
+            touched(b);
+            return NULL;
+        }
+        // Una cartella dentro sé stessa la staccherebbe dall'albero
+        size_t n = strlen(a);
+        if (strncmp(b, a, n) == 0 && b[n] == '/') return "Cannot move a folder into itself";
+        if (rename(a, b) != 0) return "Cannot rename";
+        touched(a);
+        touched(b);
+        return NULL;
+    }
+    case 'd':
+    case 'D': {
+        if (!sd_path(arg, a, sizeof(a)) || is_root(a) || in_trash(a)) return "Bad path";
+        if (!exists(a)) return "Not found";
+        const char *err = op == 'd' ? trash_put(a) : rm_tree(a, 0) ? NULL : "Delete failed (partly deleted?)";
+        // Anche a metà: una cartella piena può essere stata svuotata in parte
+        touched(a);
+        return err;
+    }
+    case 'R':
+    case 'E': {
+        int id = atoi(arg);
+        if (id <= 0) return "Bad trash item";
+        if (op == 'R') return trash_restore(id);
+        slot_path(id, a, sizeof(a));
+        if (!exists(a)) return "No such trash item";
+        return rm_tree(a, 0) ? NULL : "Delete failed";
+    }
+    case 'X':
+        if (!exists(TRASH_DIR)) return NULL;
+        strlcpy(a, TRASH_DIR, sizeof(a));
+        return rm_tree(a, 0) ? NULL : "Delete failed";
+    default: return "Unknown command";
+    }
+}
+
+// Comandi (percorsi relativi alla radice della SD, che inizia con "/"):
+//   l<cartella>    elenco: voci "entry", poi "end"
+//   f              spazio totale e libero ("space")
+//   k<cartella>    nuova cartella
+//   n<file>        nuovo file vuoto
+//   v<da>\t<a>     rinomina o sposta
+//   c<da>\t<a>     copia (solo file)
+//   d<percorso>    nel cestino
+//   D<percorso>    elimina definitivamente (anche cartelle piene)
+//   L              elenco del cestino: voci "trash", poi "end"
+//   R<id>          ripristina dal cestino
+//   E<id>          elimina dal cestino
+//   X              svuota il cestino
+// Ogni comando ha una sola risposta finale ("end", "space", "ok" o
+// "error"), nell'ordine dei comandi: la pagina le abbina in coda.
+static void on_message(httpd_req_t *req, char *msg, size_t len)
+{
+    char path[PATH_LEN];
+    switch (msg[0]) {
+    case 'l':
+        if (!sd_path(msg + 1, path, sizeof(path))) reply_result(req, "Bad path");
+        else send_list(req, path);
+        return;
+    case 'L': send_trash(req); return;
+    case 'f': send_space(req); return;
+    default:
+        // Il prestito della scheda all'host (console `usb`) aspetta la fine
+        if (!storage_begin_write()) {
+            reply_result(req, "The card is not available");
+            return;
+        }
+        const char *err = write_op(msg[0], msg + 1);
+        storage_end_write();
+        reply_result(req, err);
+        return;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rotte HTTP (task httpd)
+
+static esp_err_t send_status(httpd_req_t *req, const char *status, const char *text)
+{
+    httpd_resp_set_status(req, status);
+    httpd_resp_set_type(req, "text/plain");
+    return httpd_resp_sendstr(req, text);
+}
+
+// Token e percorso della query; in caso di errore la risposta è già partita
+static bool request_path(httpd_req_t *req, char *path)
+{
+    char rel[PATH_LEN];
+    if (!websrv_authorized(req)) {
+        send_status(req, "403 Forbidden", "Not authorized");
+        return false;
+    }
+    if (!websrv_query(req, "path", rel, sizeof(rel)) || !sd_path(rel, path, PATH_LEN)) {
+        send_status(req, "400 Bad Request", "Bad path");
+        return false;
+    }
+    return true;
+}
+
+static bool query_flag(httpd_req_t *req, const char *key)
+{
+    char v[4];
+    return websrv_query(req, key, v, sizeof(v)) && strcmp(v, "1") == 0;
+}
+
+// Tutto il file in un buffer terminato da 0 (NULL se manca o è troppo grande)
+static char *read_text(const char *path, size_t max, size_t *out_len)
+{
+    struct stat st;
+    if (stat(path, &st) != 0 || S_ISDIR(st.st_mode) || (size_t)st.st_size > max) return NULL;
+    FILE *f = fopen(path, "rb");
+    char *buf = f ? malloc(st.st_size + 1) : NULL;
+    size_t n = buf ? fread(buf, 1, st.st_size, f) : 0;
+    if (f) fclose(f);
+    if (!buf) return NULL;
+    buf[n] = 0;
+    if (out_len) *out_len = n;
+    return buf;
+}
+
+// Corpo della richiesta, esattamente `len` byte
+static bool recv_body(httpd_req_t *req, char *buf, size_t len)
+{
+    size_t got = 0;
+    int timeouts = 0;
+    while (got < len) {
+        int r = httpd_req_recv(req, buf + got, len - got);
+        if (r == HTTPD_SOCK_ERR_TIMEOUT && ++timeouts < 3) continue;
+        if (r <= 0) return false;
+        got += r;
+    }
+    return true;
+}
+
+// config.lua dalla pagina arriva con i segnaposto dei segreti al posto dei
+// valori: li rimette prendendoli dal file attuale
+static char *config_body(httpd_req_t *req, size_t *out_len)
+{
+    size_t len = req->content_len;
+    char *edited = len <= EDIT_MAX ? malloc(len + 1) : NULL;
+    if (!edited || !recv_body(req, edited, len)) {
+        free(edited);
+        return NULL;
+    }
+    edited[len] = 0;
+    char *orig = read_text(CONFIG_PATH, EDIT_MAX, NULL);
+    char *text = secrets_unmask(edited, orig ? orig : "");
+    free(orig);
+    free(edited);
+    if (text) *out_len = strlen(text);
+    return text;
+}
+
+static esp_err_t file_get(httpd_req_t *req)
+{
+    char path[PATH_LEN];
+    if (!request_path(req, path)) return ESP_OK;
+    struct stat st;
+    if (stat(path, &st) != 0 || S_ISDIR(st.st_mode)) return send_status(req, "404 Not Found", "Not found");
+    if (st.st_size > EDIT_MAX) return send_status(req, "413 Content Too Large", "Too large for the editor");
+    size_t len;
+    char *text = read_text(path, EDIT_MAX, &len);
+    if (!text) return send_status(req, "500 Internal Server Error", "Cannot read the file");
+    // I segreti in chiaro solo su richiesta esplicita (pulsante della pagina)
+    if (strcmp(path, CONFIG_PATH) == 0 && !query_flag(req, "reveal")) {
+        char *masked = secrets_mask(text);
+        free(text);
+        if (!masked) return send_status(req, "500 Internal Server Error", "Out of memory");
+        text = masked;
+        len = strlen(text);
+    }
+    httpd_resp_set_type(req, "text/plain; charset=utf-8");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    esp_err_t err = httpd_resp_send(req, text, len);
+    free(text);
+    return err;
+}
+
+// Salvataggio dall'editor e upload. Il contenuto va prima in "<nome>.part":
+// se la connessione cade a metà, il file di prima resta intatto.
+static esp_err_t file_put(httpd_req_t *req)
+{
+    char path[PATH_LEN], tmp[PATH_LEN];
+    if (!request_path(req, path)) return ESP_OK;
+    if (is_root(path) || in_trash(path) || snprintf(tmp, sizeof(tmp), "%s.part", path) >= (int)sizeof(tmp)) {
+        return send_status(req, "400 Bad Request", "Bad path");
+    }
+    struct stat st;
+    bool there = stat(path, &st) == 0;
+    if (there && S_ISDIR(st.st_mode)) return send_status(req, "409 Conflict", "A folder with this name exists");
+    if (there && !query_flag(req, "overwrite")) return send_status(req, "409 Conflict", "Already exists");
+    bool config = strcmp(path, CONFIG_PATH) == 0;
+    // Prima del lock: config_body legge dalla rete, e l'unmask serve intero
+    size_t text_len = 0;
+    char *text = config ? config_body(req, &text_len) : NULL;
+    if (config && !text) return send_status(req, "400 Bad Request", "Cannot read config.lua");
+    char *buf = config ? NULL : malloc(CHUNK);
+    if (!config && !buf) return send_status(req, "500 Internal Server Error", "Out of memory");
+    if (!storage_begin_write()) {
+        free(text);
+        free(buf);
+        return send_status(req, "503 Service Unavailable", "The card is not available");
+    }
+    FILE *f = fopen(tmp, "wb");
+    bool ok = f != NULL;
+    if (ok && config) ok = fwrite(text, 1, text_len, f) == text_len;
+    // Il resto a pezzi: un upload può essere più grande della RAM
+    for (size_t left = req->content_len, timeouts = 0; ok && !config && left > 0;) {
+        int r = httpd_req_recv(req, buf, left < CHUNK ? left : CHUNK);
+        if (r == HTTPD_SOCK_ERR_TIMEOUT && ++timeouts < 3) continue;
+        ok = r > 0 && !websrv_stopping() && fwrite(buf, 1, r, f) == (size_t)r;
+        if (ok) left -= r;
+    }
+    if (f && fclose(f) != 0) ok = false;
+    // FAT non sostituisce con rename: prima si toglie il vecchio
+    if (ok && there) ok = unlink(path) == 0;
+    if (ok) ok = rename(tmp, path) == 0;
+    if (!ok) unlink(tmp);
+    if (ok) touched(path);
+    storage_end_write();
+    free(text);
+    free(buf);
+    if (!ok) return send_status(req, "500 Internal Server Error", "Write failed");
+    return send_status(req, "200 OK", "ok");
+}
+
+// Content-Disposition con il nome del file: filename= in ASCII per i client
+// vecchi, filename*= (RFC 5987) con il nome vero in UTF-8
+static void disposition(const char *name, char *out, size_t len)
+{
+    int w = snprintf(out, len, "attachment; filename=\"");
+    for (const unsigned char *s = (const unsigned char *)name; *s && w < (int)len - 40; s++) {
+        out[w++] = (*s < 0x20 || *s >= 0x7F || *s == '"' || *s == '\\') ? '_' : *s;
+    }
+    w += snprintf(out + w, len - w, "\"; filename*=UTF-8''");
+    for (const unsigned char *s = (const unsigned char *)name; *s && w < (int)len - 4; s++) {
+        if ((*s >= 'A' && *s <= 'Z') || (*s >= 'a' && *s <= 'z') || (*s >= '0' && *s <= '9') || strchr("-._~", *s)) {
+            out[w++] = *s;
+        } else {
+            w += snprintf(out + w, len - w, "%%%02X", *s);
+        }
+    }
+    out[w] = 0;
+}
+
+static esp_err_t download_get(httpd_req_t *req)
+{
+    char path[PATH_LEN];
+    if (!request_path(req, path)) return ESP_OK;
+    FILE *f = is_dir(path) ? NULL : fopen(path, "rb");
+    if (!f) return send_status(req, "404 Not Found", "Not found");
+    char *buf = malloc(CHUNK);
+    if (!buf) {
+        fclose(f);
+        return send_status(req, "500 Internal Server Error", "Out of memory");
+    }
+    // 255 caratteri di nome, fino a 3 byte "%XX" ciascuno nel filename*
+    char disp[1100];
+    disposition(base_name(path), disp, sizeof(disp));
+    httpd_resp_set_type(req, "application/octet-stream");
+    httpd_resp_set_hdr(req, "Content-Disposition", disp);
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    esp_err_t err = ESP_OK;
+    size_t n;
+    while (err == ESP_OK && !websrv_stopping() && (n = fread(buf, 1, CHUNK, f)) > 0) {
+        err = httpd_resp_send_chunk(req, buf, n);
+    }
+    fclose(f);
+    free(buf);
+    if (err == ESP_OK) err = httpd_resp_send_chunk(req, NULL, 0);
+    return err;
+}
+
+// Controllo di uno script dall'editor: lo compila senza eseguirlo (sintassi)
+// e, per gli script dell'injector, legge l'intestazione. Il testo arriva
+// nel corpo perché può non essere ancora salvato.
+static esp_err_t check_post(httpd_req_t *req)
+{
+    char path[PATH_LEN];
+    if (!request_path(req, path)) return ESP_OK;
+    size_t len = req->content_len;
+    if (len > EDIT_MAX) return send_status(req, "413 Content Too Large", "Too large");
+    char *text = malloc(len + 1);
+    if (!text || !recv_body(req, text, len)) {
+        free(text);
+        return send_status(req, "400 Bad Request", "Cannot read the body");
+    }
+    text[len] = 0;
+
+    jbuf_t b = {0};
+    jb_begin(&b, "check");
+    lua_State *L = luart_new(&(luart_opts_t){.mem_limit = CHECK_MEM});
+    if (!L) {
+        jb_kbool(&b, "ok", false);
+        jb_kstr(&b, "error", "Not enough memory to check");
+    } else {
+        // Nome fisso del chunk: il messaggio è "script:<riga>: <errore>"
+        int st = luaL_loadbuffer(L, text, len, "=script");
+        jb_kbool(&b, "ok", st == LUA_OK);
+        if (st != LUA_OK) {
+            const char *msg = lua_tostring(L, -1);
+            if (!msg) msg = "error";
+            int line = 0;
+            if (strncmp(msg, "script:", 7) == 0) {
+                line = atoi(msg + 7);
+                const char *rest = strchr(msg + 7, ':');
+                if (rest) msg = rest + 1 + (rest[1] == ' ');
+            }
+            jb_kstr(&b, "error", msg);
+            jb_kint(&b, "line", line);
+        }
+        luart_close(L);
+    }
+    // Intestazione "--- @chiave": solo per gli script dell'injector, non
+    // per le librerie né per config.lua
+    size_t pl = strlen(PAYLOAD_DIR "/");
+    size_t n = strlen(path);
+    if (strncmp(path, PAYLOAD_DIR "/", pl) == 0 && strncmp(path, PAYLOAD_LIB_DIR "/", pl + 4) != 0 && n > 4 &&
+        strcmp(path + n - 4, ".lua") == 0) {
+        payload_meta_t *m = malloc(sizeof(*m));
+        FILE *f = m ? fmemopen(text, len, "r") : NULL;
+        if (f) {
+            payload_parse_meta(f, path, m);
+            fclose(f);
+            jb_kstr(&b, "header", m->error);
+        }
+        free(m);
+    }
+    free(text);
+    char *msg = jb_end(&b);
+    if (!msg) return send_status(req, "500 Internal Server Error", "Out of memory");
+    httpd_resp_set_type(req, "application/json");
+    esp_err_t err = httpd_resp_sendstr(req, msg);
+    free(msg);
+    return err;
+}
+
+static const httpd_uri_t s_routes[] = {
+    {.uri = "/api/file", .method = HTTP_GET, .handler = file_get},
+    {.uri = "/api/file", .method = HTTP_PUT, .handler = file_put},
+    {.uri = "/api/download", .method = HTTP_GET, .handler = download_get},
+    {.uri = "/api/check", .method = HTTP_POST, .handler = check_post},
+};
+
+// ---------------------------------------------------------------------------
+// App
+
+static void webfiles_run(app_ctx_t *ctx)
+{
+    webui_draw_connecting(&icon_disk, ACCENT);
+    esp_err_t err = app_net_acquire(ctx, NET_AUTO, 15000);
+    if (err == ESP_ERR_NOT_FINISHED) return; // uscita durante la scelta della rete
+    if (err != ESP_OK) {
+        char msg[40];
+        snprintf(msg, sizeof(msg), "WiFi failed: %s", esp_err_to_name(err));
+        app_message(ctx, "Web Files", msg, UI_ERR);
+        return;
+    }
+
+    // webfiles.pin = false: nessun PIN, chiunque sulla rete del dongle legge
+    // e modifica tutta la SD
+    char pin[8] = "";
+    if (config_bool("webfiles.pin", true)) snprintf(pin, sizeof(pin), "%06u", (unsigned)(esp_random() % 1000000));
+    websrv_config_t cfg = {
+        .pin = pin,
+        // Il parser Lua di /api/check è ricorsivo: come lo stack dello
+        // script nell'Injector
+        .stack_size = 16384,
+        .max_frame = MAX_FRAME,
+        .on_message = on_message,
+    };
+    err = websrv_start(&cfg);
+    bool started = err == ESP_OK;
+    if (err == ESP_OK) err = websrv_add_page("/", "text/html", page_gz_start, page_gz_end - page_gz_start);
+    if (err == ESP_OK) err = webtheme_register();
+    for (size_t i = 0; err == ESP_OK && i < sizeof(s_routes) / sizeof(s_routes[0]); i++) {
+        err = websrv_add_route(&s_routes[i]);
+    }
+    if (err != ESP_OK) {
+        char msg[40];
+        snprintf(msg, sizeof(msg), "Server failed: %s", esp_err_to_name(err));
+        app_message(ctx, "Web Files", msg, UI_ERR);
+        if (started) websrv_stop();
+        return;
+    }
+
+    // Pagina del QR: credenziali o indirizzo, vedi webui.h
+    webui_qr_t qr = WEBUI_QR_INIT;
+    char last_client[16] = "";
+    bool led_stale = true;
+    for (;;) {
+        net_info_t ni;
+        net_get_info(&ni);
+        const char *client = websrv_client_ip();
+        if (led_stale || strcmp(client, last_client) != 0) {
+            strlcpy(last_client, client, sizeof(last_client));
+            led_set(LED_LAYER_APP, *client ? LED_FX_SOLID : LED_FX_PULSE, *client ? UI_OK : ACCENT, 2000);
+            led_stale = false;
+        }
+        webui_qr_update(&qr, &ni);
+        if (ni.up) webui_draw_main(&ni, pin, qr.page, client, ACCENT);
+        else webui_draw_connecting(&icon_disk, ACCENT);
+
+        app_event_t ev;
+        if (!app_next_event(ctx, &ev, 500)) continue;
+        if (ev.type == APP_EV_EXIT) break;
+        if (ev.type == APP_EV_CLICK) webui_qr_toggle(&qr, &ni);
+    }
+    websrv_stop();
+}
+
+static void webfiles_subtitle(char *buf, size_t len)
+{
+    snprintf(buf, len, "%s", config_count("wifi") ? "WiFi" : "hotspot");
+}
+
+const app_desc_t webfiles_app = {
+    .id = "webfiles",
+    .name = "Web Files",
+    .icon = &icon_disk,
+    .accent = ACCENT,
+    .requires = APP_REQ_SD | APP_REQ_NET,
+    // Niente USB: la scheda resta al firmware, che la serve alla pagina
+    .usb = USB_PROFILE_NONE,
+    .stack = 6144,
+    .run = webfiles_run,
+    .subtitle = webfiles_subtitle,
+};
