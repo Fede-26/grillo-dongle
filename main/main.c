@@ -2,6 +2,7 @@
 
 #include "app_list.h"
 #include "appmgr.h"
+#include "clock.h"
 #include "config.h"
 #include "console_cmds.h"
 #include "devcon.h"
@@ -65,6 +66,7 @@ static void apply_settings(void)
     display_set_rotation(config_int("ui.rotation", 0));
     display_set_brightness(config_int("ui.brightness", 80));
     led_set_brightness(config_int("led.brightness", 30));
+    clock_set_timezone(config_str("timezone", CLOCK_DEFAULT_TZ));
 }
 
 static volatile bool s_reload_requested;

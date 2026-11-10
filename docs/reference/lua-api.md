@@ -93,8 +93,11 @@ Non disponibile mentre il disco USB è collegato (`disk.attach`): errore `no mou
 
 - `sys.sleep(ms)`: pausa interrompibile.
 - `sys.wait_host([ms])`: attende che il PC abbia montato la tastiera; `true`, oppure `false` allo scadere (default: 24 ore, in pratica finché non si esce con 3 secondi di pressione).
-- `sys.log(testo)`: scrive nel log, anche sulla microSD (`/logs/grillo.log`, tag `script`).
+- `sys.log(testo)`: scrive nel log, anche sulla microSD (`/logs/grillo.log`, tag `script`). Con l'ora nota la riga sul file inizia con data e ora locali.
 - `sys.serial()`: numero di serie USB del dongle (12 cifre esadecimali, il MAC); identifica la sua porta seriale sul PC.
+- `sys.time()`: secondi UTC dal 1970, oppure `nil` se l'ora non è nota. Il dongle non ha batteria per l'orologio: l'ora la impostano NTP (quando un'app si collega a una rete) o `host.clock()`, e resta valida fino allo spegnimento.
+- `sys.date([formato])`: ora locale (fuso `timezone` di `config.lua`) formattata come `strftime`; default `"%Y-%m-%d %H:%M:%S"`. `nil` se l'ora non è nota; `""` se il risultato supera 63 caratteri.
+- `sys.set_time(secondi)`: imposta l'ora (secondi UTC dal 1970). Errore per un valore precedente al 2023. Di solito si usa `host.clock()`.
 
 ## `led`
 
@@ -145,6 +148,7 @@ if code ~= 0 then error("notepad: " .. tostring(code)) end
 - `host.sync([opzioni])`: attende che la shell abbia eseguito tutto ciò che è stato digitato prima.
 - `host.get(espressione [, {timeout}])`: valuta l'espressione nella shell del PC e restituisce il risultato come stringa (max 256 caratteri ripuliti), o `nil`. Più righe sono unite con spazi.
 - `host.machine([espressione])`: imposta l'id della macchina per i log e la data del PC. Senza argomento usa il MAC della prima scheda di rete fisica (in ordine di indirizzo): è dell'hardware, quindi diverso anche tra PC clonati con Clonezilla, mentre `MachineGuid` e nome host si copiano con il disco. Restituisce l'id.
+- `host.clock([{timeout}])`: legge l'ora UTC dal PC (`[DateTimeOffset]::UtcNow` in PowerShell, `date +%s` in sh), imposta l'orologio del dongle e restituisce `sys.date()`. Da lì le righe di `/logs/grillo.log` e `sys.date()` hanno la data. Errore se il PC non risponde.
 - `host.log(etichetta, espressione)`: come `host.get`, poi aggiunge la riga a `/logs/host/<id>.csv` e restituisce il valore. Senza `host.machine` il file è `unknown.csv`.
 
 ```lua

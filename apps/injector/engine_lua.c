@@ -9,6 +9,8 @@
 #include <strings.h>
 #include <dirent.h>
 #include <sys/stat.h>
+#include <time.h>
+#include "clock.h"
 #include "config.h"
 #include "devcon.h"
 #include "engine.h"
@@ -441,9 +443,45 @@ static int sys_log(lua_State *L)
     return 0;
 }
 
+// sys.time() -> secondi UTC dal 1970, o nil se l'ora non è nota (il dongle
+// non ha batteria: la impostano SNTP o host.clock()).
+static int sys_time(lua_State *L)
+{
+    if (!clock_valid()) return 0;
+    lua_pushinteger(L, (lua_Integer)time(NULL));
+    return 1;
+}
+
+// sys.date([formato]) -> ora locale (fuso di config.lua) formattata con
+// strftime, default "%Y-%m-%d %H:%M:%S"; nil se l'ora non è nota.
+static int sys_date(lua_State *L)
+{
+    const char *fmt = luaL_optstring(L, 1, "%Y-%m-%d %H:%M:%S");
+    if (!clock_valid()) return 0;
+    time_t now = time(NULL);
+    struct tm tm;
+    localtime_r(&now, &tm);
+    char buf[64];
+    // 0 sia per un risultato vuoto sia per uno troppo lungo: in entrambi i
+    // casi lo script riceve "", non un buffer non terminato.
+    size_t n = strftime(buf, sizeof(buf), fmt, &tm);
+    lua_pushlstring(L, buf, n);
+    return 1;
+}
+
+// sys.set_time(secondi UTC): usata da host.clock() in lib/host.lua.
+static int sys_set_time(lua_State *L)
+{
+    if (!clock_set((time_t)luaL_checkinteger(L, 1))) return luaL_error(L, "sys.set_time: time before 2023");
+    return 0;
+}
+
 static void open_sys(lua_State *L)
 {
-    static const luaL_Reg fns[] = {{"sleep", sys_sleep}, {"wait_host", sys_wait_host}, {"log", sys_log}, {"serial", sys_serial}, {NULL, NULL}};
+    static const luaL_Reg fns[] = {
+        {"sleep", sys_sleep}, {"wait_host", sys_wait_host}, {"log", sys_log}, {"serial", sys_serial},
+        {"time", sys_time},   {"date", sys_date},           {"set_time", sys_set_time}, {NULL, NULL},
+    };
     luaL_newlib(L, fns);
     lua_setglobal(L, "sys");
 }

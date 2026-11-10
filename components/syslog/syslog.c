@@ -4,6 +4,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <time.h>
+#include "clock.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -50,12 +52,30 @@ static int log_vprintf(const char *fmt, va_list ap)
     return r;
 }
 
+// Con l'ora nota (SNTP o host.clock) ogni riga inizia con data e ora locali:
+// il tempo dall'avvio di esp_log da solo non dice quando è successo. Si
+// prende al momento della scrittura, che segue la riga di pochi millisecondi,
+// per non chiamare localtime dentro il vprintf di qualunque task.
 static void write_lines(FILE *f, const char *first)
 {
-    if (first[0] != FLUSH_MARK[0]) fputs(first, f);
+    char stamp[24] = "";
+    if (clock_valid()) {
+        time_t now = time(NULL);
+        struct tm tm;
+        localtime_r(&now, &tm);
+        strftime(stamp, sizeof(stamp), "%Y-%m-%d %H:%M:%S ", &tm);
+    }
+    // fputs e non fprintf: il task ha 3 KB di stack
+    if (first[0] != FLUSH_MARK[0]) {
+        fputs(stamp, f);
+        fputs(first, f);
+    }
     char line[LINE_MAX_];
     while (xQueueReceive(s_q, line, 0) == pdTRUE) {
-        if (line[0] != FLUSH_MARK[0]) fputs(line, f);
+        if (line[0] != FLUSH_MARK[0]) {
+            fputs(stamp, f);
+            fputs(line, f);
+        }
     }
 }
 

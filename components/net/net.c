@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "clock.h"
 #include "config.h"
 #include "esp_event.h"
 #include "esp_log.h"
@@ -96,6 +97,9 @@ static void on_wifi_event(void *arg, esp_event_base_t base, int32_t id, void *da
 static void on_ip_event(void *arg, esp_event_base_t base, int32_t id, void *data)
 {
     if (id == IP_EVENT_STA_GOT_IP) {
+        // Ogni rete STA è un'occasione per avere l'ora: il dongle non ha
+        // batteria per l'orologio. Con l'hotspot non c'è internet.
+        clock_sntp_start(config_str("ntp", "pool.ntp.org"));
         s_up = true;
         xEventGroupSetBits(s_ev, BIT_GOT_IP);
         notify(NET_EV_UP);
@@ -158,6 +162,7 @@ static void wifi_stop(void)
     s_started = false;
     s_up = false;
     s_clients = 0;
+    clock_sntp_stop();
     esp_wifi_stop();
     esp_wifi_deinit();
     notify(NET_EV_DOWN);

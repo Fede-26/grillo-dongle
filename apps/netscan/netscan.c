@@ -9,10 +9,10 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
+#include "clock.h"
 #include "config.h"
 #include "esp_log.h"
 #include "esp_netif.h"
-#include "esp_sntp.h"
 #include "icons.h"
 #include "lan.h"
 #include "led.h"
@@ -33,32 +33,8 @@ static const char *TAG = "netscan";
 // contattarlo.
 #define PROBE_HOST    "connectivitycheck.gstatic.com"
 #define PROBE_PATH    "/generate_204"
-// Fuso orario POSIX per i nomi dei file CSV (CET/CEST); config.lua: timezone
-#define DEFAULT_TZ    "CET-1CEST,M3.5.0,M10.5.0/3"
-#define VALID_TIME    1700000000 // novembre 2023: prima di questa data l'orologio non è stato sincronizzato
 
-// --- Orologio e file CSV ---
-
-// true se SNTP l'ha avviato Netscan: se lo aveva già avviato qualcun altro,
-// all'uscita non va fermato.
-static bool s_sntp_ours;
-
-static void clock_start(void)
-{
-    setenv("TZ", config_str("timezone", DEFAULT_TZ), 1);
-    tzset();
-    if (esp_sntp_enabled()) return;
-    esp_sntp_setoperatingmode(ESP_SNTP_OPMODE_POLL);
-    esp_sntp_setservername(0, config_str("netscan.ntp", "pool.ntp.org"));
-    esp_sntp_init();
-    s_sntp_ours = true;
-}
-
-static void clock_stop(void)
-{
-    if (s_sntp_ours && esp_sntp_enabled()) esp_sntp_stop();
-    s_sntp_ours = false;
-}
+// --- File CSV ---
 
 // Apre un nuovo CSV in /sd/scans. Il dongle non ha batteria per l'orologio: se
 // l'ora non è nota il nome ha un numero progressivo invece della data.
@@ -73,7 +49,7 @@ static FILE *csv_open(const char *prefix, const char *tag, char *path, size_t n)
         strlcat(slug, "-", sizeof(slug));
     }
     time_t now = time(NULL);
-    if (now > VALID_TIME) {
+    if (clock_valid()) {
         struct tm tm;
         localtime_r(&now, &tm);
         strftime(stamp, sizeof(stamp), "%Y%m%d-%H%M%S", &tm);
@@ -294,7 +270,6 @@ static void draw_info(const info_t *r)
 static void screen_info(app_ctx_t *ctx)
 {
     if (!join_network(ctx, "Network info")) return;
-    clock_start();
     esp_netif_ip_info_t ipi;
     esp_netif_dns_info_t dns;
     esp_netif_t *en = net_sta_netif();
@@ -336,7 +311,6 @@ static void screen_info(app_ctx_t *ctx)
         }
     }
 out:
-    clock_stop();
     net_release();
 }
 
@@ -400,7 +374,6 @@ static void save_lan(const lan_host_t *h, int n, const char *ssid)
 static void screen_lan(app_ctx_t *ctx)
 {
     if (!join_network(ctx, "LAN hosts")) return;
-    clock_start();
     net_info_t ni;
     net_get_info(&ni);
 
@@ -454,7 +427,6 @@ out:
     free(rights);
     free(items);
     free(rtext);
-    clock_stop();
     net_release();
 }
 

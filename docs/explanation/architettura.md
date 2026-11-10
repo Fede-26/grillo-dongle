@@ -8,7 +8,7 @@ Grillo è un firmware ESP-IDF v6.1 (C, FreeRTOS) per un dispositivo con vincoli 
 apps/         injector, webhid, netscan, usbdisk, launcher        <- una per attività
 components/   appfw  ui  gfx  display  input  led  qr     <- interfaccia
               hid  usbdev  net  websrv  storage  config  luart  <- servizi
-              devcon  syslog  board  lua                  <- console, log, pin, interprete
+              devcon  syslog  clock  board  lua           <- console, log, ora, pin, interprete
 main/         avvio, tabella app, console di debug
 ```
 
@@ -45,6 +45,10 @@ Misure sul dispositivo (a memoria di sessione, non riprodotte in un test automat
 Il gestore WiFi (`net`) è a lease: ogni app che ne ha bisogno lo richiede e lo rilascia; il WiFi resta acceso finché c'è almeno un lease. Ogni lease appartiene al task che l'ha preso: all'uscita di un'app il sistema rilascia solo quelli del suo task, così un servizio in un task proprio non perderebbe la connessione. L'attesa della connessione si interrompe quando l'utente chiede l'uscita, invece di durare fino alla scadenza.
 
 Il server delle pagine web (`websrv`) e il QR code (`qr`) sono componenti a parte, non codice del Web HID: autenticazione con PIN, blocco per indirizzo dopo 5 errori, una sola sessione con subentro dallo stesso dispositivo, pagina compressa. Servono così anche alle app web future (file browser, injector web) senza ripetere la parte che riguarda la sicurezza. In modalità automatica cerca le reti, sceglie la migliore tra quelle note in `config.lua`, e se non ne trova crea un hotspot. Il risparmio energetico del WiFi è disattivato: attiva, la pagina web del Web HID impiegava secondi a rispondere.
+
+## Ora
+
+Il dongle non ha una batteria per l'orologio: all'accensione l'ora è ignota. La imposta SNTP ogni volta che una qualunque app si collega a una rete come client (non con l'hotspot, che non ha internet), oppure uno script con `host.clock()`, che la legge dal PC con il canale di ritorno. Dal PC si prende l'ora UTC e la si mostra con il fuso di `config.lua` (`timezone`, default Europe/Rome con l'ora legale): così un PC con il fuso sbagliato non sposta le date. L'ora resta valida ai riavvii software e si perde togliendo l'alimentazione. Finché è ignota, le righe di `/logs/grillo.log` hanno solo i millisecondi dall'avvio, `sys.time()` e `sys.date()` restituiscono `nil` e i CSV di Netscan hanno un numero progressivo al posto della data.
 
 ## Test
 

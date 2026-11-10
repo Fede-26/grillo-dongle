@@ -16,6 +16,7 @@
 --   local mac = host.machine()                       -- id della macchina: MAC di una scheda fisica
 --   host.log("seriale", [[(Get-CimInstance Win32_BIOS).SerialNumber]])
 --   local model = host.get([[(Get-CimInstance Win32_ComputerSystem).Model]])
+--   host.clock()                                     -- ora del PC sul dongle (log, sys.date)
 -- Il valore è al massimo di 256 caratteri; il dongle sostituisce con "_" tutto ciò
 -- che non è lettera, cifra, ". _ : -" o spazio. Non ridigitare mai un valore letto
 -- dal PC dentro un comando di shell senza controllarlo: può contenere ciò che ha
@@ -101,6 +102,19 @@ function M.machine(expr)
     if not machine_id or machine_id == "" then error("host.machine: nessun valore dal PC") end
     machine_date = M.get(kind == "powershell" and [[Get-Date -Format s]] or [[date +%Y-%m-%dT%H:%M:%S]])
     return machine_id
+end
+
+-- Imposta l'orologio del dongle con l'ora del PC e restituisce la data locale
+-- come sys.date(). Si legge l'ora UTC (secondi dal 1970): il dongle la mostra
+-- con il fuso di config.lua (timezone, default Europe/Rome con l'ora legale),
+-- quindi un PC con il fuso sbagliato non sposta i log. Il dongle non ha
+-- batteria: l'ora resta valida fino allo spegnimento.
+function M.clock(opts)
+    local v = M.get(kind == "powershell" and "[DateTimeOffset]::UtcNow.ToUnixTimeSeconds()" or "date +%s", opts)
+    local t = v and tonumber(v)
+    if not t then error("host.clock: nessuna ora dal PC") end
+    sys.set_time(t)
+    return sys.date()
 end
 
 -- Valuta `expr` sul PC come host.get e aggiunge una riga a /logs/host/<id>.csv sulla

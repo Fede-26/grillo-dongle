@@ -2,7 +2,7 @@
 
 Netscan è l'app per capire che rete hai davanti. Ha tre schermate, che si scelgono dal menu iniziale. Gesti: click = giù, doppio click = su, pressione lunga = scegli, tenuto premuto 3 secondi = esci dall'app. In ogni elenco la riga `Back` chiude la schermata (dalla prima riga, un doppio click ci porta in fondo).
 
-Non fa scansioni di porte. Traffico che invia: richieste ARP alla /24, query NBNS (UDP 137) e mDNS (UDP 5353) agli host trovati per conoscerne il nome, un ping al gateway, una query DNS, una richiesta HTTP e la sincronizzazione dell'ora via NTP (per i nomi dei CSV).
+Non fa scansioni di porte. Traffico che invia: richieste ARP alla /24, query NBNS (UDP 137) e mDNS (UDP 5353) agli host trovati per conoscerne il nome, un ping al gateway, una query DNS, una richiesta HTTP e la sincronizzazione dell'ora via NTP (fatta a ogni collegamento a una rete, da qualunque app).
 
 ## Reti WiFi
 
@@ -38,7 +38,7 @@ Limiti da conoscere:
 
 ## Salvataggio
 
-Ogni scansione WiFi e LAN viene salvata in `/scans/` sulla microSD, in CSV (`wifi-…csv`, `lan-<rete>-…csv`). Leggili con l'app USB disk. Il dongle non ha un orologio a batteria: sulle schermate con rete l'ora viene da NTP e il nome del file contiene la data; senza ora il nome ha un numero progressivo.
+Ogni scansione WiFi e LAN viene salvata in `/scans/` sulla microSD, in CSV (`wifi-…csv`, `lan-<rete>-…csv`). Leggili con l'app USB disk. Il dongle non ha un orologio a batteria: l'ora viene da NTP appena il dongle si collega a una rete (o da `host.clock()` in uno script) e il nome del file contiene la data; senza ora il nome ha un numero progressivo.
 
 Nel CSV i valori che inizierebbero con `=`, `+`, `-` o `@` (non numeri) hanno un apice davanti: un SSID o un nome host scelti da altri non devono diventare formule quando apri il file con un foglio di calcolo.
 
@@ -54,4 +54,4 @@ Il formato permette la ricerca binaria direttamente sulla scheda, senza caricarl
 
 ## Chiavi di `config.lua`
 
-Vedi la [reference](../reference/config-lua.md): `timezone`, `netscan.ntp`, `netscan.probe_host`.
+Vedi la [reference](../reference/config-lua.md): `timezone`, `ntp`, `netscan.probe_host`.

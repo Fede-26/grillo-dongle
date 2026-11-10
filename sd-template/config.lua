@@ -32,7 +32,10 @@ return {
   webhid = { pin = true },
   led = { brightness = 30 },
 
-  -- Netscan: fuso orario POSIX per i nomi dei CSV, server NTP e host del controllo "Web"
+  -- Fuso orario POSIX (default Europe/Rome, con l'ora legale) per i log, sys.date()
+  -- e i nomi dei CSV di Netscan; server NTP usato a ogni collegamento a una rete
   -- timezone = "CET-1CEST,M3.5.0,M10.5.0/3",
-  -- netscan = { ntp = "pool.ntp.org", probe_host = "connectivitycheck.gstatic.com" },
+  -- ntp = "pool.ntp.org",
+  -- Netscan: host del controllo "Web"
+  -- netscan = { probe_host = "connectivitycheck.gstatic.com" },
 }
