@@ -19,7 +19,7 @@
 #include "ui.h"
 #include "usbdev.h"
 
-#define ACCENT      0x2DD4BF
+#define ACCENT      0xFF8A20
 #define MAX_ENTRIES 48
 
 static const inj_engine_t *const s_engines[] = {&engine_lua};
@@ -425,7 +425,9 @@ const app_desc_t injector_app = {
     .accent = ACCENT,
     .requires = APP_REQ_SD,
     .usb = USB_PROFILE_HID,
-    .stack = 10240,
+    // 16 KB: con 10 KB uno script arrivava a circa 6 livelli di pcall
+    // annidati prima della guardia dello stack (vedi luart.c).
+    .stack = 16384,
     .run = injector_run,
     .subtitle = injector_subtitle,
 };

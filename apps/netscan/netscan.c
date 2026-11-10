@@ -24,7 +24,7 @@
 
 static const char *TAG = "netscan";
 
-#define ACCENT 0x38BDF8
+#define ACCENT 0x20D0D0
 
 #define SCAN_DIR      STORAGE_ROOT "/scans"
 #define MAX_APS       40

@@ -19,7 +19,7 @@
 #include "web_server.h"
 #include "webhid.h"
 
-#define ACCENT 0x30B0F0
+#define ACCENT 0x4070FF
 #define QR_BOX 66 // tutta l'altezza dell'area contenuto
 
 static void draw_connecting(void)

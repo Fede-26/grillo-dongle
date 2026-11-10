@@ -73,7 +73,12 @@ static void arp_read_cb(void *arg)
 static bool run_in_tcpip(arp_job_t *j, tcpip_callback_fn fn)
 {
     if (tcpip_callback(fn, j) != ERR_OK) return false;
-    return xSemaphoreTake(j->done, pdMS_TO_TICKS(2000)) == pdTRUE;
+    if (xSemaphoreTake(j->done, pdMS_TO_TICKS(2000)) == pdTRUE) return true;
+    // La callback è ancora in coda e userà `j`: il chiamante interrompe lo
+    // sweep e libera `j`, quindi prima va attesa (altrimenti use-after-free,
+    // o un Give tardivo che sblocca la Take successiva a vuoto).
+    xSemaphoreTake(j->done, portMAX_DELAY);
+    return false;
 }
 
 static void put_ip(uint8_t out[4], uint32_t host_order)

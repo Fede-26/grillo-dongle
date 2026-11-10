@@ -10,6 +10,8 @@
 #include "esp_log.h"
 #include "esp_vfs_fat.h"
 #include "ff.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 
 static const char *TAG = "storage";
 
@@ -20,6 +22,10 @@ static BYTE s_pdrv = 0xFF;
 static storage_state_t s_state = STORAGE_ABSENT;
 static uint32_t s_lend_count;
 static volatile bool s_shared;
+// Serializza le scritture dei task di sistema (syslog) con i passaggi di
+// possesso della scheda: senza, una riga di log poteva aprire un file mentre
+// storage_lend() smontava la FAT, lasciando cluster allocati e persi.
+static SemaphoreHandle_t s_wlock;
 
 const char *storage_state_name(storage_state_t s)
 {
@@ -122,6 +128,7 @@ static void unmount(void)
 
 esp_err_t storage_init(void)
 {
+    s_wlock = xSemaphoreCreateMutex();
     esp_err_t err = card_init();
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "nessuna SD (%s)", esp_err_to_name(err));
@@ -141,9 +148,11 @@ esp_err_t storage_init(void)
 sdmmc_card_t *storage_lend(void)
 {
     if (!s_card_ok || s_state == STORAGE_LENT) return NULL;
+    xSemaphoreTake(s_wlock, portMAX_DELAY);
     unmount();
     s_state = STORAGE_LENT;
     s_lend_count++;
+    xSemaphoreGive(s_wlock);
     return &s_card;
 }
 
@@ -169,7 +178,9 @@ uint32_t storage_lend_count(void)
 sdmmc_card_t *storage_share_ro(void)
 {
     if (s_state != STORAGE_MOUNTED) return NULL;
+    xSemaphoreTake(s_wlock, portMAX_DELAY);
     s_shared = true;
+    xSemaphoreGive(s_wlock);
     return &s_card;
 }
 
@@ -181,4 +192,18 @@ void storage_unshare(void)
 bool storage_is_shared(void)
 {
     return s_shared;
+}
+
+bool storage_begin_write(void)
+{
+    if (!s_wlock) return false;
+    xSemaphoreTake(s_wlock, portMAX_DELAY);
+    if (s_state == STORAGE_MOUNTED && !s_shared) return true;
+    xSemaphoreGive(s_wlock);
+    return false;
+}
+
+void storage_end_write(void)
+{
+    xSemaphoreGive(s_wlock);
 }

@@ -37,6 +37,13 @@ sdmmc_card_t *storage_share_ro(void);
 void storage_unshare(void);
 bool storage_is_shared(void);
 
+// Scrittura da un task che gira in parallelo alle app (es. syslog): true se
+// la scheda è montata e non condivisa, e in quel caso tiene il lock fino a
+// storage_end_write(), così il prestito o la condivisione aspettano la fine
+// della scrittura. Con false il lock non è preso e non si deve scrivere.
+bool storage_begin_write(void);
+void storage_end_write(void);
+
 // File marcatore che gli script usano per trovare la SD sul PC.
 #define STORAGE_MARKER STORAGE_ROOT "/.grillo"
 

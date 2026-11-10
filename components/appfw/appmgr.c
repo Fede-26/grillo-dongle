@@ -3,6 +3,7 @@
 #include <string.h>
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "esp_system.h"
 #include "freertos/task.h"
 #include "input.h"
 #include "led.h"
@@ -126,6 +127,15 @@ static void on_gesture(gesture_t g, uint8_t progress)
         break;
     case GESTURE_HOLD_EXIT:
         ui_set_hold(0);
+        if (!in_launcher && c->exit_requested) {
+            // L'uscita era già stata chiesta e l'app è ancora qui: un task
+            // FreeRTOS non si può terminare dall'esterno in modo sicuro, quindi
+            // l'unica uscita garantita è il riavvio.
+            ESP_LOGW(TAG, "%s non esce: riavvio", c->app->id);
+            ui_toast("Restarting…", UI_ERR, 2000);
+            syslog_flush();
+            esp_restart();
+        }
         if (!in_launcher) {
             c->exit_requested = true;
             app_post(c, APP_EV_EXIT, 0);
@@ -205,7 +215,13 @@ static void run_app(const app_desc_t *app, const char *arg)
         ESP_LOGE(TAG, "task %s: memoria insufficiente", app->id);
         ui_toast("Out of memory", UI_ERR, 2500);
     } else {
-        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        // Se l'app non esce entro 3 s dalla richiesta, si dice all'utente
+        // che un secondo hold riavvia il dongle (vedi on_gesture).
+        int waited = 0;
+        while (!ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(500))) {
+            waited = ctx.exit_requested ? waited + 1 : 0;
+            if (waited == 6) ui_toast("Hold again: reboot", UI_ERR, 4000);
+        }
     }
 
     portENTER_CRITICAL(&s_mux);

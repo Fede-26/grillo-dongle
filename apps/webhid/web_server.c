@@ -18,7 +18,7 @@ extern const uint8_t index_html_gz_end[] asm("_binary_index_html_gz_end");
 #define MAX_FRAME      2048 // la pagina spezza gli incolla in blocchi più piccoli
 #define MAX_TRIES      5
 #define LOCKOUT_US     (30 * 1000000LL)
-#define ACCENT         0x30B0F0
+#define ACCENT         0x4070FF
 
 static httpd_handle_t s_server;
 static char s_pin[8];
@@ -103,18 +103,12 @@ static void authenticate(httpd_req_t *req, int fd, const char *given)
         reply(req, "no");
         return;
     }
-    if (s_client_fd >= 0 && s_client_fd != fd) {
-        reply(req, "busy");
-        return;
-    }
-    s_tries = 0;
-    s_client_fd = fd;
     // lwIP con IPv6 attivo restituisce un sockaddr_in6 anche per i client IPv4
     // (indirizzo "mapped": gli ultimi 4 byte sono l'IPv4). Leggerlo come
     // sockaddr_in dava 0.0.0.0.
+    char ip[sizeof(s_client_ip)] = "";
     struct sockaddr_storage addr;
     socklen_t len = sizeof(addr);
-    s_client_ip[0] = 0;
     if (getpeername(fd, (struct sockaddr *)&addr, &len) == 0) {
         struct in_addr v4 = {0};
         if (addr.ss_family == AF_INET6) {
@@ -122,8 +116,26 @@ static void authenticate(httpd_req_t *req, int fd, const char *given)
         } else {
             v4 = ((struct sockaddr_in *)&addr)->sin_addr;
         }
-        inet_ntoa_r(v4, s_client_ip, sizeof(s_client_ip));
+        inet_ntoa_r(v4, ip, sizeof(ip));
     }
+    if (s_client_fd >= 0 && s_client_fd != fd) {
+        // Stesso indirizzo del client attivo: è lo stesso dispositivo che si
+        // riconnette (telefono uscito dallo standby, WiFi tornato) mentre la
+        // vecchia connessione è ancora aperta a metà. Senza il subentro
+        // resterebbe "busy" finché lwIP non chiude il socket morto. Un altro
+        // dispositivo invece trova il posto occupato.
+        if (strcmp(ip, s_client_ip) != 0) {
+            reply(req, "busy");
+            return;
+        }
+        ESP_LOGI(TAG, "%s si riconnette: chiudo la sessione precedente", ip);
+        hid_release_all();
+        hid_mouse_buttons(0);
+        httpd_sess_trigger_close(req->handle, s_client_fd);
+    }
+    s_tries = 0;
+    s_client_fd = fd;
+    strlcpy(s_client_ip, ip, sizeof(s_client_ip));
     ESP_LOGI(TAG, "client autenticato: %s", s_client_ip);
     reply(req, "ok");
     // Layout e OS correnti, per allineare i selettori della pagina
@@ -232,6 +244,12 @@ esp_err_t web_start(const char *pin)
     cfg.max_open_sockets = 4;
     cfg.lru_purge_enable = true;
     cfg.close_fn = client_gone;
+    // Keep-alive TCP: un client sparito senza chiudere (WiFi perso) viene
+    // scoperto in circa 11 s invece di restare aperto a tempo indefinito.
+    cfg.keep_alive_enable = true;
+    cfg.keep_alive_idle = 5;
+    cfg.keep_alive_interval = 2;
+    cfg.keep_alive_count = 3;
     esp_err_t err = httpd_start(&s_server, &cfg);
     if (err != ESP_OK) return err;
 

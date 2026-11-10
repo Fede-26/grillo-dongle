@@ -60,7 +60,7 @@ static void syslog_task(void *arg)
         bool flush_req = line[0] == FLUSH_MARK[0];
         // Con la SD condivisa in sola lettura con il PC non si scrive: le
         // righe in coda vengono scartate.
-        if (storage_state() == STORAGE_MOUNTED && !storage_is_shared()) {
+        if (storage_begin_write()) {
             mkdir(LOG_DIR, 0777);
             struct stat st;
             if (stat(LOG_FILE, &st) == 0 && st.st_size > LOG_MAX) {
@@ -72,6 +72,7 @@ static void syslog_task(void *arg)
                 write_lines(f, line);
                 fclose(f);
             }
+            storage_end_write();
         }
         if (flush_req) xSemaphoreGive(s_flush_done);
     }

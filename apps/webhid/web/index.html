@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,interactive-widget=resizes-content">
 <title>Grillo</title>
 <style>
-:root{color-scheme:dark;--bg:#0b0f14;--panel:#1a2029;--hi:#252d38;--text:#e6edf3;--dim:#7d8590;--acc:#30b0f0;--ok:#3fb950;--err:#f85149}
+:root{color-scheme:dark;--bg:#0b0f14;--panel:#1a2029;--hi:#252d38;--text:#e6edf3;--dim:#7d8590;--acc:#4070ff;--ok:#3fb950;--err:#f85149}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:18px system-ui,sans-serif;-webkit-text-size-adjust:100%;text-size-adjust:100%;overscroll-behavior:none;touch-action:manipulation;-webkit-user-select:none;user-select:none}
 /* 100dvh = altezza visibile reale (senza barre del browser): niente scorrimento */
@@ -122,8 +122,11 @@ function connect() {
     const was = authed; authed = false;
     if (!pin) return;
     setSt("offline", "bad");
-    // Riconnessione automatica solo se eravamo già dentro; un PIN errato non va ritentato
-    if (was) setTimeout(connect, Math.min(1000 * ++retry, 5000));
+    // Si riprova finché c'è un PIN da usare: un rifiuto (PIN errato, busy, locked) passa da
+    // fail(), che lo azzera. Prima si riprovava solo se l'ultima connessione era autenticata,
+    // quindi un retry fallito (WiFi non ancora tornato) fermava tutto.
+    if (was) retry = 0;
+    setTimeout(connect, Math.min(1000 * ++retry, 5000));
   };
 }
 function fail(t) { pin = ""; $("msg").textContent = t; $("login").style.display = ""; $("app").style.display = "none"; setSt("offline", "bad"); if (ws) ws.close(); }

@@ -237,8 +237,21 @@ static void teardown(void)
         xSemaphoreGive(s_cdc_lock);
     }
     if (s_msc) {
-        tinyusb_msc_delete_storage(s_msc);
-        tinyusb_msc_uninstall_driver();
+        // Con una copia in corso esp_tinyusb rifiuta di eliminare lo storage
+        // finché restano scritture differite, che esegue il task di TinyUSB.
+        // Staccandoci dal bus l'host smette di inviarne di nuove; quelle già
+        // accodate si esauriscono in pochi millisecondi. Senza questa attesa
+        // il driver MSC restava allocato e ogni profilo successivo con il
+        // disco falliva fino al riavvio.
+        tud_disconnect();
+        esp_err_t e = ESP_FAIL;
+        for (int i = 0; i < 200; i++) {
+            e = tinyusb_msc_delete_storage(s_msc);
+            if (e != ESP_ERR_INVALID_STATE) break;
+            vTaskDelay(pdMS_TO_TICKS(10));
+        }
+        if (e == ESP_OK) e = tinyusb_msc_uninstall_driver();
+        if (e != ESP_OK) ESP_LOGE(TAG, "msc teardown: %s", esp_err_to_name(e));
         s_msc = NULL;
     }
     esp_err_t err = tinyusb_driver_uninstall();

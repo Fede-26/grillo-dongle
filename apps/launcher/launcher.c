@@ -57,7 +57,9 @@ static void draw(int sel, int prev, int dir, int frame)
 
 static void set_ambient(const app_desc_t *app)
 {
-    led_set(LED_LAYER_AMBIENT, LED_FX_SOLID, gfx_mix(0, app->accent, 50), 0);
+    // Stessa intensità dell'ambient di un'app in esecuzione (appmgr.c): più
+    // bassa, il colore dell'app selezionata si riconosceva a fatica.
+    led_set(LED_LAYER_AMBIENT, LED_FX_SOLID, gfx_mix(0, app->accent, 90), 0);
 }
 
 static void animate(int from, int to, int dir)

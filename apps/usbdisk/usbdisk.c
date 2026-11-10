@@ -13,7 +13,7 @@
 #include "usbdisk.h"
 #include "usbdev.h"
 
-#define ACCENT 0xF0A030
+#define ACCENT 0xE040B0
 
 static void draw(bool mounted, bool ejected)
 {

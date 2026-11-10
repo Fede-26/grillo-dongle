@@ -13,6 +13,10 @@
 typedef struct {
     size_t mem_limit;           // byte massimi allocabili dalla VM
     volatile bool *abort_flag;  // se diventa true lo script termina con errore "aborted"
+    // Byte di stack C da lasciare liberi (0 = nessun controllo). A ogni
+    // chiamata di funzione si verifica lo stack del task: sotto la soglia lo
+    // script termina con un errore invece di mandare il dongle in panic.
+    size_t stack_guard;
 } luart_opts_t;
 
 lua_State *luart_new(const luart_opts_t *opts);

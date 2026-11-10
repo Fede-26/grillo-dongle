@@ -834,12 +834,25 @@ static int l_require(lua_State *L)
     }
     lua_getfield(L, LUA_REGISTRYINDEX, "inj.loaded");
     lua_getfield(L, -1, name);
+    // Il segnaposto "loading" marca un modulo in caricamento: ritrovarlo qui
+    // vuol dire che due moduli si richiedono a vicenda. Senza questo controllo
+    // la ricorsione finirebbe lo stack C del task (10 KB) prima del limite di
+    // annidamento di Lua, con un panic invece di un errore dello script.
+    if (lua_type(L, -1) == LUA_TLIGHTUSERDATA) return luaL_error(L, "require loop on module '%s'", name);
     if (!lua_isnil(L, -1)) return 1;
     lua_pop(L, 1);
+    static char loading;
+    lua_pushlightuserdata(L, &loading);
+    lua_setfield(L, -2, name);
 
     char path[PAYLOAD_PATH_MAX], err[160];
     snprintf(path, sizeof(path), "%s/%s.lua", PAYLOAD_LIB_DIR, name);
-    if (!luart_dofile(L, path, 1, err, sizeof(err))) return luaL_error(L, "%s", err);
+    if (!luart_dofile(L, path, 1, err, sizeof(err))) {
+        // Tolto il segnaposto, un nuovo require dello stesso modulo riprova
+        lua_pushnil(L);
+        lua_setfield(L, -2, name);
+        return luaL_error(L, "%s", err);
+    }
     if (lua_isnil(L, -1)) {
         lua_pop(L, 1);
         lua_pushboolean(L, 1);
@@ -910,7 +923,9 @@ static void lua_run(inj_run_t *r)
     if (hr == HID_OK) hr = hid_sleep(m->start_delay >= 0 ? m->start_delay : config_int("keyboard.start_delay", 1000));
 
     if (hr == HID_OK) {
-        luart_opts_t opts = {.mem_limit = LUA_MEM_LIMIT, .abort_flag = &r->ctx->exit_requested};
+        // 2 KB liberi bastano a sollevare e propagare l'errore di overflow
+        luart_opts_t opts = {
+            .mem_limit = LUA_MEM_LIMIT, .abort_flag = &r->ctx->exit_requested, .stack_guard = 2048};
         lua_State *L = luart_new(&opts);
         if (!L) {
             strlcpy(r->error, "out of memory", sizeof(r->error));

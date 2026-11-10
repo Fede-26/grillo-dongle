@@ -3,7 +3,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "esp_cpu.h"
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "lauxlib.h"
 #include "lualib.h"
 
@@ -14,6 +17,7 @@ typedef struct {
     size_t used, peak, limit;
     volatile bool *abort_flag;
     bool aborted;
+    size_t stack_guard;
 } rt_t;
 
 static void *rt_alloc(void *ud, void *ptr, size_t osize, size_t nsize)
@@ -45,9 +49,23 @@ static rt_t *rt_of(lua_State *L)
 // Hook chiamato ogni N istruzioni: è l'unico punto in cui uno script in un
 // loop stretto può essere fermato, perché un task FreeRTOS non si può
 // terminare dall'esterno in modo sicuro.
+//
+// Con stack_guard è chiamato anche a ogni chiamata di funzione. Lua limita
+// l'annidamento delle chiamate C a LUAI_MAXCCALLS (200), ma sul dispositivo
+// ogni livello di pcall costa circa 512 byte di stack (misurato il
+// 2026-11-10): un task da 10 KB andava in overflow intorno al 15° livello.
+// Il costo cambia con il percorso (gsub, sort, metamethod), quindi si
+// controlla lo spazio rimasto invece di abbassare il limite.
 static void rt_hook(lua_State *L, lua_Debug *ar)
 {
     rt_t *rt = rt_of(L);
+    if (ar->event != LUA_HOOKCOUNT) {
+        // Lo stack cresce verso il basso: lo spazio libero è tra l'inizio
+        // dell'area di stack e lo stack pointer corrente.
+        size_t left = (uint8_t *)esp_cpu_get_sp() - (uint8_t *)xTaskGetStackStart(NULL);
+        if (left < rt->stack_guard) luaL_error(L, "C stack overflow (too many nested calls)");
+        return;
+    }
     if (rt->abort_flag && *rt->abort_flag) {
         rt->aborted = true;
         luaL_error(L, "aborted");
@@ -75,6 +93,7 @@ lua_State *luart_new(const luart_opts_t *opts)
     if (!rt) return NULL;
     rt->limit = opts->mem_limit;
     rt->abort_flag = opts->abort_flag;
+    rt->stack_guard = opts->stack_guard;
     lua_State *L = lua_newstate(rt_alloc, rt);
     if (!L) {
         free(rt);
@@ -102,7 +121,8 @@ lua_State *luart_new(const luart_opts_t *opts)
     }
     lua_pushcfunction(L, l_print);
     lua_setglobal(L, "print");
-    if (opts->abort_flag) lua_sethook(L, rt_hook, LUA_MASKCOUNT, 1000);
+    int mask = (opts->abort_flag ? LUA_MASKCOUNT : 0) | (opts->stack_guard ? LUA_MASKCALL : 0);
+    if (mask) lua_sethook(L, rt_hook, mask, 1000);
     return L;
 }
 
