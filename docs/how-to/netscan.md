@@ -1,8 +1,8 @@
 # Usare Netscan
 
-Netscan è l'app per capire che rete hai davanti. Ha tre schermate, che si scelgono dal menu iniziale. Gesti: click = giù, doppio click = su, pressione lunga = scegli, tenuto premuto 3 secondi = esci dall'app. In ogni elenco la riga `Back` chiude la schermata (dalla prima riga, un doppio click ci porta in fondo).
+Netscan è l'app per capire che rete hai davanti. Ha quattro schermate, che si scelgono dal menu iniziale. Gesti: click = giù, doppio click = su, pressione lunga = scegli, tenuto premuto 3 secondi = esci dall'app. In ogni elenco la riga `Back` chiude la schermata (dalla prima riga, un doppio click ci porta in fondo). Una riga selezionata troppo lunga per il display, per esempio un IP con il nome dell'host accanto, scorre da sola dopo un secondo.
 
-Non fa scansioni di porte. Traffico che invia: richieste ARP alla /24, query NBNS (UDP 137) e mDNS (UDP 5353) agli host trovati per conoscerne il nome, un ping al gateway, una query DNS, una richiesta HTTP e la sincronizzazione dell'ora via NTP (fatta a ogni collegamento a una rete, da qualunque app).
+Non fa scansioni di porte. Traffico che invia: richieste ARP alla /24, query NBNS (UDP 137) e mDNS (UDP 5353) agli host trovati per conoscerne il nome, un ping al gateway, una query DNS, una richiesta HTTP, un DHCPDISCOVER in broadcast (mai seguito da una richiesta: nessun indirizzo viene preso) e la sincronizzazione dell'ora via NTP (fatta a ogni collegamento a una rete, da qualunque app).
 
 ## Reti WiFi
 
@@ -36,9 +36,23 @@ Limiti da conoscere:
 - Un dispositivo in risparmio energetico può non rispondere alla richiesta ARP e non comparire. Ripeti la scansione.
 - Un MAC con il secondo bit del primo byte a 1 è "privato" (casuale, tipico di telefoni e PC recenti): il produttore non si può ricavare e la riga mostra `(private MAC)`.
 
+## DHCP servers
+
+Si collega come sopra, chiede un indirizzo a tutti i server DHCP della rete (un DHCPDISCOVER in broadcast, inviato tre volte) e per 5 secondi raccoglie le offerte. Ogni riga è un server: IP e, a destra, il produttore. La pressione lunga apre il dettaglio con MAC, produttore, indirizzo offerto con il prefisso, gateway, DNS e durata del lease.
+
+Il dongle non accetta nessuna offerta: senza la richiesta successiva (DHCPREQUEST) il server non riserva l'indirizzo, e il dongle tiene quello che ha già.
+
+| Server trovati | Significato |
+| --- | --- |
+| 1 | Normale. LED verde. |
+| 0 | Nessuno ha risposto: il DHCP è spento, oppure l'access point blocca i broadcast. Toast e LED rossi. |
+| più di 1 | C'è un server DHCP abusivo (*rogue*): un router collegato con la porta sbagliata, un PC con la condivisione della connessione, un attacco. I client prendono l'indirizzo da chi risponde prima, quindi alcuni finiscono su una rete sbagliata. Toast "More than one DHCP server!" e LED rossi. Il MAC e il produttore aiutano a trovare l'apparecchio. |
+
+Il MAC arriva da una richiesta ARP all'IP del server. Manca se il server sta in un'altra rete (risponde tramite un relay) o non risponde all'ARP.
+
 ## Salvataggio
 
-Ogni scansione WiFi e LAN viene salvata in `/scans/` sulla microSD, in CSV (`wifi-…csv`, `lan-<rete>-…csv`). Leggili con l'app USB disk. Il dongle non ha un orologio a batteria: l'ora viene da NTP appena il dongle si collega a una rete (o da `host.clock()` in uno script) e il nome del file contiene la data; senza ora il nome ha un numero progressivo.
+Ogni scansione WiFi, LAN e DHCP viene salvata in `/scans/` sulla microSD, in CSV (`wifi-…csv`, `lan-<rete>-…csv`, `dhcp-<rete>-…csv`). Leggili con l'app USB disk. Il dongle non ha un orologio a batteria: l'ora viene da NTP appena il dongle si collega a una rete (o da `host.clock()` in uno script) e il nome del file contiene la data; senza ora il nome ha un numero progressivo.
 
 Nel CSV i valori che inizierebbero con `=`, `+`, `-` o `@` (non numeri) hanno un apice davanti: un SSID o un nome host scelti da altri non devono diventare formule quando apri il file con un foglio di calcolo.
 

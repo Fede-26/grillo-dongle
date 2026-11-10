@@ -34,6 +34,26 @@ int ns_mdns_ptr_query(uint8_t *buf, size_t n, const uint8_t ip[4]);
 // Estrae il nome (senza ".local") dalla risposta. false se non c'è.
 bool ns_mdns_ptr_parse(const uint8_t *buf, int len, char *name, size_t n);
 
+// --- DHCP ---
+
+// Un'offerta DHCP ricevuta. Indirizzi in ordine di rete (come sul filo).
+typedef struct {
+    uint8_t server[4];  // server identifier (opzione 54), se manca l'IP sorgente
+    uint8_t offered[4]; // yiaddr
+    uint8_t mask[4], router[4], dns[4]; // zero se l'opzione manca
+    uint32_t lease_s;   // 0 se l'opzione manca
+} ns_dhcp_offer_t;
+
+// DHCPDISCOVER con il flag broadcast (le OFFER arrivano a 255.255.255.255,
+// quindi le vede anche un socket raw senza IP assegnato dal server), già
+// dentro un header UDP 68 -> 67 con checksum per `src` -> 255.255.255.255.
+// Da inviare su un socket raw IPPROTO_UDP. Restituisce la lunghezza (0 se `n`
+// non basta).
+int ns_dhcp_discover(uint8_t *buf, size_t n, const uint8_t mac[6], uint32_t xid, const uint8_t src[4]);
+// Interpreta un pacchetto IPv4 intero (come lo restituisce un socket raw): true
+// se è una DHCPOFFER 67 -> 68 con questo `xid`.
+bool ns_dhcp_parse_offer(const uint8_t *pkt, int len, uint32_t xid, ns_dhcp_offer_t *out);
+
 // --- Testo ---
 
 // Copia solo ASCII stampabile (il resto diventa '?', una volta per carattere

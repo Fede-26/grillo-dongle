@@ -15,7 +15,7 @@ Il nome viene dal grillo parlante: un piccolo aiutante da tenere in tasca. Il pr
 | Web Files | La microSD da una pagina web protetta da PIN: sfoglia, carica, scarica, rinomina, sposta, copia, cestino ed eliminazione definitiva; editor per script Lua (con controllo della sintassi sul dongle) e CSV a tabella. | funzionante |
 | Web HID | Tastiera e touchpad comandati da una pagina web (PC o telefono), protetta da PIN. Layout e OS si scelgono dalla pagina. | funzionante |
 | USB disk | Espone la microSD al PC come disco. | funzionante |
-| Netscan | Scanner di rete: reti WiFi, controlli di connettività, host della LAN con produttore e nome. Nessun port scan. Salva i risultati in CSV. | funzionante |
+| Netscan | Scanner di rete: reti WiFi, controlli di connettività, host della LAN con produttore e nome, server DHCP (avviso se più di uno). Nessun port scan. Salva i risultati in CSV. | funzionante |
 
 Il pulsante del dongle è l'unico ingresso: click, doppio click, pressione lunga; tenuto premuto 3 secondi esce da qualunque app. Ogni app ha un colore, usato dall'interfaccia e dal LED.
 

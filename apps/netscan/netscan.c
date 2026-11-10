@@ -1,8 +1,9 @@
 // Netscan: reti WiFi visibili, controlli di rete e host della LAN.
 //
 // Sola lettura della rete: nessuna scansione di porte, nessun pacchetto che
-// non sia ARP, ICMP, DNS o una GET a un solo indirizzo. I risultati di WiFi
-// e LAN finiscono anche in /sd/scans/ in CSV.
+// non sia ARP, ICMP, DNS, una GET a un solo indirizzo o un DHCPDISCOVER (mai
+// seguito da una REQUEST: nessun indirizzo viene preso). I risultati di WiFi,
+// LAN e DHCP finiscono anche in /sd/scans/ in CSV.
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -28,6 +29,8 @@ static const char *TAG = "netscan";
 
 #define SCAN_DIR      STORAGE_ROOT "/scans"
 #define MAX_APS       40
+#define DHCP_MAX      8
+#define DHCP_LISTEN   5000 // ms di ascolto delle OFFER
 // Il default è il controllo di connettività di Google (restituisce 204 senza
 // corpo); la chiave netscan.probe_host lo sostituisce, per chi non vuole
 // contattarlo.
@@ -430,20 +433,153 @@ out:
     net_release();
 }
 
+// --- DHCP servers ---
+
+typedef struct {
+    app_ctx_t *ctx;
+} dhcp_ui_t;
+
+static bool dhcp_progress(int elapsed, int found, void *arg)
+{
+    dhcp_ui_t *u = arg;
+    char l[32];
+    snprintf(l, sizeof(l), "%d server%s", found, found == 1 ? "" : "s");
+    ui_begin();
+    gfx_text_aligned(&gfx_font_small, 0, UI_CONTENT_Y + 10, UI_W, GFX_ALIGN_CENTER, "Asking DHCP servers…", UI_TEXT);
+    ui_draw_progress(14, UI_CONTENT_Y + 26, UI_W - 28, 6, elapsed, DHCP_LISTEN, ACCENT);
+    gfx_text_aligned(&gfx_font_small, 0, UI_CONTENT_Y + 38, UI_W, GFX_ALIGN_CENTER, l, UI_DIM);
+    ui_end();
+    return !app_should_exit(u->ctx);
+}
+
+// Durata del lease leggibile: "24h", "1h30m", "59m59s"
+static void lease_str(uint32_t s, char *out, size_t n)
+{
+    unsigned h = s / 3600, m = s / 60 % 60, sec = s % 60;
+    if (!s) snprintf(out, n, "?");
+    else if (h) snprintf(out, n, m ? "%uh%um" : "%uh", h, m);
+    else snprintf(out, n, sec ? "%um%us" : "%um", m, sec);
+}
+
+static void dhcp_detail(app_ctx_t *ctx, const lan_dhcp_server_t *d)
+{
+    static const uint8_t zero[6];
+    const ns_dhcp_offer_t *o = &d->offer;
+    char ip[16], mac[18], l[48], a[16], lease[12];
+    ip_str(o->server, ip, sizeof(ip));
+    ns_mac_str(d->mac, mac);
+    bool has_mac = memcmp(d->mac, zero, 6) != 0;
+    ui_begin();
+    int y = UI_CONTENT_Y;
+    gfx_text(&gfx_font_small, 6, y, ip, ACCENT);
+    gfx_text(&gfx_font_small, 6, y + 9, has_mac ? mac : "(no ARP reply)", has_mac ? UI_TEXT : UI_DIM);
+    gfx_text_fit(&gfx_font_small, 6, y + 18, UI_W - 12, d->vendor[0] ? d->vendor : "(unknown vendor)", UI_DIM);
+    ip_str(o->offered, a, sizeof(a));
+    lease_str(o->lease_s, lease, sizeof(lease));
+    uint32_t mask;
+    memcpy(&mask, o->mask, 4);
+    snprintf(l, sizeof(l), "Offer %s/%d", a, __builtin_popcount(mask));
+    gfx_text_fit(&gfx_font_small, 6, y + 27, UI_W - 12, l, UI_TEXT);
+    ip_str(o->router, a, sizeof(a));
+    snprintf(l, sizeof(l), "GW  %s", a);
+    gfx_text_fit(&gfx_font_small, 6, y + 36, UI_W - 12, l, UI_TEXT);
+    ip_str(o->dns, a, sizeof(a));
+    snprintf(l, sizeof(l), "DNS %s", a);
+    gfx_text_fit(&gfx_font_small, 6, y + 45, UI_W - 12, l, UI_TEXT);
+    // Niente suggerimento "click: back": la riga serve alla durata del lease
+    snprintf(l, sizeof(l), "Lease %s", lease);
+    gfx_text_fit(&gfx_font_small, 6, y + 54, UI_W - 12, l, UI_TEXT);
+    ui_end();
+    wait_back(ctx);
+}
+
+static void save_dhcp(const lan_dhcp_server_t *d, int n, const char *ssid)
+{
+    char path[96];
+    FILE *f = csv_open("dhcp", ssid, path, sizeof(path));
+    if (!f) return;
+    csv_row(f, 8, (const char *[]){"server", "mac", "vendor", "offered", "mask", "router", "dns", "lease_s"});
+    for (int i = 0; i < n; i++) {
+        const ns_dhcp_offer_t *o = &d[i].offer;
+        char sv[16], mac[18], of[16], mk[16], gw[16], dns[16], lease[12];
+        ip_str(o->server, sv, sizeof(sv));
+        ns_mac_str(d[i].mac, mac);
+        ip_str(o->offered, of, sizeof(of));
+        ip_str(o->mask, mk, sizeof(mk));
+        ip_str(o->router, gw, sizeof(gw));
+        ip_str(o->dns, dns, sizeof(dns));
+        snprintf(lease, sizeof(lease), "%lu", (unsigned long)o->lease_s);
+        csv_row(f, 8, (const char *[]){sv, mac, d[i].vendor, of, mk, gw, dns, lease});
+    }
+    saved_toast(f, path);
+}
+
+static void screen_dhcp(app_ctx_t *ctx)
+{
+    if (!join_network(ctx, "DHCP servers")) return;
+    net_info_t ni;
+    net_get_info(&ni);
+
+    lan_dhcp_server_t srv[DHCP_MAX];
+    char ips[DHCP_MAX][16], rights[DHCP_MAX][10];
+    const char *items[DHCP_MAX + 2], *rtext[DHCP_MAX + 2] = {0};
+    bool rescan = true;
+    int sel = 1, n = 0;
+    while (!app_should_exit(ctx)) {
+        if (rescan) {
+            led_set(LED_LAYER_APP, LED_FX_PULSE, ACCENT, 800);
+            dhcp_ui_t u = {.ctx = ctx};
+            n = lan_dhcp_probe(srv, DHCP_MAX, DHCP_LISTEN, dhcp_progress, &u);
+            if (n < 0) {
+                if (!app_should_exit(ctx)) app_message(ctx, "DHCP servers", "Probe failed", UI_ERR);
+                break;
+            }
+            save_dhcp(srv, n, ni.ssid);
+            // Un server è normale; nessuno è un guasto; più di uno vuol dire
+            // che qualcuno ne ha acceso un altro (router collegato al
+            // contrario, PC con la condivisione della connessione, attacco)
+            uint32_t col = n == 1 ? UI_OK : UI_ERR;
+            led_set(LED_LAYER_APP, LED_FX_SOLID, col, 0);
+            if (n > 1) ui_toast("More than one DHCP server!", UI_ERR, 3000);
+            else if (n == 0) ui_toast("No DHCP server answered", UI_ERR, 3000);
+            items[0] = "Rescan";
+            for (int i = 0; i < n; i++) {
+                ip_str(srv[i].offer.server, ips[i], sizeof(ips[i]));
+                // Testo a destra corto: l'IP del server è ciò che conta e non va troncato
+                strlcpy(rights[i], ns_mac_is_private(srv[i].mac) ? "private" : srv[i].vendor, sizeof(rights[i]));
+                items[i + 1] = ips[i];
+                rtext[i + 1] = rights[i];
+            }
+            items[n + 1] = "Back";
+            rescan = false;
+            sel = n ? 1 : 0;
+        }
+        char title[24];
+        snprintf(title, sizeof(title), "DHCP (%d)", n);
+        int c = app_menu_ex(ctx, title, items, rtext, n + 2, sel);
+        if (c < 0 || c == n + 1) break;
+        sel = c;
+        if (c == 0) rescan = true;
+        else dhcp_detail(ctx, &srv[c - 1]);
+    }
+    net_release();
+}
+
 // --- App ---
 
 static void netscan_run(app_ctx_t *ctx)
 {
-    static const char *const items[] = {"WiFi networks", "Network info", "LAN hosts"};
+    static const char *const items[] = {"WiFi networks", "Network info", "LAN hosts", "DHCP servers"};
     int sel = 0;
     while (!app_should_exit(ctx)) {
         led_set(LED_LAYER_APP, LED_FX_SOLID, gfx_mix(UI_BG, ACCENT, 80), 0);
-        int c = app_menu(ctx, NULL, items, 3, sel);
+        int c = app_menu(ctx, NULL, items, 4, sel);
         if (c < 0) return;
         sel = c;
         if (c == 0) screen_wifi(ctx);
         else if (c == 1) screen_info(ctx);
-        else screen_lan(ctx);
+        else if (c == 2) screen_lan(ctx);
+        else screen_dhcp(ctx);
     }
 }
 

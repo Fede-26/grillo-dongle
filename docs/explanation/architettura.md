@@ -65,4 +65,4 @@ Il dongle non ha una batteria per l'orologio: all'accensione l'ora è ignota. La
 
 ## Test
 
-La logica pura (tabelle dei layout, gesti del pulsante, parsing di NBNS e mDNS, ricerca OUI, CSV di Netscan, segreti di `config.lua` per Web Files) gira sul PC: `make -C test/host`. Il resto si verifica sul dispositivo con la console di debug e gli screenshot (`tools/grillo.py shot`).
+La logica pura (tabelle dei layout, gesti del pulsante, parsing di NBNS e mDNS, DISCOVER e OFFER del DHCP, ricerca OUI, CSV di Netscan, segreti di `config.lua` per Web Files) gira sul PC: `make -C test/host`. Il resto si verifica sul dispositivo con la console di debug e gli screenshot (`tools/grillo.py shot`).

@@ -214,6 +214,59 @@ static gesture_t run(gesture_ctx_t *g, bool pressed, uint32_t *t, uint32_t ms)
     return last;
 }
 
+// Somma a complemento a uno su tutto `p`: 0 se il checksum contenuto è giusto
+static uint16_t fold(uint32_t s)
+{
+    while (s >> 16) s = (s & 0xFFFF) + (s >> 16);
+    return s;
+}
+
+static void test_dhcp(void)
+{
+    const uint8_t mac[6] = {0x24, 0x0a, 0xc4, 1, 2, 3}, src[4] = {192, 168, 1, 50};
+    uint8_t b[400];
+    int n = ns_dhcp_discover(b, sizeof(b), mac, 0x11223344, src);
+    CHECK(n == 308, "discover len %d", n);
+    CHECK(b[1] == 68 && b[3] == 67 && (b[4] << 8 | b[5]) == n, "udp header");
+    CHECK(b[8] == 1 && b[8 + 4] == 0x11 && b[8 + 7] == 0x44 && b[8 + 10] == 0x80, "bootp fields");
+    CHECK(!memcmp(b + 8 + 28, mac, 6) && b[8 + 236] == 0x63 && b[8 + 242] == 1, "chaddr, cookie, type");
+    // Verifica del checksum: pseudo-header + segmento deve sommare a 0xFFFF
+    uint32_t s = (192 << 8 | 168) + (1 << 8 | 50) + 0xFFFF + 0xFFFF + 17 + n;
+    for (int i = 0; i < n; i += 2) s += b[i] << 8 | b[i + 1];
+    CHECK(fold(s) == 0xFFFF, "udp checksum");
+    CHECK(ns_dhcp_discover(b, 100, mac, 1, src) == 0, "buffer corto");
+
+    // OFFER costruita a mano: IP 20 byte + UDP 8 + BOOTP 236 + opzioni
+    uint8_t p[340] = {0x45};
+    p[9] = 17;
+    memcpy(p + 12, (uint8_t[]){192, 168, 1, 254}, 4);
+    uint8_t *u = p + 20, *d = u + 8;
+    u[1] = 67;
+    u[3] = 68;
+    d[0] = 2;
+    memcpy(d + 4, (uint8_t[]){0x11, 0x22, 0x33, 0x44}, 4);
+    memcpy(d + 16, (uint8_t[]){192, 168, 1, 77}, 4);
+    const uint8_t opt[] = {0x63, 0x82, 0x53, 0x63, 53, 1, 2, 54, 4, 192, 168, 1, 1, 1, 4, 255, 255, 255, 0,
+                           3, 8, 192, 168, 1, 1, 10, 0, 0, 1, 0, 6, 4, 8, 8, 8, 8, 51, 4, 0, 1, 0x51, 0x80, 255};
+    memcpy(d + 236, opt, sizeof(opt));
+    int len = 20 + 8 + 236 + sizeof(opt);
+    ns_dhcp_offer_t o;
+    CHECK(ns_dhcp_parse_offer(p, len, 0x11223344, &o), "offer");
+    CHECK(!memcmp(o.server, (uint8_t[]){192, 168, 1, 1}, 4), "server id vince sull'IP sorgente");
+    CHECK(o.offered[3] == 77 && o.mask[2] == 255 && o.router[3] == 1 && o.dns[0] == 8 && o.lease_s == 86400,
+          "campi offer");
+    CHECK(!ns_dhcp_parse_offer(p, len, 0x11223345, &o), "xid diverso");
+    d[236 + 6] = 5; // DHCPACK
+    CHECK(!ns_dhcp_parse_offer(p, len, 0x11223344, &o), "ack non è offer");
+    d[236 + 6] = 2;
+    d[236 + 8] = 200; // lunghezza dell'opzione 54 oltre la fine
+    CHECK(!ns_dhcp_parse_offer(p, len, 0x11223344, &o), "opzione tronca");
+    d[236 + 8] = 4;
+    d[236 + 7] = 250; // opzione 54 sostituita da una sconosciuta: server = IP sorgente
+    CHECK(ns_dhcp_parse_offer(p, len, 0x11223344, &o) && o.server[3] == 254, "senza server id");
+    CHECK(!ns_dhcp_parse_offer(p, 30, 0x11223344, &o), "pacchetto corto");
+}
+
 static void test_gestures(void)
 {
     gesture_ctx_t g;
@@ -285,6 +338,7 @@ int main(void)
     test_layouts();
     test_gestures();
     test_netscan();
+    test_dhcp();
     test_secrets();
     printf(s_fail ? "%d test falliti\n" : "tutti i test passati\n", s_fail);
     return s_fail != 0;

@@ -234,3 +234,95 @@ bool ns_sweep_range(uint32_t ip, uint32_t mask, uint32_t *first, uint32_t *last)
     *last = bcast - 1;
     return true;
 }
+
+// --- DHCP ---
+
+#define DHCP_FIXED   236 // campi BOOTP fino a `file` compreso
+#define DHCP_MIN_LEN 300 // alcuni server scartano messaggi BOOTP più corti (RFC 1542)
+#define UDP_HDR      8
+
+static uint32_t sum16(uint32_t s, const uint8_t *p, int len)
+{
+    for (int i = 0; i + 1 < len; i += 2) s += p[i] << 8 | p[i + 1];
+    if (len & 1) s += p[len - 1] << 8;
+    return s;
+}
+
+int ns_dhcp_discover(uint8_t *buf, size_t n, const uint8_t mac[6], uint32_t xid, const uint8_t src[4])
+{
+    int len = UDP_HDR + DHCP_MIN_LEN;
+    if (n < (size_t)len) return 0;
+    memset(buf, 0, len);
+    uint8_t *d = buf + UDP_HDR;
+    d[0] = 1; // BOOTREQUEST
+    d[1] = 1; // Ethernet
+    d[2] = 6;
+    d[4] = xid >> 24;
+    d[5] = xid >> 16;
+    d[6] = xid >> 8;
+    d[7] = xid;
+    d[10] = 0x80; // flag broadcast
+    memcpy(d + 28, mac, 6);
+    static const uint8_t opts[] = {
+        0x63, 0x82, 0x53, 0x63, // magic cookie
+        53, 1, 1,               // DHCPDISCOVER
+        55, 5, 1, 3, 6, 51, 54, // chiede maschera, router, DNS, durata, server id
+        255,
+    };
+    memcpy(d + DHCP_FIXED, opts, sizeof(opts));
+
+    buf[1] = 68;
+    buf[3] = 67;
+    buf[4] = len >> 8;
+    buf[5] = len;
+    // Checksum UDP con lo pseudo-header IPv4. In IPv4 sarebbe facoltativo, ma
+    // qualche server o firewall scarta i datagrammi con checksum zero.
+    static const uint8_t bcast[4] = {255, 255, 255, 255};
+    uint32_t c = sum16(0, src, 4);
+    c = sum16(c, bcast, 4);
+    c += 17 + len;
+    c = sum16(c, buf, len);
+    while (c >> 16) c = (c & 0xFFFF) + (c >> 16);
+    uint16_t sum = ~c;
+    if (sum == 0) sum = 0xFFFF; // 0 vorrebbe dire "nessun checksum"
+    buf[6] = sum >> 8;
+    buf[7] = sum;
+    return len;
+}
+
+bool ns_dhcp_parse_offer(const uint8_t *pkt, int len, uint32_t xid, ns_dhcp_offer_t *out)
+{
+    if (len < 20 || (pkt[0] >> 4) != 4 || pkt[9] != 17) return false;
+    int ihl = (pkt[0] & 0x0F) * 4;
+    if (ihl < 20 || len < ihl + UDP_HDR + DHCP_FIXED + 4) return false;
+    const uint8_t *u = pkt + ihl;
+    if ((u[0] << 8 | u[1]) != 67 || (u[2] << 8 | u[3]) != 68) return false;
+    const uint8_t *d = u + UDP_HDR;
+    int dl = len - ihl - UDP_HDR;
+    uint32_t x = (uint32_t)d[4] << 24 | d[5] << 16 | d[6] << 8 | d[7];
+    if (d[0] != 2 || x != xid || memcmp(d + DHCP_FIXED, "\x63\x82\x53\x63", 4) != 0) return false;
+
+    memset(out, 0, sizeof(*out));
+    memcpy(out->offered, d + 16, 4);
+    memcpy(out->server, pkt + 12, 4);
+    int type = 0;
+    for (int i = DHCP_FIXED + 4; i < dl;) {
+        uint8_t code = d[i];
+        if (code == 255) break;
+        if (code == 0) {
+            i++;
+            continue;
+        }
+        if (i + 1 >= dl || i + 2 + d[i + 1] > dl) return false; // opzione tronca
+        int ol = d[i + 1];
+        const uint8_t *v = d + i + 2;
+        if (code == 53 && ol == 1) type = v[0];
+        else if (code == 54 && ol == 4) memcpy(out->server, v, 4);
+        else if (code == 1 && ol == 4) memcpy(out->mask, v, 4);
+        else if (code == 3 && ol >= 4) memcpy(out->router, v, 4); // il primo router
+        else if (code == 6 && ol >= 4) memcpy(out->dns, v, 4);    // il primo DNS
+        else if (code == 51 && ol == 4) out->lease_s = (uint32_t)v[0] << 24 | v[1] << 16 | v[2] << 8 | v[3];
+        i += 2 + ol;
+    }
+    return type == 2; // DHCPOFFER
+}

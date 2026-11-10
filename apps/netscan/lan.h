@@ -2,6 +2,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "netscan_util.h"
 
 // Rete locale: sweep ARP, nomi degli host e sonde di raggiungibilità.
 // Tutto richiede un lease NET_STA già ottenuto.
@@ -33,3 +34,19 @@ int probe_ping(uint32_t ip_be, int timeout_ms);
 int probe_dns(const char *host, uint32_t *ip_be);
 // GET /generate_204: in `code` il codice HTTP (204 = internet libero, 200 o 30x = captive portal)
 int probe_http(uint32_t ip_be, const char *host, const char *path, int *code);
+
+// Server DHCP che hanno risposto a un DHCPDISCOVER del dongle.
+typedef struct {
+    ns_dhcp_offer_t offer;
+    uint8_t mac[6]; // dalla tabella ARP; tutto zero se il server non ha risposto all'ARP
+    char vendor[20];
+} lan_dhcp_server_t;
+
+// Chiamata ogni 100 ms circa: false interrompe.
+typedef bool (*lan_dhcp_progress_fn)(int elapsed_ms, int found, void *arg);
+
+// Invia un DHCPDISCOVER in broadcast e raccoglie le OFFER per `listen_ms`, una
+// voce per server. Nessun indirizzo viene chiesto né preso: senza REQUEST
+// l'offerta decade da sola. Restituisce i server trovati, -1 se la rete non ha
+// un IP, il socket non si apre o la raccolta è stata interrotta.
+int lan_dhcp_probe(lan_dhcp_server_t *out, int max, int listen_ms, lan_dhcp_progress_fn cb, void *arg);

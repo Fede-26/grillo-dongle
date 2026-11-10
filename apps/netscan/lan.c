@@ -9,6 +9,7 @@
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "esp_netif_net_stack.h"
+#include "esp_random.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -238,6 +239,115 @@ int lan_sweep(lan_host_t *out, int max, lan_progress_fn cb, void *arg)
     qsort(out, n, sizeof(*out), cmp_ip);
     resolve_names(out, n, cb, arg);
     fill_vendors(out, n);
+    return n;
+}
+
+// --- Server DHCP ---
+
+#define DHCP_RX_MAX 1500 // un'OFFER sta in un frame Ethernet
+#define DHCP_SENDS  3
+
+// MAC di un host della rete via ARP (richiesta, breve attesa, lettura della tabella)
+static bool arp_lookup(struct netif *nif, uint32_t ip_be, uint8_t mac[6])
+{
+    arp_job_t *j = calloc(1, sizeof(*j));
+    if (!j) return false;
+    j->nif = nif;
+    j->first = lwip_ntohl(ip_be);
+    j->count = 1;
+    j->done = xSemaphoreCreateBinary();
+    bool found = false;
+    if (j->done && run_in_tcpip(j, arp_send_cb)) {
+        vTaskDelay(pdMS_TO_TICKS(300));
+        if (run_in_tcpip(j, arp_read_cb)) {
+            for (int k = 0; k < j->table_n && !found; k++) {
+                if (j->table[k].ip != j->first) continue;
+                memcpy(mac, j->table[k].mac, 6);
+                found = true;
+            }
+        }
+    }
+    if (j->done) vSemaphoreDelete(j->done);
+    free(j);
+    return found;
+}
+
+int lan_dhcp_probe(lan_dhcp_server_t *out, int max, int listen_ms, lan_dhcp_progress_fn cb, void *arg)
+{
+    esp_netif_t *en = net_sta_netif();
+    esp_netif_ip_info_t ipi;
+    uint8_t mac[6];
+    if (!en || esp_netif_get_ip_info(en, &ipi) != ESP_OK || ipi.ip.addr == 0 || esp_netif_get_mac(en, mac) != ESP_OK) {
+        return -1;
+    }
+    // La porta 68 è del client DHCP di lwIP, che non la condivide (il suo pcb
+    // non ha SO_REUSEADDR). Un socket raw UDP vede invece ogni datagramma
+    // prima del demultiplexing e non lo consuma: le OFFER arrivano anche al
+    // client di lwIP, che le scarta perché lo xid non è il suo.
+    int s = socket(AF_INET, SOCK_RAW, IPPROTO_UDP);
+    uint8_t *buf = malloc(DHCP_RX_MAX);
+    if (s < 0 || !buf) {
+        if (s >= 0) close(s);
+        free(buf);
+        return -1;
+    }
+    int one = 1;
+    setsockopt(s, SOL_SOCKET, SO_BROADCAST, &one, sizeof(one));
+    fcntl(s, F_SETFL, O_NONBLOCK);
+
+    uint32_t xid = esp_random();
+    uint8_t disc[320];
+    int dl = ns_dhcp_discover(disc, sizeof(disc), mac, xid, (const uint8_t *)&ipi.ip.addr);
+    struct sockaddr_in to = {.sin_family = AF_INET, .sin_addr.s_addr = htonl(INADDR_BROADCAST)};
+    int n = 0;
+    bool aborted = sendto(s, disc, dl, 0, (struct sockaddr *)&to, sizeof(to)) != dl;
+    if (aborted) ESP_LOGW(TAG, "DISCOVER non inviato: errno %d", errno);
+    int sent = 1;
+    int64_t t0 = esp_timer_get_time();
+    while (!aborted) {
+        int elapsed = (esp_timer_get_time() - t0) / 1000;
+        if (elapsed >= listen_ms) break;
+        // Altri due invii a 1/3 e 2/3, con lo stesso xid: il broadcast WiFi
+        // non ha ritrasmissioni, e un DISCOVER o un'OFFER si perdono
+        if (sent < DHCP_SENDS && elapsed >= listen_ms * sent / DHCP_SENDS) {
+            sendto(s, disc, dl, 0, (struct sockaddr *)&to, sizeof(to));
+            sent++;
+        }
+        int r;
+        while ((r = recv(s, buf, DHCP_RX_MAX, 0)) > 0) {
+            ns_dhcp_offer_t o;
+            if (!ns_dhcp_parse_offer(buf, r, xid, &o)) continue;
+            int i = 0;
+            while (i < n && memcmp(out[i].offer.server, o.server, 4) != 0) i++;
+            if (i < n || n >= max) continue; // stesso server due volte (risponde a entrambi gli invii)
+            memset(&out[n], 0, sizeof(out[n]));
+            out[n++].offer = o;
+        }
+        if (cb && !cb(elapsed, n, arg)) aborted = true;
+        else vTaskDelay(pdMS_TO_TICKS(100));
+    }
+    close(s);
+    free(buf);
+    if (aborted) return -1;
+
+    // Il MAC dice che apparecchio è il server: un router o un PC con un
+    // servizio DHCP acceso per sbaglio
+    struct netif *nif = esp_netif_get_netif_impl(en);
+    FILE *f = fopen(OUI_PATH, "rb");
+    for (int i = 0; i < n; i++) {
+        uint32_t ip;
+        memcpy(&ip, out[i].offer.server, 4);
+        if ((ip & ipi.netmask.addr) != (ipi.ip.addr & ipi.netmask.addr)) continue; // dietro un relay
+        if (cb && !cb(listen_ms, n, arg)) break;
+        if (!nif || !arp_lookup(nif, ip, out[i].mac)) continue;
+        if (ns_mac_is_private(out[i].mac)) {
+            strlcpy(out[i].vendor, "(private MAC)", sizeof(out[i].vendor));
+        } else if (f) {
+            char v[29];
+            if (ns_oui_lookup(f, out[i].mac, v, sizeof(v))) ns_display_text(out[i].vendor, sizeof(out[i].vendor), v);
+        }
+    }
+    if (f) fclose(f);
     return n;
 }
 
