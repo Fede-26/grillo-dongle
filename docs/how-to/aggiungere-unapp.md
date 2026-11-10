@@ -9,6 +9,6 @@ Un'app è un componente in `apps/` che esporta un descrittore `app_desc_t`. Il c
 
 Il profilo USB è la combinazione di interfacce che serve all'app (vedi [API C delle app](../reference/api-app.md#descrittore)): se nessuno dei profili pronti va bene, componi la maschera `USB_F_*`. Per cambiarlo a metà usa `app_usb_apply`, che sposta anche la SD.
 
-Per un'app comandata da una pagina web usa i componenti `websrv` (server, PIN, una sessione per volta) e `qr` (QR code sul display, anche per le credenziali dell'hotspot): `apps/webhid` è l'esempio. La pagina va compressa in fase di build come in `apps/webhid/CMakeLists.txt` e registrata con `websrv_add_page`.
+Per un'app comandata da una pagina web usa i componenti `websrv` (server, PIN, una sessione per volta) e `qr` (QR code sul display, anche per le credenziali dell'hotspot), `webui` (la schermata con QR, indirizzo e PIN) e `webtheme` (tema comune delle pagine): `apps/webhid` e `apps/webinjector` sono gli esempi. La pagina va compressa in fase di build come in `apps/webinjector/CMakeLists.txt`, con un nome di file diverso da quello delle altre app (il simbolo incorporato deriva dal nome), e registrata con `websrv_add_page`; poi `webtheme_register()`.
 
 Quando `run` ritorna, il sistema rilascia d'ufficio profilo USB, SD prestata, livello LED e rete: non serve farlo a mano.

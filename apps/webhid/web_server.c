@@ -5,6 +5,7 @@
 #include "hid.h"
 #include "led.h"
 #include "websrv.h"
+#include "webtheme.h"
 
 extern const uint8_t index_html_gz_start[] asm("_binary_index_html_gz_start");
 extern const uint8_t index_html_gz_end[] asm("_binary_index_html_gz_end");
@@ -183,6 +184,7 @@ esp_err_t web_start(const char *pin)
     if (err == ESP_OK) {
         err = websrv_add_page("/", "text/html", index_html_gz_start, index_html_gz_end - index_html_gz_start);
     }
+    if (err == ESP_OK) err = webtheme_register();
     if (err != ESP_OK) web_stop();
     return err;
 }

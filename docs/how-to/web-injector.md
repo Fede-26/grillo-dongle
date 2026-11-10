@@ -26,6 +26,8 @@ Durante l'esecuzione la pagina mostra nome, stato (`ui.status`), barra di avanza
 
 Display e pulsante restano attivi: si può rispondere da entrambi, e vale la prima risposta. L'esito resta sul display e sulla pagina finché non si preme OK (o il pulsante).
 
+Il pulsante in alto a destra cambia l'aspetto della pagina: **Plain** (sobrio), **Arcade** (pixel art, righe di scansione) e **Retro** (monitor a fosfori ambra). Il browser ricorda la scelta.
+
 ## Se la pagina si chiude
 
 Lo script continua. Quando la pagina si ricollega (da sola, finché il PIN è valido) riceve lo stato attuale e l'eventuale dialogo aperto; le righe di log scritte nel frattempo non vengono ripetute.

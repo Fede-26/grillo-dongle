@@ -97,11 +97,12 @@ Le richieste sono a conteggio di riferimenti (lease): il WiFi resta acceso finch
 
 ## Server web e QR code
 
-Per le app comandate da una pagina web (componenti `websrv` e `qr`; l'esempio è `apps/webhid`):
+Per le app comandate da una pagina web (componenti `websrv`, `qr`, `webui` e `webtheme`; gli esempi sono `apps/webhid` e `apps/webinjector`):
 
 ```c
 esp_err_t websrv_start(const websrv_config_t *cfg); // pin, stack_size, max_frame, on_message, on_auth, on_session_end
 esp_err_t websrv_add_page(const char *uri, const char *type, const uint8_t *gz, size_t len); // pagina già in gzip
+esp_err_t websrv_add_file(const char *uri, const char *type, const uint8_t *data, size_t len, unsigned flags); // WEBSRV_GZIP, WEBSRV_CACHE
 esp_err_t websrv_add_route(const httpd_uri_t *uri);  // rotta propria: non protetta dal PIN
 bool websrv_is_client(httpd_req_t *req);             // la richiesta viene dal client autenticato?
 void websrv_reply(httpd_req_t *req, const char *msg); // messaggio WebSocket al client
@@ -112,6 +113,12 @@ void websrv_stop(void);
 
 bool qr_draw(const char *text, int x, int y, int box);  // tra ui_begin e ui_end
 void qr_wifi_text(char *out, size_t len, const char *ssid, const char *pass); // QR per unirsi all'hotspot
+
+void webui_draw_connecting(const gfx_icon_t *icon, uint32_t accent);  // ricerca della rete
+void webui_draw_main(const net_info_t *ni, const char *pin, int page, const char *client, uint32_t accent); // QR, IP, PIN
+esp_err_t webtheme_register(void);                   // /theme.css, /theme.js, /grillo.svg, /fonts/*
 ```
+
+Il server serve al massimo 8 file compresa la pagina. `webtheme_register` (dopo `websrv_start`) aggiunge il tema comune: la pagina lo include con `<link rel="stylesheet" href="/theme.css">` e `<script src="/theme.js"></script>`, imposta `--acc` con il colore dell'app e mette nell'intestazione `<img class="logo" src="/grillo.svg">` e il pulsante `<button id="theme" class="chip">` che cambia modalità. Il tema regola solo l'aspetto; la disposizione resta della pagina.
 
 Il server ha due rotte fisse: `/cfg` dice alla pagina se serve il PIN, `/ws` è il WebSocket. Il primo messaggio deve essere `p<PIN>`; le risposte e le regole (blocco per indirizzo, una sessione per volta, subentro dallo stesso IP) sono in [Protocollo WebSocket](protocollo-websocket.md). Dopo l'autenticazione ogni messaggio di testo arriva a `on_message`, nel task del server: un lavoro lungo blocca le altre richieste e deve smettere quando `websrv_stopping()` diventa vero. `on_session_end` è chiamata quando il client se ne va, quando un altro lo sostituisce e a ogni `websrv_stop`: è il posto dove rilasciare ciò che la sessione teneva (il Web HID lascia i tasti).

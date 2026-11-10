@@ -32,6 +32,8 @@ Se il telefono va in standby o perde il WiFi, la pagina riprova a collegarsi da 
 
 Un testo lungo incollato si interrompe solo uscendo dall'app (3 secondi di pressione): chiudere la pagina non ferma i blocchi già inviati.
 
+Il pulsante in alto a destra cambia l'aspetto della pagina: **Plain** (sobrio), **Arcade** (pixel art, righe di scansione) e **Retro** (monitor a fosfori ambra). Il browser ricorda la scelta.
+
 ## Senza PIN
 
 Su una rete fidata si può disattivare il PIN: in `config.lua`, `webhid = { pin = false }`. Chiunque sulla stessa rete potrebbe allora comandare il PC. Vedi [Sicurezza](../explanation/sicurezza.md).

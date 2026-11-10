@@ -3,33 +3,35 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,interactive-widget=resizes-content">
-<title>Grillo</title>
+<title>Grillo Web HID</title>
+<link rel="icon" href="/grillo.svg">
+<link rel="stylesheet" href="/theme.css">
+<script src="/theme.js"></script>
 <style>
-:root{color-scheme:dark;--bg:#0b0f14;--panel:#1a2029;--hi:#252d38;--text:#e6edf3;--dim:#7d8590;--acc:#4070ff;--ok:#3fb950;--err:#f85149}
+:root{--acc:#4070ff}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:18px system-ui,sans-serif;-webkit-text-size-adjust:100%;text-size-adjust:100%;overscroll-behavior:none;touch-action:manipulation;-webkit-user-select:none;user-select:none}
 /* 100dvh = altezza visibile reale (senza barre del browser): niente scorrimento */
 body{display:flex;flex-direction:column;padding:8px;gap:8px;height:100vh;height:100dvh;overflow:hidden}
 button,input,textarea,select{font:inherit;color:inherit}
-button{background:var(--panel);border:1px solid var(--hi);border-radius:10px;padding:0;min-width:0;min-height:48px;font-size:20px}
-button:active,button.on{background:var(--acc);color:#000}
+button{padding:0;min-width:0;min-height:48px;font-size:20px}
 header{display:flex;justify-content:space-between;align-items:center}
-h1{margin:0;font-size:18px;color:var(--acc)}
+h1{margin:0}
 #st{font-size:14px;color:var(--dim)}
 #st.ok{color:var(--ok)}#st.bad{color:var(--err)}
 #login{margin:auto;display:flex;flex-direction:column;gap:10px;width:min(260px,100%)}
-#pin{background:var(--panel);border:1px solid var(--hi);border-radius:8px;padding:12px;font-size:28px;text-align:center;letter-spacing:6px}
+#pin{padding:12px;font-size:28px;text-align:center;letter-spacing:6px}
 #login button{background:var(--acc);color:#000;font-weight:600}
 #msg{min-height:1.2em;color:var(--err);text-align:center;font-size:16px}
 #app{display:none;flex:1;min-height:0;flex-direction:column;gap:8px}
 nav{display:flex;gap:6px}nav button{flex:1}
-#pad{flex:1;min-height:120px;background:var(--panel);border:1px solid var(--hi);border-radius:12px;touch-action:none;display:flex;align-items:center;justify-content:center;color:var(--dim);user-select:none}
+#pad{flex:1;min-height:120px;touch-action:none;display:flex;align-items:center;justify-content:center;color:var(--dim);user-select:none}
 .row{display:flex;gap:6px}.row button{flex:1}
 #keys{display:none;flex:1;min-height:0;flex-direction:column;gap:8px}
 /* Campi a 20px: i browser mobili zoomano la pagina quando si tocca un campo con testo piccolo (soglia 16px, margine per sicurezza) */
 input.live,textarea,select{font-size:20px}
-input.live,textarea{width:100%;background:var(--panel);border:1px solid var(--hi);border-radius:10px;padding:12px;-webkit-user-select:text;user-select:text}
-select{flex:1;min-width:0;min-height:48px;color:var(--text);background:var(--panel);border:1px solid var(--hi);border-radius:10px;padding:0 10px}
+input.live,textarea{width:100%;padding:12px;-webkit-user-select:text;user-select:text}
+select{flex:1;min-width:0;min-height:48px;padding:0 10px}
 .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
 /* La griglia dei tasti prende tutta l'altezza che resta e divide le righe in parti uguali */
 #sp,#fk{flex:1;min-height:0;grid-auto-rows:1fr}
@@ -61,7 +63,7 @@ button.big{font-size:26px}
 </style>
 </head>
 <body>
-<header><h1>Grillo</h1><span id="st">offline</span></header>
+<header><img class="logo" src="/grillo.svg" alt=""><h1>Web HID</h1><span id="st">offline</span><button id="theme" class="chip" type="button">Plain</button></header>
 
 <form id="login">
   <input id="pin" inputmode="numeric" autocomplete="off" maxlength="6" placeholder="PIN" autofocus>
@@ -72,7 +74,7 @@ button.big{font-size:26px}
 <div id="app">
   <nav><button id="t0" class="on">Touchpad</button><button id="t1">Keys</button></nav>
   <div id="pad0" style="display:contents">
-    <div id="pad">touchpad</div>
+    <div id="pad" class="panel">touchpad</div>
     <div class="row"><button id="bl">Left</button><button id="bm">Mid</button><button id="br">Right</button></div>
   </div>
   <div id="keys">
@@ -90,7 +92,7 @@ button.big{font-size:26px}
 
 <div id="ov">
   <textarea id="paste" placeholder="Text to type on the PC"></textarea>
-  <div class="row"><button id="oc">Close</button><button id="send" style="background:var(--acc);color:#000">Type it</button></div>
+  <div class="row"><button id="oc">Close</button><button id="send" class="main">Type it</button></div>
 </div>
 
 <script>
@@ -110,7 +112,7 @@ function connect() {
   ws.onmessage = e => {
     const m = e.data;
     if (m === "ok") {
-      authed = true; retry = 0; setSt("connected", "ok");
+      authed = true; retry = 0; setSt("connected", "ok"); grilloLive(true);
       $("login").style.display = "none"; $("app").style.display = "flex";
     } else if (m === "no") { fail("Wrong PIN"); }
     else if (m === "busy") { fail("Another client is connected"); }
@@ -121,7 +123,7 @@ function connect() {
     else if (m.startsWith("untypeable")) { setSt(m.slice(11) + " char(s) not in layout: typed ?", "bad"); }
   };
   ws.onclose = () => {
-    const was = authed; authed = false;
+    const was = authed; authed = false; grilloLive(false);
     if (!pin) return;
     setSt("offline", "bad");
     // Si riprova finché c'è un PIN da usare: un rifiuto (PIN errato, busy, locked) passa da

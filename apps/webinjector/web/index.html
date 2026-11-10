@@ -4,22 +4,21 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Grillo Web Injector</title>
+<link rel="icon" href="/grillo.svg">
+<link rel="stylesheet" href="/theme.css">
+<script src="/theme.js"></script>
 <style>
-:root{color-scheme:dark;--bg:#0b0f14;--panel:#1a2029;--hi:#252d38;--text:#e6edf3;--dim:#7d8590;--acc:#b060ff;--ok:#3fb950;--err:#f85149;--warn:#d29922}
+:root{--acc:#b060ff}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;background:var(--bg);color:var(--text);font:18px system-ui,sans-serif;-webkit-text-size-adjust:100%;text-size-adjust:100%}
+html,body{margin:0;font-size:18px;-webkit-text-size-adjust:100%;text-size-adjust:100%}
 body{display:flex;flex-direction:column;padding:8px;gap:8px;min-height:100vh;min-height:100dvh}
 button,input{font:inherit;color:inherit}
-button{background:var(--panel);border:1px solid var(--hi);border-radius:10px;min-height:48px;padding:0 12px}
-button:active,button.on{background:var(--acc);color:#000}
-button.main{background:var(--acc);color:#000;font-weight:600}
-button.danger{background:var(--err);color:#000;font-weight:600}
-header{display:flex;justify-content:space-between;align-items:center}
-h1{margin:0;font-size:18px;color:var(--acc)}
-#st{font-size:14px;color:var(--dim)}
+button{min-height:48px;padding:0 12px}
+header{display:flex;align-items:center}
+#st{font-size:12px;color:var(--dim)}
 #st.ok{color:var(--ok)}#st.bad{color:var(--err)}
 #login{margin:auto;display:flex;flex-direction:column;gap:10px;width:min(260px,100%)}
-#pin{background:var(--panel);border:1px solid var(--hi);border-radius:8px;padding:12px;font-size:28px;text-align:center;letter-spacing:6px}
+#pin{padding:12px;font-size:28px;text-align:center;letter-spacing:6px}
 #msg{min-height:1.2em;color:var(--err);text-align:center;font-size:16px}
 #app{display:none;flex-direction:column;gap:8px}
 nav{display:flex;gap:6px}nav button{flex:1}
@@ -30,24 +29,26 @@ nav{display:flex;gap:6px}nav button{flex:1}
 .item.dir .l{color:var(--acc)}
 .l{overflow-wrap:anywhere}
 .note{color:var(--warn);font-size:15px}
-.panel{background:var(--panel);border:1px solid var(--hi);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px}
-.panel h2{margin:0;font-size:20px;color:var(--acc);overflow-wrap:anywhere}
+.panel{padding:12px;display:flex;flex-direction:column;gap:10px}
+.panel h2{margin:0;font-size:16px;color:var(--acc);overflow-wrap:anywhere}
 .info{color:var(--dim);font-size:15px}
 .desc{white-space:pre-wrap;overflow-wrap:anywhere}
 .err{color:var(--err);overflow-wrap:anywhere}
 .row{display:flex;gap:8px}.row button{flex:1}
 .col{display:flex;flex-direction:column;gap:8px}
 #run{display:none}
-#bar{height:8px;background:var(--hi);border-radius:4px;overflow:hidden;display:none}
+#bar{height:10px;background:var(--hi);overflow:hidden;display:none}
 #bar div{height:100%;width:0;background:var(--acc)}
-#log{margin:0;max-height:40vh;overflow:auto;font:14px ui-monospace,monospace;color:var(--dim);white-space:pre-wrap;overflow-wrap:anywhere}
+#log{margin:0;max-height:40vh;overflow:auto;font-size:15px;color:var(--dim);white-space:pre-wrap;overflow-wrap:anywhere}
 #ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);padding:16px;align-items:center;justify-content:center;z-index:5}
 #ov .panel{width:min(420px,100%);max-height:90vh;overflow:auto}
-#toast{position:fixed;left:8px;right:8px;bottom:8px;display:none;background:var(--err);color:#000;border-radius:10px;padding:10px;z-index:9}
+#toast{position:fixed;left:8px;right:8px;bottom:8px;display:none;background:var(--err);color:#000;clip-path:var(--notch);padding:10px;z-index:60}
+/* Barra a blocchi in arcade */
+html.arcade #bar div{background:repeating-linear-gradient(90deg,var(--acc) 0 8px,transparent 8px 10px)}
 </style>
 </head>
 <body>
-<header><h1>Web Injector</h1><span id="st">offline</span></header>
+<header><img class="logo" src="/grillo.svg" alt=""><h1>Web Injector</h1><span id="st">offline</span><button id="theme" class="chip" type="button">Plain</button></header>
 
 <form id="login">
   <input id="pin" inputmode="numeric" autocomplete="off" placeholder="PIN" maxlength="6">
@@ -91,7 +92,7 @@ function connect() {
   ws.onmessage = e => {
     const m = e.data;
     if (m === "ok") {
-      authed = true; retry = 0; setSt("connected", "ok");
+      authed = true; retry = 0; setSt("connected", "ok"); grilloLive(true);
       $("login").style.display = "none"; $("app").style.display = "flex";
     } else if (m === "no") fail("Wrong PIN");
     else if (m === "busy") fail("Another client is connected");
@@ -99,7 +100,7 @@ function connect() {
     else if (m[0] === "{") handle(JSON.parse(m));
   };
   ws.onclose = () => {
-    const was = authed; authed = false;
+    const was = authed; authed = false; grilloLive(false);
     if (!pin) return;
     setSt("offline", "bad");
     if (was) retry = 0;

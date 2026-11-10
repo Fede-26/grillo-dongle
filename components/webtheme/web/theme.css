@@ -1,0 +1,103 @@
+/* Tema comune delle pagine del dongle (Web HID, Web Injector, future).
+   Solo l'aspetto: la disposizione resta nella pagina, che imposta anche
+   --acc con il colore della sua app. Tre modalità, classe su <html> (vedi
+   theme.js): plain (sobria, default), arcade (pixel, righe di scansione,
+   animazioni) e retro (monitor a fosfori ambra, monocromatico: il colore
+   dell'app non si vede). Font: Silkscreen per
+   titoli ed elementi grafici, Iosevka per i log, quello di sistema per il
+   testo. I campi di testo restano a 20px: sotto i 16px i browser mobili
+   zoomano la pagina quando compare la tastiera. */
+
+@font-face{font-family:"Silkscreen";src:url(/fonts/silkscreen.woff2) format("woff2");font-display:swap}
+@font-face{font-family:"Iosevka";src:url(/fonts/iosevka.woff2) format("woff2");font-display:swap}
+
+:root{
+  color-scheme:dark;
+  --bg:#0b0f14;--panel:#161c24;--hi:#2a3441;--text:#e6edf3;--dim:#7d8590;
+  --ok:#3fb950;--err:#f85149;--warn:#d29922;--acc:#7cfc00;
+  --f-pixel:"Silkscreen",ui-monospace,monospace;
+  --f-mono:"Iosevka",ui-monospace,Menlo,Consolas,monospace;
+  --f-text:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  /* Angoli "a pixel": un gradino di 3px tagliato con clip-path */
+  --px:3px;
+  --notch:polygon(var(--px) 0,calc(100% - var(--px)) 0,100% var(--px),100% calc(100% - var(--px)),calc(100% - var(--px)) 100%,var(--px) 100%,0 calc(100% - var(--px)),0 var(--px));
+}
+
+html,body{background:var(--bg);color:var(--text);font-family:var(--f-text)}
+h1,h2,nav button,.chip,#st{font-family:var(--f-pixel);font-weight:400;letter-spacing:.5px;-webkit-font-smoothing:none}
+h1{font-size:16px;color:var(--acc)}
+pre,code,.mono{font-family:var(--f-mono);font-variant-ligatures:none}
+
+/* Pulsanti e pannelli: bordo pieno, angoli a gradino, ombra interna in basso
+   come un tasto rilievo; premuto scende di 2px */
+button{background:var(--panel);border:2px solid var(--hi);border-radius:0;clip-path:var(--notch);
+  box-shadow:inset 0 -4px 0 rgba(0,0,0,.35);cursor:pointer}
+button:active{transform:translateY(2px);box-shadow:inset 0 3px 0 rgba(0,0,0,.35)}
+button:active,button.on{background:var(--acc);border-color:var(--acc);color:#000}
+button.main{background:var(--acc);border-color:var(--acc);color:#000;font-weight:600}
+button.danger{background:var(--err);border-color:var(--err);color:#000;font-weight:600}
+/* Il contorno del focus sarebbe tagliato dal clip-path: si disegna dentro */
+button:focus-visible{outline:0;box-shadow:inset 0 0 0 2px var(--text)}
+input,textarea,select{background:var(--panel);border:2px solid var(--hi);border-radius:0;clip-path:var(--notch);color:var(--text)}
+input:focus,textarea:focus,select:focus{outline:0;border-color:var(--acc)}
+.panel{background:var(--panel);border:2px solid var(--hi);clip-path:var(--notch)}
+
+/* Intestazione: logo, titolo, stato, interruttore del tema */
+header{gap:8px}
+header .logo{width:32px;height:24px;image-rendering:pixelated;flex:none}
+header h1{flex:1;margin:0}
+.chip{min-height:32px;padding:0 8px;font-size:12px;color:var(--dim)}
+
+/* --- Arcade --- */
+html.arcade body{
+  background:
+    radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.55) 100%),
+    repeating-linear-gradient(0deg,rgba(255,255,255,.025) 0 1px,transparent 1px 4px),
+    repeating-linear-gradient(90deg,rgba(255,255,255,.025) 0 1px,transparent 1px 4px),
+    var(--bg)}
+/* Righe di scansione sopra tutto, senza intercettare i tocchi */
+html.arcade body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:50;
+  background:repeating-linear-gradient(0deg,rgba(0,0,0,.22) 0 1px,transparent 1px 3px)}
+html.arcade h1,html.arcade h2{text-shadow:0 0 6px var(--acc),2px 2px 0 #000}
+/* Pixel sui pulsanti, non sulle voci degli elenchi: in maiuscoletto i nomi lunghi si leggono male */
+html.arcade button:not(.item){font-family:var(--f-pixel);-webkit-font-smoothing:none}
+html.arcade button.on,html.arcade button.main{box-shadow:inset 0 -4px 0 rgba(0,0,0,.35),0 0 10px var(--acc)}
+html.arcade .panel{box-shadow:inset 0 0 0 1px rgba(255,255,255,.04)}
+html.arcade .chip{color:var(--acc)}
+/* Il grillo salta finché la pagina è collegata al dongle */
+html.arcade.live header .logo{animation:hop 1.6s steps(1) infinite}
+@keyframes hop{0%,70%,100%{transform:translateY(0)}75%{transform:translateY(-6px)}85%{transform:translateY(-3px)}}
+
+/* --- Retro: terminale a fosfori ambra --- */
+/* Colori ridefiniti sulla pagina: valgono anche le regole delle pagine che
+   usano le variabili. --acc va forzato perché la pagina lo imposta su :root. */
+html.retro,html.retro body{
+  --bg:#110b02;--panel:#1a1104;--hi:#6b4700;--text:#ffb000;--dim:#b87f00;
+  --acc:#ffb000;--ok:#ffd36b;--err:#ff6a2b;--warn:#ffc640;
+  --f-text:var(--f-mono)}
+html.retro body{font-family:var(--f-mono);text-shadow:0 0 4px rgba(255,176,0,.55);
+  background:radial-gradient(ellipse at center,#1d1303 0%,#110b02 60%,#070400 100%)}
+/* Righe di scansione e bordo scuro del tubo, sopra tutto senza intercettare i tocchi */
+html.retro body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:50;
+  background:repeating-linear-gradient(0deg,rgba(0,0,0,.28) 0 1px,transparent 1px 3px);
+  box-shadow:inset 0 0 80px rgba(0,0,0,.85)}
+html.retro h1,html.retro h2,html.retro nav button,html.retro .chip,html.retro #st{font-family:var(--f-mono);text-transform:uppercase;letter-spacing:1px}
+html.retro h1::after{content:"_";animation:blink 1s steps(1) infinite}
+/* Logo in ambra come il resto: il verde del grillo stonerebbe */
+html.retro header .logo{filter:sepia(1) saturate(4) hue-rotate(-12deg) brightness(1.1)}
+/* Pulsanti come voci di un terminale: bordo, niente angoli; premuto o
+   selezionato = video inverso */
+html.retro button,html.retro input,html.retro textarea,html.retro select,html.retro .panel{clip-path:none;border-radius:0}
+html.retro button{background:transparent;border:2px solid var(--hi);box-shadow:none;font-family:var(--f-mono)}
+html.retro button:active,html.retro button.on,html.retro button.main{background:var(--text);border-color:var(--text);color:var(--bg);text-shadow:none}
+html.retro button.danger{background:transparent;border-color:var(--err);color:var(--err)}
+html.retro .panel{background:var(--panel);border:3px double var(--hi)}
+html.retro input,html.retro textarea,html.retro select{background:transparent;caret-color:var(--text)}
+html.retro ::placeholder{color:var(--dim)}
+html.retro ::selection{background:var(--text);color:var(--bg)}
+@keyframes blink{50%{opacity:0}}
+
+@media (prefers-reduced-motion:reduce){
+  html.arcade.live header .logo,html.retro h1::after{animation:none}
+  button:active{transform:none}
+}

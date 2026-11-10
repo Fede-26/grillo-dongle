@@ -43,6 +43,11 @@ void websrv_stop(void);
 // Pagina statica già compressa con gzip (il browser la decomprime da sé),
 // tipicamente "/" con il file incorporato nel firmware. Dopo websrv_start.
 esp_err_t websrv_add_page(const char *uri, const char *type, const uint8_t *gz, size_t len);
+// File statico qualunque (tema, font, immagini), al massimo 8 compresa la
+// pagina. WEBSRV_GZIP: il contenuto è già in gzip. WEBSRV_CACHE: il browser
+// può tenerlo una settimana (solo per ciò che non cambia col firmware).
+enum { WEBSRV_GZIP = 1 << 0, WEBSRV_CACHE = 1 << 1 };
+esp_err_t websrv_add_file(const char *uri, const char *type, const uint8_t *data, size_t len, unsigned flags);
 // Rotta aggiuntiva (API, download). Dopo websrv_start. Non è protetta dal
 // PIN: l'handler chiama websrv_is_client() prima di fare qualcosa.
 esp_err_t websrv_add_route(const httpd_uri_t *uri);

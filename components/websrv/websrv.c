@@ -12,7 +12,8 @@ static const char *TAG = "websrv";
 
 #define MAX_TRIES  5
 #define LOCKOUT_US (30 * 1000000LL)
-#define MAX_PAGES  4
+// Pagina dell'app più i file del tema (webtheme): css, js, due font, logo
+#define MAX_PAGES  8
 
 static httpd_handle_t s_server;
 static websrv_config_t s_cfg;
@@ -25,8 +26,9 @@ static volatile bool s_stopping;
 
 typedef struct {
     const char *type;
-    const uint8_t *gz;
+    const uint8_t *data;
     size_t len;
+    unsigned flags; // WEBSRV_GZIP, WEBSRV_CACHE
 } page_t;
 static page_t s_pages[MAX_PAGES];
 static int s_npages;
@@ -123,9 +125,11 @@ static esp_err_t page_get(httpd_req_t *req)
 {
     const page_t *p = req->user_ctx;
     httpd_resp_set_type(req, p->type);
-    httpd_resp_set_hdr(req, "Content-Encoding", "gzip");
-    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
-    return httpd_resp_send(req, (const char *)p->gz, p->len);
+    if (p->flags & WEBSRV_GZIP) httpd_resp_set_hdr(req, "Content-Encoding", "gzip");
+    // In cache solo ciò che non cambia tra un firmware e l'altro (font):
+    // pagine e tema devono arrivare nuovi dopo un aggiornamento.
+    httpd_resp_set_hdr(req, "Cache-Control", (p->flags & WEBSRV_CACHE) ? "max-age=604800" : "no-store");
+    return httpd_resp_send(req, (const char *)p->data, p->len);
 }
 
 // Dice alla pagina se serve il PIN, senza consumare tentativi.
@@ -278,10 +282,15 @@ esp_err_t websrv_start(const websrv_config_t *cfg)
 
 esp_err_t websrv_add_page(const char *uri, const char *type, const uint8_t *gz, size_t len)
 {
+    return websrv_add_file(uri, type, gz, len, WEBSRV_GZIP);
+}
+
+esp_err_t websrv_add_file(const char *uri, const char *type, const uint8_t *data, size_t len, unsigned flags)
+{
     if (!s_server) return ESP_ERR_INVALID_STATE;
     if (s_npages >= MAX_PAGES) return ESP_ERR_NO_MEM;
     page_t *p = &s_pages[s_npages++];
-    *p = (page_t){type, gz, len};
+    *p = (page_t){type, data, len, flags};
     httpd_uri_t u = {.uri = uri, .method = HTTP_GET, .handler = page_get, .user_ctx = p};
     return httpd_register_uri_handler(s_server, &u);
 }

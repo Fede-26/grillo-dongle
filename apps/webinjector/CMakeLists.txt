@@ -1,7 +1,7 @@
 idf_component_register(SRCS "webinjector.c"
                        INCLUDE_DIRS "include"
                        REQUIRES appfw
-                       PRIV_REQUIRES injector_core ui led usbdev net config websrv webui)
+                       PRIV_REQUIRES injector_core ui led usbdev net config websrv webtheme webui)
 
 # La pagina viene compressa in fase di build, come quella del Web HID
 set(WEB_HTML ${CMAKE_CURRENT_SOURCE_DIR}/web/index.html)

@@ -25,6 +25,7 @@
 #include "usbdev.h"
 #include "webinjector.h"
 #include "websrv.h"
+#include "webtheme.h"
 #include "webui.h"
 
 #define ACCENT      0xB060FF
@@ -545,6 +546,7 @@ static void webinjector_run(app_ctx_t *ctx)
     if (err == ESP_OK) {
         err = websrv_add_page("/", "text/html", page_gz_start, page_gz_end - page_gz_start);
     }
+    if (err == ESP_OK) err = webtheme_register();
     if (err != ESP_OK) {
         char msg[40];
         snprintf(msg, sizeof(msg), "Server failed: %s", esp_err_to_name(err));

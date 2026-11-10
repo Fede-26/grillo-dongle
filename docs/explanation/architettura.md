@@ -7,7 +7,7 @@ Grillo è un firmware ESP-IDF v6.1 (C, FreeRTOS) per un dispositivo con vincoli 
 ```
 apps/         injector, webinjector, webhid, netscan, usbdisk, launcher  <- una per attività
 components/   injector_core                               <- esecuzione degli script
-              appfw  ui  gfx  display  input  led  qr  webui  <- interfaccia
+              appfw  ui  gfx  display  input  led  qr  webui  webtheme  <- interfaccia
               hid  usbdev  net  websrv  storage  config  luart  <- servizi
               devcon  syslog  clock  board  lua           <- console, log, ora, pin, interprete
 main/         avvio, tabella app, console di debug
@@ -45,7 +45,11 @@ Misure sul dispositivo (a memoria di sessione, non riprodotte in un test automat
 
 Il gestore WiFi (`net`) è a lease: ogni app che ne ha bisogno lo richiede e lo rilascia; il WiFi resta acceso finché c'è almeno un lease. Ogni lease appartiene al task che l'ha preso: all'uscita di un'app il sistema rilascia solo quelli del suo task, così un servizio in un task proprio non perderebbe la connessione. L'attesa della connessione si interrompe quando l'utente chiede l'uscita, invece di durare fino alla scadenza.
 
-Il server delle pagine web (`websrv`) e il QR code (`qr`) sono componenti a parte, non codice del Web HID: autenticazione con PIN, blocco per indirizzo dopo 5 errori, una sola sessione con subentro dallo stesso dispositivo, pagina compressa. Servono così anche alle app web future (file browser, injector web) senza ripetere la parte che riguarda la sicurezza. In modalità automatica cerca le reti, sceglie la migliore tra quelle note in `config.lua`, e se non ne trova crea un hotspot. Il risparmio energetico del WiFi è disattivato: attiva, la pagina web del Web HID impiegava secondi a rispondere.
+Il server delle pagine web (`websrv`), il QR code (`qr`), la schermata di connessione (`webui`) e il tema delle pagine (`webtheme`) sono componenti a parte, non codice del Web HID: autenticazione con PIN, blocco per indirizzo dopo 5 errori, una sola sessione con subentro dallo stesso dispositivo, pagina compressa. Servono così anche alle app web future (file browser, injector web) senza ripetere la parte che riguarda la sicurezza. In modalità automatica cerca le reti, sceglie la migliore tra quelle note in `config.lua`, e se non ne trova crea un hotspot. Il risparmio energetico del WiFi è disattivato: attiva, la pagina web del Web HID impiegava secondi a rispondere.
+
+## Pagine web
+
+Le pagine stanno nella flash, compresse, insieme al tema comune: con l'hotspot il telefono non ha internet, quindi niente può venire da fuori, e la pagina funziona anche senza microSD (il Web HID non la richiede). Il tema ha tre modalità, scelte dalla pagina e ricordate dal browser: plain (sobria), arcade (pixel, righe di scansione, piccole animazioni) e retro (monitor a fosfori ambra). Font: Silkscreen per titoli ed elementi grafici, Iosevka senza ligature per i log, quello di sistema per il testo; i due incorporati sono ridotti ai caratteri usati da `tools/subset_fonts.py` (2,9 e 9,7 KB) e hanno licenza SIL OFL 1.1 (testi in `components/webtheme/web/fonts/`). Il tema cambia solo l'aspetto: le regole di disposizione della pagina, per telefono con tastiera a comparsa e per desktop, restano quelle della pagina.
 
 ## Injector e Web Injector
 
