@@ -7,8 +7,8 @@ Il Web HID, il Web Injector e Web Files servono una pagina e un canale WebSocket
 | Percorso | Metodo | Risposta |
 | --- | --- | --- |
 | `/` | GET | La pagina (HTML compresso gzip, `Cache-Control: no-store`). |
-| `/cfg` | GET | `pin` se serve il PIN, `nopin` altrimenti. La pagina la usa per decidere se mostrare il campo PIN. |
-| `/ws` | GET (upgrade WebSocket) | Canale dei comandi. |
+| `/cfg` | GET | `pin` se serve il PIN, `nopin` altrimenti (chiave `<app>.pin = false` o rete marcata `trusted`). La pagina la usa per decidere se mostrare il campo PIN. |
+| `/ws` | GET (upgrade WebSocket) | Canale dei comandi. L'handshake è rifiutato (connessione chiusa senza risposta) se l'header `Origin` c'è e non è `http://<IP del dongle>` (con o senza `:80`). Senza `Origin`, come da un client non browser, è accettato. |
 
 ## Messaggi
 
@@ -47,7 +47,7 @@ I frame sono limitati in dimensione; un frame vuoto o troppo lungo chiude il can
 
 ## Note
 
-- Il PIN è di 6 cifre, generato a ogni avvio dell'app e mostrato sul display. L'indirizzo IP del client è mostrato sul display (abbreviato).
+- Il PIN è di 6 cifre, generato a ogni avvio dell'app e mostrato sul display; non c'è sulle reti marcate `trusted` in `config.lua`. L'indirizzo IP del client è mostrato sul display (abbreviato).
 - Il canale non è cifrato: la protezione sta nel PIN e nella rete scelta. Vedi [Sicurezza](../explanation/sicurezza.md).
 
 ## Web Injector

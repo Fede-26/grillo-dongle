@@ -3,12 +3,22 @@
 
 #include <stdio.h>
 #include <string.h>
+#include "config.h"
+#include "esp_random.h"
 #include "net.h"
 #include "qr.h"
 #include "ui.h"
 #include "webui.h"
 
 #define QR_BOX 66 // tutta l'altezza dell'area contenuto
+
+void webui_make_pin(const char *pin_key, char *pin, size_t len)
+{
+    net_info_t ni;
+    net_get_info(&ni);
+    pin[0] = 0;
+    if (config_bool(pin_key, true) && !ni.trusted) snprintf(pin, len, "%06u", (unsigned)(esp_random() % 1000000));
+}
 
 void webui_draw_connecting(const gfx_icon_t *icon, uint32_t accent)
 {
@@ -76,9 +86,11 @@ void webui_draw_main(const net_info_t *ni, const char *pin, int page, const char
         }
     }
     // Il PIN è la cosa che si legge a colpo d'occhio: font grande ingrandito 2x (6 cifre ≈ 84 px)
-    const char *code = *pin ? pin : "none";
+    // Senza PIN: "trusted" in verde se lo decide la rete, "none" in giallo se
+    // è disattivato dalla config dell'app (vale su qualunque rete)
+    const char *code = *pin ? pin : (ni->trusted ? "trusted" : "none");
     int scale = gfx_text_scaled_width(&gfx_font_large, code, 2) <= w ? 2 : 1;
-    gfx_text_scaled(&gfx_font_large, x, y + (scale == 2 ? 29 : 40), code, *pin ? accent : UI_WARN, scale);
+    gfx_text_scaled(&gfx_font_large, x, y + (scale == 2 ? 29 : 40), code, *pin ? accent : (ni->trusted ? UI_OK : UI_WARN), scale);
     // Niente ui_draw_hint: la barra dei suggerimenti è larga tutto lo schermo e taglierebbe il QR
     if (*client) {
         char label[20];

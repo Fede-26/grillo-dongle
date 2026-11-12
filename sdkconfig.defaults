@@ -31,3 +31,6 @@ CONFIG_TINYUSB_CDC_COUNT=1
 
 # Web HID: WebSocket nel server HTTP
 CONFIG_HTTPD_WS_SUPPORT=y
+
+# WebSocket: controllo dell'header Origin prima dell'handshake (websrv)
+CONFIG_HTTPD_WS_PRE_HANDSHAKE_CB_SUPPORT=y

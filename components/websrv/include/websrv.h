@@ -12,7 +12,10 @@
 // Rotte fisse:
 //   GET /cfg  "pin" o "nopin": la pagina sa se chiedere il PIN senza
 //             consumare tentativi.
-//   GET /ws   WebSocket. Il primo messaggio deve essere "p<PIN>"; il server
+//   GET /ws   WebSocket. L'handshake è rifiutato se l'header Origin non è
+//             http://<IP del dongle> (un sito qualunque aperto in un browser
+//             sulla stessa rete non può collegarsi). Il primo messaggio
+//             deve essere "p<PIN>"; il server
 //             risponde "ok", "no" (PIN errato), "locked" (troppi errori da
 //             quell'indirizzo, 30 s) o "busy" (sessione aperta da un altro
 //             dispositivo). Dopo "ok" arriva "T<token>" per le rotte HTTP

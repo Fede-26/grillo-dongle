@@ -29,7 +29,6 @@
 #include <unistd.h>
 #include "clock.h"
 #include "config.h"
-#include "esp_random.h"
 #include "icons.h"
 #include "lauxlib.h"
 #include "led.h"
@@ -811,10 +810,10 @@ static void webfiles_run(app_ctx_t *ctx)
         return;
     }
 
-    // webfiles.pin = false: nessun PIN, chiunque sulla rete del dongle legge
+    // webfiles.pin = false o rete sicura: nessun PIN, chiunque sulla rete del dongle legge
     // e modifica tutta la SD
-    char pin[8] = "";
-    if (config_bool("webfiles.pin", true)) snprintf(pin, sizeof(pin), "%06u", (unsigned)(esp_random() % 1000000));
+    char pin[8];
+    webui_make_pin("webfiles.pin", pin, sizeof(pin));
     websrv_config_t cfg = {
         .pin = pin,
         // Il parser Lua di /api/check è ricorsivo: come lo stack dello

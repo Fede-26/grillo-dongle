@@ -8,7 +8,6 @@
 #include <stdio.h>
 #include <string.h>
 #include "config.h"
-#include "esp_random.h"
 #include "hid.h"
 #include "icons.h"
 #include "led.h"
@@ -57,9 +56,9 @@ static void webhid_run(app_ctx_t *ctx)
     }
 
     apply_keyboard_config();
-    // webhid.pin = false: nessun PIN, chiunque sulla rete del dongle comanda il PC
-    char pin[8] = "";
-    if (config_bool("webhid.pin", true)) snprintf(pin, sizeof(pin), "%06u", (unsigned)(esp_random() % 1000000));
+    // webhid.pin = false o rete sicura: nessun PIN, chiunque sulla rete del dongle comanda il PC
+    char pin[8];
+    webui_make_pin("webhid.pin", pin, sizeof(pin));
     err = web_start(pin);
     if (err != ESP_OK) {
         char msg[40];

@@ -16,7 +16,6 @@
 #include "clock.h"
 #include "config.h"
 #include "engine.h"
-#include "esp_random.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -541,10 +540,10 @@ static void webinjector_run(app_ctx_t *ctx)
     s_dialog_id = 0;
     s_dialog_kind = DLG_NONE;
 
-    // webinjector.pin = false: nessun PIN, chiunque sulla rete del dongle
+    // webinjector.pin = false o rete sicura: nessun PIN, chiunque sulla rete del dongle
     // può avviare gli script della SD
-    char pin[8] = "";
-    if (config_bool("webinjector.pin", true)) snprintf(pin, sizeof(pin), "%06u", (unsigned)(esp_random() % 1000000));
+    char pin[8];
+    webui_make_pin("webinjector.pin", pin, sizeof(pin));
     websrv_config_t cfg = {
         .pin = pin,
         .stack_size = 6144, // payload_read_meta e il JSON delle voci

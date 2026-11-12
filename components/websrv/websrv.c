@@ -65,13 +65,15 @@ static peer_t *peer_of(const char *ip)
 
 // lwIP con IPv6 attivo restituisce un sockaddr_in6 anche per i client IPv4
 // (indirizzo "mapped": gli ultimi 4 byte sono l'IPv4). Leggerlo come
-// sockaddr_in dava 0.0.0.0.
-static void peer_ip(int fd, char *ip, size_t len)
+// sockaddr_in dava 0.0.0.0. `local`: indirizzo del dongle su quel socket
+// invece di quello del client.
+static void sock_ip(int fd, bool local, char *ip, size_t len)
 {
     ip[0] = 0;
     struct sockaddr_storage addr;
     socklen_t alen = sizeof(addr);
-    if (getpeername(fd, (struct sockaddr *)&addr, &alen) != 0) return;
+    int r = local ? getsockname(fd, (struct sockaddr *)&addr, &alen) : getpeername(fd, (struct sockaddr *)&addr, &alen);
+    if (r != 0) return;
     struct in_addr v4 = {0};
     if (addr.ss_family == AF_INET6) {
         memcpy(&v4, &((struct sockaddr_in6 *)&addr)->sin6_addr.s6_addr[12], 4);
@@ -79,6 +81,11 @@ static void peer_ip(int fd, char *ip, size_t len)
         v4 = ((struct sockaddr_in *)&addr)->sin_addr;
     }
     inet_ntoa_r(v4, ip, len);
+}
+
+static void peer_ip(int fd, char *ip, size_t len)
+{
+    sock_ip(fd, false, ip, len);
 }
 
 const char *websrv_client_ip(void)
@@ -236,6 +243,29 @@ static void authenticate(httpd_req_t *req, int fd, const char *given)
     if (s_cfg.on_auth) s_cfg.on_auth(req);
 }
 
+// Prima dell'handshake WebSocket: l'header Origin deve essere una pagina
+// servita dal dongle. Un WebSocket non segue la same-origin policy, quindi
+// senza questo controllo qualunque sito aperto in un browser sulla stessa
+// rete potrebbe collegarsi e, con il PIN disattivato (rete sicura o
+// <app>.pin = false), agire. Si confronta con l'IP locale del socket e non
+// con l'header Host, che con un DNS rebinding è del sito ostile. Senza
+// Origin si accetta: lo mandano tutti i browser, mentre un client non
+// browser (gli script di prova in python) è già sulla rete e non ha bisogno
+// di un sito ponte.
+static esp_err_t ws_origin_check(httpd_req_t *req)
+{
+    size_t n = httpd_req_get_hdr_value_len(req, "Origin");
+    if (n == 0) return ESP_OK;
+    char origin[48] = "", ip[16], want[32];
+    if (n < sizeof(origin)) httpd_req_get_hdr_value_str(req, "Origin", origin, sizeof(origin));
+    sock_ip(httpd_req_to_sockfd(req), true, ip, sizeof(ip));
+    int w = snprintf(want, sizeof(want), "http://%s", ip);
+    // La porta 80 è implicita, ma un browser può scriverla
+    if (*ip && strncmp(origin, want, w) == 0 && (origin[w] == 0 || strcmp(origin + w, ":80") == 0)) return ESP_OK;
+    ESP_LOGW(TAG, "WebSocket rifiutato: Origin \"%s\" (atteso %s)", origin, want);
+    return ESP_FAIL;
+}
+
 static esp_err_t ws_handler(httpd_req_t *req)
 {
     if (req->method == HTTP_GET) return ESP_OK; // handshake completato
@@ -289,7 +319,13 @@ esp_err_t websrv_start(const websrv_config_t *cfg)
         return err;
     }
 
-    httpd_uri_t ws = {.uri = "/ws", .method = HTTP_GET, .handler = ws_handler, .is_websocket = true};
+    httpd_uri_t ws = {
+        .uri = "/ws",
+        .method = HTTP_GET,
+        .handler = ws_handler,
+        .is_websocket = true,
+        .ws_pre_handshake_cb = ws_origin_check,
+    };
     httpd_uri_t cfg_uri = {.uri = "/cfg", .method = HTTP_GET, .handler = cfg_get};
     httpd_register_uri_handler(s_server, &cfg_uri);
     httpd_register_uri_handler(s_server, &ws);

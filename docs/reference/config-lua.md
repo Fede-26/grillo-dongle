@@ -16,9 +16,10 @@ Il modello è `sd-template/config.lua`.
 
 | Chiave | Tipo | Default | Significato |
 | --- | --- | --- | --- |
-| `wifi` | elenco di `{ssid, pass}` | vuoto | Reti note. L'ordine non conta: con più reti visibili si sceglie dal display, altrimenti vale la più forte (vedi [WiFi](../how-to/wifi.md)). Solo WPA2/WPA3-Personal: una voce senza `pass` è ignorata. |
+| `wifi` | elenco di `{ssid, pass, trusted}` | vuoto | Reti note. L'ordine non conta: con più reti visibili si sceglie dal display, altrimenti vale la più forte (vedi [WiFi](../how-to/wifi.md)). Solo WPA2/WPA3-Personal: una voce senza `pass` è ignorata. `trusted = true` (default `false`) marca la rete come sicura: le app web non chiedono il PIN (vedi [Reti sicure](../how-to/wifi.md#reti-sicure-niente-pin)). |
 | `hotspot.ssid` | testo | `Grillo-XXXX` | Nome dell'hotspot creato se nessuna rete nota è raggiungibile (XXXX = ultime cifre del MAC). |
 | `hotspot.pass` | testo | `grillo-dongle` | Password dell'hotspot. Se manca o è più corta di 8 caratteri si usa il default. |
+| `hotspot.trusted` | booleano | `false` | `true`: sull'hotspot le app web non chiedono il PIN. Ha senso solo con una `hotspot.pass` tua: con quella di default chiunque conosca il firmware entra. |
 | `autorun.app` | id app | nessuna | App da avviare all'accensione. Vedi [Autorun](../how-to/autorun.md). |
 | `autorun.payload` | percorso | nessuno | Script da passare all'app (es. `kiosk/setup.lua`). |
 | `autorun.delay` | secondi | 3 | Durata del conto alla rovescia annullabile. |
@@ -33,9 +34,9 @@ Il modello è `sd-template/config.lua`.
 | `pcdisk.mount` | `auto`/`sudo` | `auto` | Come la libreria `pcdisk` monta la SD sul PC Linux. Vedi [API Lua](lua-api.md#libreria-pcdisk). |
 | `ui.brightness` | 0..100 | 80 | Luminosità del display. |
 | `ui.rotation` | 0 o 180 | 0 | Rotazione del display (90 e 270 non sono supportati). |
-| `webhid.pin` | booleano | `true` | `false`: il Web HID non chiede il PIN. Vedi [Sicurezza](../explanation/sicurezza.md). |
-| `webinjector.pin` | booleano | `true` | `false`: il Web Injector non chiede il PIN. Vedi [Sicurezza](../explanation/sicurezza.md). |
-| `webfiles.pin` | booleano | `true` | `false`: Web Files non chiede il PIN. Vedi [Sicurezza](../explanation/sicurezza.md). |
+| `webhid.pin` | booleano | `true` | `false`: il Web HID non chiede il PIN su nessuna rete. Con `true` il PIN è chiesto solo sulle reti non marcate `trusted`. Vedi [Sicurezza](../explanation/sicurezza.md). |
+| `webinjector.pin` | booleano | `true` | Come `webhid.pin`, per il Web Injector. |
+| `webfiles.pin` | booleano | `true` | Come `webhid.pin`, per Web Files. |
 | `timezone` | stringa POSIX | `CET-1CEST,M3.5.0,M10.5.0/3` | Fuso orario (il default è Europe/Rome, con l'ora legale) per le date di `/logs/grillo.log`, `sys.date()` e i nomi dei file di Netscan. |
 | `ntp` | host | `pool.ntp.org` | Server NTP da cui il dongle prende l'ora quando è collegato a una rete come client. |
 | `netscan.probe_host` | host | `connectivitycheck.gstatic.com` | Host contattato dal controllo "Web" di Network info (deve rispondere 204 a `/generate_204`). |
@@ -48,8 +49,8 @@ Le impostazioni `keyboard.*` sono i default degli script dell'injector e del Web
 ```lua
 return {
   wifi = {
-    { ssid = "Ufficio", pass = "password" },
-    { ssid = "Laboratorio", pass = "altra-password" },
+    { ssid = "Casa", pass = "password", trusted = true },
+    { ssid = "Ufficio", pass = "altra-password" },
   },
   hotspot = { pass = "cambiami123" },
   autorun = { app = "injector", payload = "kiosk/setup.lua", delay = 3 },

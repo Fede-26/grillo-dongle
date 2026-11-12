@@ -1,10 +1,16 @@
 #pragma once
 
+#include <stddef.h>
 #include <stdint.h>
 #include "gfx.h"
 #include "net.h"
 
 // Schermate delle app comandate da una pagina web.
+
+// PIN della sessione in `pin` (almeno 7 byte): 6 cifre casuali, oppure ""
+// (nessun PIN) se la config `pin_key` (es. "webhid.pin") è false o se la rete
+// attuale è marcata sicura in config.lua. Da chiamare con la rete già su.
+void webui_make_pin(const char *pin_key, char *pin, size_t len);
 
 // In attesa della rete: icona dell'app e "Looking for a known network".
 void webui_draw_connecting(const gfx_icon_t *icon, uint32_t accent);

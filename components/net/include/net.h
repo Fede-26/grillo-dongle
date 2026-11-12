@@ -17,8 +17,8 @@
 // altri task restano validi. Lease e rilascio vanno quindi fatti dallo
 // stesso task.
 //
-// Le reti note vengono da config.lua (`wifi = { {ssid=, pass=}, ... }`),
-// l'hotspot da `hotspot = { ssid=, pass= }`. Le reti senza password (aperte)
+// Le reti note vengono da config.lua (`wifi = { {ssid=, pass=, trusted=}, ... }`),
+// l'hotspot da `hotspot = { ssid=, pass=, trusted= }`. Le reti senza password (aperte)
 // non sono supportate: le voci senza `pass` vengono ignorate.
 
 typedef enum {
@@ -42,6 +42,9 @@ typedef struct {
     char ip[16];
     int8_t rssi;       // solo STA
     int clients;       // solo AP
+    // Rete marcata `trusted = true` in config.lua (hotspot: `hotspot.trusted`):
+    // le app web non chiedono il PIN. Vale per tutta la durata della connessione.
+    bool trusted;
 } net_info_t;
 
 // Chiamata dal task di rete: deve solo accodare un evento, non bloccare.

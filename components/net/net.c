@@ -49,6 +49,9 @@ static bool s_connecting;
 static char s_ssid[33];
 static char s_ap_ssid[33];
 static char s_ap_pass[65];
+// `trusted` della rete STA scelta e dell'hotspot, vedi net_info_t
+static bool s_sta_trusted;
+static bool s_ap_trusted;
 
 void net_set_event_cb(net_event_cb_t cb)
 {
@@ -144,6 +147,7 @@ static void load_ap_config(void)
         pass = AP_DEFAULT_PASS;
     }
     strlcpy(s_ap_pass, pass, sizeof(s_ap_pass));
+    s_ap_trusted = config_bool("hotspot.trusted", false);
 }
 
 const char *net_ap_ssid(void)
@@ -182,7 +186,8 @@ static esp_err_t wifi_begin(wifi_mode_t mode)
 // ce n'è più d'una e il chiamante ha dato `choose`, decide lui (menu sul
 // display); altrimenti vince la più forte. 1 = scelta fatta, 0 = nessuna
 // rete nota visibile, -1 = scelta annullata.
-static int pick_known(wifi_config_t *out, char *pass_out, size_t pass_len, net_choose_fn choose, void *arg)
+static int pick_known(wifi_config_t *out, char *pass_out, size_t pass_len, bool *trusted, net_choose_fn choose,
+                      void *arg)
 {
     int known = config_count("wifi");
     if (known == 0) return 0;
@@ -236,9 +241,11 @@ static int pick_known(wifi_config_t *out, char *pass_out, size_t pass_len, net_c
     // Uno SSID di 32 caratteri riempie il campo senza terminatore: strlcpy
     // tagliava l'ultimo carattere e la connessione non trovava la rete
     memcpy(out->sta.ssid, cand[c].ssid, strnlen(cand[c].ssid, sizeof(out->sta.ssid)));
-    char key[24];
+    char key[32]; // "wifi.<n>.trusted": 24 byte non bastano per ogni int
     snprintf(key, sizeof(key), "wifi.%d.pass", idx[c] + 1);
     strlcpy(pass_out, config_str(key, ""), pass_len);
+    snprintf(key, sizeof(key), "wifi.%d.trusted", idx[c] + 1);
+    *trusted = config_bool(key, false);
     return 1;
 }
 
@@ -250,7 +257,8 @@ static esp_err_t start_sta(uint32_t timeout_ms, net_choose_fn choose, void *arg,
 
     wifi_config_t wc;
     char pass[65];
-    int picked = pick_known(&wc, pass, sizeof(pass), choose, arg);
+    bool trusted = false;
+    int picked = pick_known(&wc, pass, sizeof(pass), &trusted, choose, arg);
     if (picked <= 0) {
         esp_wifi_stop();
         esp_wifi_deinit();
@@ -264,6 +272,7 @@ static esp_err_t start_sta(uint32_t timeout_ms, net_choose_fn choose, void *arg,
     wc.sta.pmf_cfg.capable = true;
     esp_wifi_set_config(WIFI_IF_STA, &wc);
     snprintf(s_ssid, sizeof(s_ssid), "%.*s", (int)sizeof(wc.sta.ssid), (char *)wc.sta.ssid);
+    s_sta_trusted = trusted;
 
     ESP_LOGI(TAG, "connessione a \"%s\"", s_ssid);
     notify(NET_EV_CONNECTING);
@@ -461,10 +470,12 @@ void net_get_info(net_info_t *info)
     if (s_mode == NET_AP) {
         strlcpy(info->ssid, s_ap_ssid, sizeof(info->ssid));
         info->clients = s_clients;
+        info->trusted = s_ap_trusted;
     } else {
         strlcpy(info->ssid, s_ssid, sizeof(info->ssid));
         wifi_ap_record_t ap;
         if (esp_wifi_sta_get_ap_info(&ap) == ESP_OK) info->rssi = ap.rssi;
+        info->trusted = s_sta_trusted;
     }
 }
 

@@ -89,7 +89,7 @@ for (;;) {
 esp_err_t app_net_acquire(app_ctx_t *ctx, net_mode_t mode, uint32_t timeout_ms); // con scelta della rete
 esp_err_t net_acquire(net_mode_t mode, uint32_t timeout_ms);   // NET_AUTO | NET_STA | NET_AP | NET_SCAN
 void net_release(void);                                        // un lease del task chiamante
-void net_get_info(net_info_t *info);
+void net_get_info(net_info_t *info);                           // up, mode, ssid, ip, rssi, clients, trusted
 esp_netif_t *net_sta_netif(void);                              // interfaccia STA: IP, gateway, DNS, MAC
 int net_scan(net_ap_t *out, int max);                          // reti visibili, la più forte per prima
 const char *net_auth_name(uint8_t auth);                       // "WPA2", "open"...
@@ -118,6 +118,7 @@ void websrv_stop(void);
 bool qr_draw(const char *text, int x, int y, int box);  // tra ui_begin e ui_end
 void qr_wifi_text(char *out, size_t len, const char *ssid, const char *pass); // QR per unirsi all'hotspot
 
+void webui_make_pin(const char *pin_key, char *pin, size_t len);      // 6 cifre, o "" (chiave false o rete sicura)
 void webui_draw_connecting(const gfx_icon_t *icon, uint32_t accent);  // ricerca della rete
 void webui_draw_main(const net_info_t *ni, const char *pin, int page, const char *client, uint32_t accent); // QR, IP, PIN
 esp_err_t webtheme_register(void);                   // /theme.css, /theme.js, /grillo.svg, /fonts/*
@@ -125,4 +126,4 @@ esp_err_t webtheme_register(void);                   // /theme.css, /theme.js, /
 
 Il server serve al massimo 8 file compresa la pagina, più 8 rotte aggiunte con `websrv_add_route`. `webtheme_register` (dopo `websrv_start`) aggiunge il tema comune: la pagina lo include con `<link rel="stylesheet" href="/theme.css">` e `<script src="/theme.js"></script>`, imposta `--acc` con il colore dell'app e mette nell'intestazione `<img class="logo" src="/grillo.svg">` e il pulsante `<button id="theme" class="chip">` che cambia modalità. Il tema regola solo l'aspetto; la disposizione resta della pagina.
 
-Il server ha due rotte fisse: `/cfg` dice alla pagina se serve il PIN, `/ws` è il WebSocket. Il primo messaggio deve essere `p<PIN>`; le risposte e le regole (blocco per indirizzo, una sessione per volta, subentro dallo stesso IP) sono in [Protocollo WebSocket](protocollo-websocket.md). Dopo l'autenticazione ogni messaggio di testo arriva a `on_message`, nel task del server: un lavoro lungo blocca le altre richieste e deve smettere quando `websrv_stopping()` diventa vero. Una rotta aggiunta con `websrv_add_route` non è protetta: l'handler chiama `websrv_authorized` prima di fare qualcosa. Il token arriva alla pagina dopo il PIN (`T<token>`) e cambia a ogni accesso. Per i messaggi JSON c'è `webjson` (`jb_begin`, `jb_kstr`, `jb_kint`, `jb_kbool`, `jb_end`), che sostituisce i byte non UTF-8 validi: il browser chiuderebbe il WebSocket. `on_session_end` è chiamata quando il client se ne va, quando un altro lo sostituisce e a ogni `websrv_stop`: è il posto dove rilasciare ciò che la sessione teneva (il Web HID lascia i tasti).
+Il server ha due rotte fisse: `/cfg` dice alla pagina se serve il PIN, `/ws` è il WebSocket (handshake rifiutato se l'header `Origin` non è la pagina del dongle). Il PIN si sceglie con `webui_make_pin("<app>.pin", ...)` dopo `app_net_acquire`: è vuoto se la chiave è `false` o se la rete è marcata `trusted` in `config.lua` (`net_info_t.trusted`). Il primo messaggio deve essere `p<PIN>`; le risposte e le regole (blocco per indirizzo, una sessione per volta, subentro dallo stesso IP) sono in [Protocollo WebSocket](protocollo-websocket.md). Dopo l'autenticazione ogni messaggio di testo arriva a `on_message`, nel task del server: un lavoro lungo blocca le altre richieste e deve smettere quando `websrv_stopping()` diventa vero. Una rotta aggiunta con `websrv_add_route` non è protetta: l'handler chiama `websrv_authorized` prima di fare qualcosa. Il token arriva alla pagina dopo il PIN (`T<token>`) e cambia a ogni accesso. Per i messaggi JSON c'è `webjson` (`jb_begin`, `jb_kstr`, `jb_kint`, `jb_kbool`, `jb_end`), che sostituisce i byte non UTF-8 validi: il browser chiuderebbe il WebSocket. `on_session_end` è chiamata quando il client se ne va, quando un altro lo sostituisce e a ogni `websrv_stop`: è il posto dove rilasciare ciò che la sessione teneva (il Web HID lascia i tasti).
