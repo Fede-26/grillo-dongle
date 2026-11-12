@@ -1,0 +1,3 @@
+# Aggiunto a sdkconfig.defaults per le build di release (vedi .github/workflows/release.yml):
+# niente console di debug sulla CDC, vedi components/usbdev/Kconfig.
+CONFIG_GRILLO_USB_DEBUG_CDC=n

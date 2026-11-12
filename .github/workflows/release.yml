@@ -24,6 +24,8 @@ jobs:
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           . $IDF_PATH/export.sh
+          # sdkconfig.release in più: niente console di debug nelle release pubblicate.
+          export SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.release"
           idf.py set-target esp32s3
           idf.py build
           cd build

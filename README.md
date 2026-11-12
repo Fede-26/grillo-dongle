@@ -53,6 +53,8 @@ idf.py -p /dev/cu.usbmodemXXXX flash
 
 Poi copia il contenuto di `sd-template/` nella radice della microSD e inseriscila nel dongle. Il percorso completo, con il primo script, è in [Prima installazione](docs/tutorials/01-prima-installazione.md).
 
+Per flashare senza compilare, usando l'immagine di una [release](https://github.com/Fede-26/grillo-dongle/releases) pubblicata, vedi [Flashare una release](docs/how-to/flash-una-release.md).
+
 Per entrare in download mode, tieni premuto il pulsante mentre inserisci il dongle: quando il firmware usa la USB come tastiera o disco, la porta seriale di ESP-IDF non è disponibile.
 
 ## Documentazione
@@ -61,6 +63,7 @@ La documentazione in `docs/` segue il modello [Diátaxis](https://diataxis.fr/).
 
 - **Tutorial**: [Prima installazione](docs/tutorials/01-prima-installazione.md), [Il tuo primo script](docs/tutorials/02-primo-script.md)
 - **Guide pratiche**:
+  - [Flashare una release](docs/how-to/flash-una-release.md)
   - [Collegare il dongle al WiFi](docs/how-to/wifi.md)
   - [Usare il Web HID](docs/how-to/web-hid.md)
   - [Usare il Web Injector](docs/how-to/web-injector.md)
@@ -98,6 +101,10 @@ docs/         documentazione
 ## VS Code
 
 IntelliSense legge `build/compile_commands.json`. Esegui `idf.py build` (oppure `idf.py reconfigure`) almeno una volta: dopo, gli include si risolvono.
+
+## Licenza
+
+GPL-3.0-or-later, testo completo in [LICENSE](LICENSE). Fanno eccezione i componenti vendorizzati, ciascuno con la propria licenza originale: Lua ([MIT](components/lua/lua/lua.h)), i font Iosevka e Silkscreen (SIL OFL 1.1, testo in `components/webtheme/web/fonts/`) e il layout Colemak per Windows (pubblico dominio, vedi `tools/layouts/README.md`).
 
 ## Stato e limiti noti
 
