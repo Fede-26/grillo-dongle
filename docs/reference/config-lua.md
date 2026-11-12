@@ -10,7 +10,7 @@ Il file è eseguito in una VM sandbox, poi appiattito in coppie chiave/valore (`
 
 Un errore all'avvio è mostrato sul display (il testo lungo scorre); in seguito compare un avviso nella barra di stato. In ogni caso la configurazione resta vuota e valgono i default.
 
-Il modello è `sd-template/config.lua`.
+Il modello è `sd-template/config.lua`: elenca tutte le chiavi, commentate, con il valore predefinito. Per cambiarne una togli il `--` iniziale.
 
 ## Chiavi
 
