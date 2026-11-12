@@ -12,7 +12,7 @@
 
 static const char *TAG = "lua";
 
-// Stato del runtime agganciato alla VM tramite lua_getallocf/ud.
+// Runtime state attached to the VM through lua_getallocf/ud.
 typedef struct {
     size_t used, peak, limit;
     volatile bool *abort_flag;
@@ -23,14 +23,14 @@ typedef struct {
 static void *rt_alloc(void *ud, void *ptr, size_t osize, size_t nsize)
 {
     rt_t *rt = ud;
-    // Con ptr == NULL, osize indica il tipo di oggetto, non una dimensione.
+    // With ptr == NULL, osize gives the object type, not a size.
     size_t old = ptr ? osize : 0;
     if (nsize == 0) {
         free(ptr);
         rt->used -= old;
         return NULL;
     }
-    if (rt->used - old + nsize > rt->limit) return NULL; // Lua solleva "not enough memory"
+    if (rt->used - old + nsize > rt->limit) return NULL; // Lua raises "not enough memory"
     void *p = realloc(ptr, nsize);
     if (p) {
         rt->used = rt->used - old + nsize;
@@ -46,22 +46,22 @@ static rt_t *rt_of(lua_State *L)
     return ud;
 }
 
-// Hook chiamato ogni N istruzioni: è l'unico punto in cui uno script in un
-// loop stretto può essere fermato, perché un task FreeRTOS non si può
-// terminare dall'esterno in modo sicuro.
+// Hook called every N instructions: it is the only point where a script in a
+// tight loop can be stopped, because a FreeRTOS task cannot be terminated
+// safely from outside.
 //
-// Con stack_guard è chiamato anche a ogni chiamata di funzione. Lua limita
-// l'annidamento delle chiamate C a LUAI_MAXCCALLS (200), ma sul dispositivo
-// ogni livello di pcall costa circa 512 byte di stack (misurato il
-// 2026-11-10): un task da 10 KB andava in overflow intorno al 15° livello.
-// Il costo cambia con il percorso (gsub, sort, metamethod), quindi si
-// controlla lo spazio rimasto invece di abbassare il limite.
+// With stack_guard it is also called on every function call. Lua limits the
+// nesting of C calls to LUAI_MAXCCALLS (200), but on the device each pcall
+// level costs about 512 bytes of stack (measured on 2026-11-10): a 10 KB task
+// overflowed around the 15th level. The cost changes with the code path
+// (gsub, sort, metamethods), so the remaining space is checked instead of
+// lowering the limit.
 static void rt_hook(lua_State *L, lua_Debug *ar)
 {
     rt_t *rt = rt_of(L);
     if (ar->event != LUA_HOOKCOUNT) {
-        // Lo stack cresce verso il basso: lo spazio libero è tra l'inizio
-        // dell'area di stack e lo stack pointer corrente.
+        // The stack grows downward: the free space lies between the start of
+        // the stack area and the current stack pointer.
         size_t left = (uint8_t *)esp_cpu_get_sp() - (uint8_t *)xTaskGetStackStart(NULL);
         if (left < rt->stack_guard) luaL_error(L, "C stack overflow (too many nested calls)");
         return;
@@ -112,8 +112,8 @@ lua_State *luart_new(const luart_opts_t *opts)
         luaL_requiref(L, l->name, l->func, 1);
         lua_pop(L, 1);
     }
-    // Niente accesso diretto al filesystem: chi serve (fs.*, require) lo
-    // espone l'host con i propri controlli sui percorsi.
+    // No direct filesystem access: what is needed (fs.*, require) is exposed
+    // by the host with its own path checks.
     static const char *const removed[] = {"dofile", "loadfile", NULL};
     for (const char *const *r = removed; *r; r++) {
         lua_pushnil(L);
@@ -121,9 +121,9 @@ lua_State *luart_new(const luart_opts_t *opts)
     }
     lua_pushcfunction(L, l_print);
     lua_setglobal(L, "print");
-    // Solo sorgenti testuali anche da load(): il bytecode malformato può
-    // corrompere la memoria della VM, e luart_dofile lo rifiuta già. Senza
-    // string.dump uno script non può nemmeno produrne.
+    // Text sources only from load() too: malformed bytecode can corrupt the
+    // VM memory, and luart_dofile already rejects it. Without string.dump a
+    // script cannot even produce any.
     (void)luaL_dostring(L, "local l = load\n"
                      "load = function(c, n, _, e) return l(c, n, 't', e) end");
     lua_getglobal(L, LUA_STRLIBNAME);
@@ -145,7 +145,7 @@ void luart_close(lua_State *L)
 
 bool luart_dofile(lua_State *L, const char *path, int nret, char *err, size_t errlen)
 {
-    // Il nome del chunk senza "@/sd" rende i messaggi più corti sul display.
+    // The chunk name without "@/sd" makes the messages shorter on the display.
     const char *name = strncmp(path, "/sd/", 4) == 0 ? path + 4 : path;
     char chunk[96];
     snprintf(chunk, sizeof(chunk), "@%s", name);
@@ -167,8 +167,8 @@ bool luart_dofile(lua_State *L, const char *path, int nret, char *err, size_t er
     size_t rd = fread(src, 1, size, f);
     fclose(f);
 
-    // Modalità "t": solo sorgenti testuali, mai bytecode precompilato
-    // (il bytecode malformato può mandare in crash la VM).
+    // Mode "t": text sources only, never precompiled bytecode
+    // (malformed bytecode can crash the VM).
     int rc = luaL_loadbufferx(L, src, rd, chunk, "t");
     free(src);
     if (rc == LUA_OK) rc = lua_pcall(L, 0, nret, 0);

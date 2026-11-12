@@ -1,7 +1,7 @@
 #include "icons.h"
 
-// '#' = pixel acceso. Modificabili a mano: larghezza e altezza devono
-// corrispondere ai valori nel gfx_icon_t.
+// '#' = pixel on. Editable by hand: width and height must match the values
+// in the gfx_icon_t.
 
 static const char *const KEYBOARD[] = {
     "............",

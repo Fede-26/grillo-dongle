@@ -3,12 +3,12 @@
 #include <stdbool.h>
 #include "esp_err.h"
 
-// Comandi del Web HID sopra il server comune (components/websrv).
+// Web HID commands on top of the shared server (components/websrv).
 //
-// GET /     pagina di controllo (gzip, incorporata nel firmware)
-// GET /ws   WebSocket: dopo l'autenticazione con il PIN, comandi testuali
-//           che diventano report HID (vedi docs/reference/protocollo-websocket.md).
+// GET /     control page (gzip, embedded in the firmware)
+// GET /ws   WebSocket: after PIN authentication, text commands
+//           that become HID reports (see docs/reference/protocollo-websocket.md).
 //
-// Un solo client alla volta può comandare il PC: l'IP è websrv_client_ip().
+// Only one client at a time can control the PC: its IP is websrv_client_ip().
 esp_err_t web_start(const char *pin);
 void web_stop(void);

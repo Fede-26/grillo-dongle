@@ -22,7 +22,7 @@ static QueueHandle_t s_q;
 static SemaphoreHandle_t s_flush_done;
 static vprintf_like_t s_prev;
 
-// Riga speciale che chiede al task di scrivere subito e segnalare.
+// Special line that asks the task to write immediately and signal.
 static const char FLUSH_MARK[] = "\x01";
 
 static int log_vprintf(const char *fmt, va_list ap)
@@ -30,32 +30,32 @@ static int log_vprintf(const char *fmt, va_list ap)
     va_list copy;
     va_copy(copy, ap);
     int r = s_prev(fmt, ap);
-    // Il formato di esp_log inizia con la lettera del livello, eventualmente
-    // preceduta dal codice colore ANSI.
+    // The esp_log format starts with the level letter, possibly
+    // preceded by the ANSI color code.
     const char *p = fmt;
     if (p[0] == '\033') p = strchr(p, 'm') ? strchr(p, 'm') + 1 : p;
     if (s_q && (p[0] == 'E' || p[0] == 'W' || p[0] == 'I')) {
         char line[LINE_MAX_];
         vsnprintf(line, sizeof(line), fmt, copy);
-        // Delle righe info si tengono solo quelle di sys.log degli script
-        // (tag "script"): sono il diario che chi scrive lo script ha chiesto.
-        // Il tag è un argomento del formato, quindi si guarda la riga già
-        // composta ("I (1234) script: ...").
+        // Of the info lines, only the scripts' sys.log ones are kept
+        // (tag "script"): they are the diary the script author asked for.
+        // The tag is a format argument, so the already composed line is
+        // inspected ("I (1234) script: ...").
         const char *q = line[0] == '\033' && strchr(line, 'm') ? strchr(line, 'm') + 1 : line;
         const char *tag = strstr(q, ") ");
         bool keep = p[0] != 'I' || (tag && strncmp(tag + 2, "script:", 7) == 0);
-        // Non blocca mai: se la coda è piena la riga si perde, ma il
-        // logging non deve rallentare chi lo chiama.
+        // Never blocks: if the queue is full the line is lost, but
+        // logging must not slow down the caller.
         if (keep) xQueueSend(s_q, line, 0);
     }
     va_end(copy);
     return r;
 }
 
-// Con l'ora nota (SNTP o host.clock) ogni riga inizia con data e ora locali:
-// il tempo dall'avvio di esp_log da solo non dice quando è successo. Si
-// prende al momento della scrittura, che segue la riga di pochi millisecondi,
-// per non chiamare localtime dentro il vprintf di qualunque task.
+// With the time known (SNTP or host.clock) every line starts with the local
+// date and time: the esp_log time since boot alone does not say when it
+// happened. It is taken at write time, which follows the line by a few
+// milliseconds, so as not to call localtime inside the vprintf of any task.
 static void write_lines(FILE *f, const char *first)
 {
     char stamp[24] = "";
@@ -65,7 +65,7 @@ static void write_lines(FILE *f, const char *first)
         localtime_r(&now, &tm);
         strftime(stamp, sizeof(stamp), "%Y-%m-%d %H:%M:%S ", &tm);
     }
-    // fputs e non fprintf: il task ha 3 KB di stack
+    // fputs and not fprintf: the task has 3 KB of stack
     if (first[0] != FLUSH_MARK[0]) {
         fputs(stamp, f);
         fputs(first, f);
@@ -85,8 +85,8 @@ static void syslog_task(void *arg)
     for (;;) {
         xQueueReceive(s_q, line, portMAX_DELAY);
         bool flush_req = line[0] == FLUSH_MARK[0];
-        // Con la SD condivisa in sola lettura con il PC non si scrive: le
-        // righe in coda vengono scartate.
+        // With the SD shared read-only with the PC nothing is written: the
+        // queued lines are discarded.
         if (storage_begin_write()) {
             mkdir(LOG_DIR, 0777);
             struct stat st;

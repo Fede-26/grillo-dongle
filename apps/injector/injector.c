@@ -1,8 +1,8 @@
-// Injector: esegue script Lua da /sd/payloads che digitano sul PC collegato.
+// Injector: runs Lua scripts from /sd/payloads that type on the connected PC.
 //
-// Flusso: browser delle cartelle, scheda dello script (descrizione,
-// layout, OS), attesa dell'host USB, esecuzione, esito. Hold 3 s durante
-// l'esecuzione interrompe lo script e riporta alla lista.
+// Flow: folder browser, script card (description,
+// layout, OS), wait for the USB host, execution, result. A 3 s hold during
+// execution aborts the script and returns to the list.
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,8 +19,8 @@
 #define ACCENT      0xFF8A20
 #define MAX_ENTRIES 48
 
-// Scheda dello script: lungo = esegui, doppio = indietro. true se va eseguito.
-// La descrizione lunga scorre da sola; un click la fa avanzare subito.
+// Script card: long = run, double = back. true if it should run.
+// A long description scrolls on its own; a click advances it immediately.
 static bool show_card(app_ctx_t *ctx, const payload_meta_t *m)
 {
     ui_scroll_t sc;
@@ -51,13 +51,13 @@ static bool show_card(app_ctx_t *ctx, const payload_meta_t *m)
 // ---------------------------------------------------------------------------
 // Browser
 
-// Il browser ha quattro viste: le cartelle vere, e tre viste virtuali
-// costruite leggendo le intestazioni di tutti gli script (@os, @tags).
+// The browser has four views: the real folders, and three virtual views
+// built by reading the headers of all scripts (@os, @tags).
 typedef enum {
-    VIEW_DIR,      // cartelle e script di `dir`
-    VIEW_OS_LIST,  // un gruppo per sistema operativo
-    VIEW_TAG_LIST, // un gruppo per tag
-    VIEW_FILTER,   // script che appartengono al gruppo scelto
+    VIEW_DIR,      // folders and scripts of `dir`
+    VIEW_OS_LIST,  // one group per operating system
+    VIEW_TAG_LIST, // one group per tag
+    VIEW_FILTER,   // scripts belonging to the chosen group
 } view_t;
 
 typedef enum { ROW_UP, ROW_BY_OS, ROW_BY_TAG, ROW_GROUP, ROW_ENTRY } row_kind_t;
@@ -71,7 +71,7 @@ typedef struct {
     const char *ptr[MAX_ENTRIES + MAX_GROUPS + 3];
     const char *rptr[MAX_ENTRIES + MAX_GROUPS + 3];
     row_kind_t kind[MAX_ENTRIES + MAX_GROUPS + 3];
-    int entry[MAX_ENTRIES + MAX_GROUPS + 3]; // indice in e[] per ROW_ENTRY
+    int entry[MAX_ENTRIES + MAX_GROUPS + 3]; // index into e[] for ROW_ENTRY
 } listing_t;
 
 static const char *const OS_NAMES[] = {"windows", "linux", "mac"};
@@ -88,13 +88,13 @@ static void add_row(listing_t *ls, int *n, row_kind_t k, const char *label, cons
     (*n)++;
 }
 
-// Nome corto del layout per la colonna destra: "colemak" è troppo largo.
+// Short layout name for the right column: "colemak" is too wide.
 static const char *layout_short(const char *l)
 {
     return strcasecmp(l, "colemak") == 0 ? "cmk" : l;
 }
 
-// Colonna destra di uno script: "it/win"; nelle viste per OS basta il layout.
+// Right column of a script: "it/win"; in the per-OS views the layout is enough.
 static void entry_right(const payload_entry_t *e, bool show_os, char *out, size_t len)
 {
     const char *l = layout_short(payload_layout(e));
@@ -104,7 +104,7 @@ static void entry_right(const payload_entry_t *e, bool show_os, char *out, size_
 
 static void injector_run(app_ctx_t *ctx)
 {
-    // Autorun: lo script è indicato dall'argomento, relativo a /payloads
+    // Autorun: the script is given by the argument, relative to /payloads
     if (ctx->arg && *ctx->arg) {
         payload_meta_t *m = calloc(1, sizeof(*m));
         if (!m) return;
@@ -132,7 +132,7 @@ static void injector_run(app_ctx_t *ctx)
 
     for (;;) {
         bool at_root = strcmp(dir, PAYLOAD_DIR) == 0;
-        int n = 0; // righe
+        int n = 0; // rows
         const char *title = "Payloads";
         bool os_view = view == VIEW_FILTER && parent_view == VIEW_OS_LIST;
 
@@ -142,14 +142,14 @@ static void injector_run(app_ctx_t *ctx)
                 app_message(ctx, "Injector", "No /payloads folder on the SD", UI_ERR);
                 break;
             }
-            // Il tetto vale durante la lettura della cartella: chi ha più voci
-            // ne vede un sottoinsieme, e va almeno avvisato.
+            // The cap applies while reading the folder: a folder with more items
+            // shows only a subset, so the user should at least be warned.
             if (ne == MAX_ENTRIES) ui_toast("Only 48 items: use subfolders", UI_WARN, 2500);
             if (!at_root) {
                 add_row(ls, &n, ROW_UP, "..", NULL, -1);
                 title = strrchr(dir, '/') + 1;
             } else {
-                // Le viste virtuali stanno in cima, solo alla radice e solo se c'è qualcosa da raggruppare
+                // The virtual views sit at the top, only at the root and only if there is something to group
                 if (ne > 0) {
                     add_row(ls, &n, ROW_BY_OS, "/By OS", NULL, -1);
                     add_row(ls, &n, ROW_BY_TAG, "/By tag", NULL, -1);
@@ -223,7 +223,7 @@ static void injector_run(app_ctx_t *ctx)
             sel = 0;
             continue;
         case ROW_GROUP:
-            if (ls->entry[sel] < 0) continue; // riga informativa
+            if (ls->entry[sel] < 0) continue; // informational row
             parent_view = view;
             if (view == VIEW_OS_LIST) filter_os = ls->entry[sel];
             else strlcpy(filter_tag, ls->label[sel], sizeof(filter_tag));
@@ -278,8 +278,8 @@ const app_desc_t injector_app = {
     .accent = ACCENT,
     .requires = APP_REQ_SD,
     .usb = USB_PROFILE_HID,
-    // 16 KB: con 10 KB uno script arrivava a circa 6 livelli di pcall
-    // annidati prima della guardia dello stack (vedi luart.c).
+    // 16 KB: with 10 KB a script reached about 6 levels of nested pcall
+    // before hitting the stack guard (see luart.c).
     .stack = 16384,
     .run = injector_run,
     .subtitle = injector_subtitle,

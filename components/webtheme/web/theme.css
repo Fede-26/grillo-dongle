@@ -1,12 +1,12 @@
-/* Tema comune delle pagine del dongle (Web HID, Web Injector, future).
-   Solo l'aspetto: la disposizione resta nella pagina, che imposta anche
-   --acc con il colore della sua app. Tre modalità, classe su <html> (vedi
-   theme.js): plain (sobria, default), arcade (pixel, righe di scansione,
-   animazioni) e retro (monitor a fosfori ambra, monocromatico: il colore
-   dell'app non si vede). Font: Silkscreen per
-   titoli ed elementi grafici, Iosevka per i log, quello di sistema per il
-   testo. I campi di testo restano a 20px: sotto i 16px i browser mobili
-   zoomano la pagina quando compare la tastiera. */
+/* Shared theme for the dongle's pages (Web HID, Web Injector, future ones).
+   Appearance only: the layout stays in the page, which also sets --acc to
+   its app's color. Three modes, as a class on <html> (see theme.js): plain
+   (sober, default), arcade (pixels, scanlines, animations) and retro (amber
+   phosphor monitor, monochrome: the app's color does not show). Fonts:
+   Silkscreen for
+   headings and graphic elements, Iosevka for logs, the system font for
+   text. Text fields stay at 20px: below 16px mobile browsers zoom the page
+   when the keyboard appears. */
 
 @font-face{font-family:"Silkscreen";src:url(/fonts/silkscreen.woff2) format("woff2");font-display:swap}
 @font-face{font-family:"Iosevka";src:url(/fonts/iosevka.woff2) format("woff2");font-display:swap}
@@ -18,7 +18,7 @@
   --f-pixel:"Silkscreen",ui-monospace,monospace;
   --f-mono:"Iosevka",ui-monospace,Menlo,Consolas,monospace;
   --f-text:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-  /* Angoli "a pixel": un gradino di 3px tagliato con clip-path */
+  /* "Pixel" corners: a 3px step cut with clip-path */
   --px:3px;
   --notch:polygon(var(--px) 0,calc(100% - var(--px)) 0,100% var(--px),100% calc(100% - var(--px)),calc(100% - var(--px)) 100%,var(--px) 100%,0 calc(100% - var(--px)),0 var(--px));
 }
@@ -28,21 +28,21 @@ h1,h2,nav button,.chip,#st{font-family:var(--f-pixel);font-weight:400;letter-spa
 h1{font-size:16px;color:var(--acc)}
 pre,code,.mono{font-family:var(--f-mono);font-variant-ligatures:none}
 
-/* Pulsanti e pannelli: bordo pieno, angoli a gradino, ombra interna in basso
-   come un tasto rilievo; premuto scende di 2px */
+/* Buttons and panels: solid border, stepped corners, inner shadow at the
+   bottom like a raised key; when pressed it moves down 2px */
 button{background:var(--panel);border:2px solid var(--hi);border-radius:0;clip-path:var(--notch);
   box-shadow:inset 0 -4px 0 rgba(0,0,0,.35);cursor:pointer}
 button:active{transform:translateY(2px);box-shadow:inset 0 3px 0 rgba(0,0,0,.35)}
 button:active,button.on{background:var(--acc);border-color:var(--acc);color:#000}
 button.main{background:var(--acc);border-color:var(--acc);color:#000;font-weight:600}
 button.danger{background:var(--err);border-color:var(--err);color:#000;font-weight:600}
-/* Il contorno del focus sarebbe tagliato dal clip-path: si disegna dentro */
+/* The focus outline would be cut by the clip-path: draw it inside */
 button:focus-visible{outline:0;box-shadow:inset 0 0 0 2px var(--text)}
 input,textarea,select{background:var(--panel);border:2px solid var(--hi);border-radius:0;clip-path:var(--notch);color:var(--text)}
 input:focus,textarea:focus,select:focus{outline:0;border-color:var(--acc)}
 .panel{background:var(--panel);border:2px solid var(--hi);clip-path:var(--notch)}
 
-/* Intestazione: logo, titolo, stato, interruttore del tema */
+/* Header: logo, title, status, theme switch */
 header{gap:8px}
 header .logo{width:32px;height:24px;image-rendering:pixelated;flex:none}
 header h1{flex:1;margin:0}
@@ -55,38 +55,38 @@ html.arcade body{
     repeating-linear-gradient(0deg,rgba(255,255,255,.025) 0 1px,transparent 1px 4px),
     repeating-linear-gradient(90deg,rgba(255,255,255,.025) 0 1px,transparent 1px 4px),
     var(--bg)}
-/* Righe di scansione sopra tutto, senza intercettare i tocchi */
+/* Scanlines on top of everything, without intercepting taps */
 html.arcade body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:50;
   background:repeating-linear-gradient(0deg,rgba(0,0,0,.22) 0 1px,transparent 1px 3px)}
 html.arcade h1,html.arcade h2{text-shadow:0 0 6px var(--acc),2px 2px 0 #000}
-/* Pixel sui pulsanti, non sulle voci degli elenchi: in maiuscoletto i nomi lunghi si leggono male */
+/* Pixel font on buttons, not on list items: long names are hard to read in small caps */
 html.arcade button:not(.item){font-family:var(--f-pixel);-webkit-font-smoothing:none}
 html.arcade button.on,html.arcade button.main{box-shadow:inset 0 -4px 0 rgba(0,0,0,.35),0 0 10px var(--acc)}
 html.arcade .panel{box-shadow:inset 0 0 0 1px rgba(255,255,255,.04)}
 html.arcade .chip{color:var(--acc)}
-/* Il grillo salta finché la pagina è collegata al dongle */
+/* The cricket hops while the page is connected to the dongle */
 html.arcade.live header .logo{animation:hop 1.6s steps(1) infinite}
 @keyframes hop{0%,70%,100%{transform:translateY(0)}75%{transform:translateY(-6px)}85%{transform:translateY(-3px)}}
 
-/* --- Retro: terminale a fosfori ambra --- */
-/* Colori ridefiniti sulla pagina: valgono anche le regole delle pagine che
-   usano le variabili. --acc va forzato perché la pagina lo imposta su :root. */
+/* --- Retro: amber phosphor terminal --- */
+/* Colors redefined on the page: the rules of pages that use the variables
+   apply too. --acc must be forced because the page sets it on :root. */
 html.retro,html.retro body{
   --bg:#110b02;--panel:#1a1104;--hi:#6b4700;--text:#ffb000;--dim:#b87f00;
   --acc:#ffb000;--ok:#ffd36b;--err:#ff6a2b;--warn:#ffc640;
   --f-text:var(--f-mono)}
 html.retro body{font-family:var(--f-mono);text-shadow:0 0 4px rgba(255,176,0,.55);
   background:radial-gradient(ellipse at center,#1d1303 0%,#110b02 60%,#070400 100%)}
-/* Righe di scansione e bordo scuro del tubo, sopra tutto senza intercettare i tocchi */
+/* Scanlines and dark tube border, on top of everything without intercepting taps */
 html.retro body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:50;
   background:repeating-linear-gradient(0deg,rgba(0,0,0,.28) 0 1px,transparent 1px 3px);
   box-shadow:inset 0 0 80px rgba(0,0,0,.85)}
 html.retro h1,html.retro h2,html.retro nav button,html.retro .chip,html.retro #st{font-family:var(--f-mono);text-transform:uppercase;letter-spacing:1px}
 html.retro h1::after{content:"_";animation:blink 1s steps(1) infinite}
-/* Logo in ambra come il resto: il verde del grillo stonerebbe */
+/* Logo in amber like the rest: the cricket's green would clash */
 html.retro header .logo{filter:sepia(1) saturate(4) hue-rotate(-12deg) brightness(1.1)}
-/* Pulsanti come voci di un terminale: bordo, niente angoli; premuto o
-   selezionato = video inverso */
+/* Buttons like terminal items: border, no corners; pressed or
+   selected = inverse video */
 html.retro button,html.retro input,html.retro textarea,html.retro select,html.retro .panel{clip-path:none;border-radius:0}
 html.retro button{background:transparent;border:2px solid var(--hi);box-shadow:none;font-family:var(--f-mono)}
 html.retro button:active,html.retro button.on,html.retro button.main{background:var(--text);border-color:var(--text);color:var(--bg);text-shadow:none}

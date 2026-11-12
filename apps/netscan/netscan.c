@@ -1,9 +1,9 @@
-// Netscan: reti WiFi visibili, controlli di rete e host della LAN.
+// Netscan: visible WiFi networks, network checks and LAN hosts.
 //
-// Sola lettura della rete: nessuna scansione di porte, nessun pacchetto che
-// non sia ARP, ICMP, DNS, una GET a un solo indirizzo o un DHCPDISCOVER (mai
-// seguito da una REQUEST: nessun indirizzo viene preso). I risultati di WiFi,
-// LAN e DHCP finiscono anche in /sd/scans/ in CSV.
+// Read-only on the network: no port scanning, no packet that is not
+// ARP, ICMP, DNS, a GET to a single address or a DHCPDISCOVER (never
+// followed by a REQUEST: no address is taken). The WiFi,
+// LAN and DHCP results also go to /sd/scans/ as CSV.
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,24 +30,24 @@ static const char *TAG = "netscan";
 #define SCAN_DIR      STORAGE_ROOT "/scans"
 #define MAX_APS       40
 #define DHCP_MAX      8
-#define DHCP_LISTEN   5000 // ms di ascolto delle OFFER
-// Il default è il controllo di connettività di Google (restituisce 204 senza
-// corpo); la chiave netscan.probe_host lo sostituisce, per chi non vuole
-// contattarlo.
+#define DHCP_LISTEN   5000 // ms spent listening for OFFERs
+// The default is Google's connectivity check (returns 204 with no
+// body); the netscan.probe_host key replaces it, for those who do not want
+// to contact it.
 #define PROBE_HOST    "connectivitycheck.gstatic.com"
 #define PROBE_PATH    "/generate_204"
 
-// --- File CSV ---
+// --- CSV files ---
 
-// Apre un nuovo CSV in /sd/scans. Il dongle non ha batteria per l'orologio: se
-// l'ora non è nota il nome ha un numero progressivo invece della data.
+// Opens a new CSV in /sd/scans. The dongle has no clock battery: if
+// the time is unknown the name has a sequence number instead of the date.
 static FILE *csv_open(const char *prefix, const char *tag, char *path, size_t n)
 {
     if (storage_state() != STORAGE_MOUNTED) return NULL;
     mkdir(SCAN_DIR, 0775);
     char slug[20] = "", stamp[24];
     if (tag && *tag) {
-        // Un byte resta per il trattino: con uno slug pieno si perdeva
+        // One byte is left for the dash: with a full slug it was lost
         ns_file_slug(slug, sizeof(slug) - 1, tag);
         strlcat(slug, "-", sizeof(slug));
     }
@@ -81,10 +81,10 @@ static void saved_toast(FILE *f, const char *path)
 {
     bool ok = f && fclose(f) == 0;
     ui_toast(ok ? "Saved to SD" : "SD write failed", ok ? UI_OK : UI_WARN, 1500);
-    if (ok) ESP_LOGI(TAG, "salvato %s", path);
+    if (ok) ESP_LOGI(TAG, "saved %s", path);
 }
 
-// --- Schermate di servizio ---
+// --- Utility screens ---
 
 static void draw_busy(const char *line1, const char *line2)
 {
@@ -94,7 +94,7 @@ static void draw_busy(const char *line1, const char *line2)
     ui_end();
 }
 
-// Lease STA con messaggio d'errore a schermo. false se non ottenuto.
+// STA lease with an on-screen error message. false if not obtained.
 static bool join_network(app_ctx_t *ctx, const char *title)
 {
     draw_busy("Connecting…", "");
@@ -106,7 +106,7 @@ static bool join_network(app_ctx_t *ctx, const char *title)
     return false;
 }
 
-// Attende un gesto qualunque: true se l'app deve uscire
+// Waits for any gesture: true if the app must exit
 static bool wait_back(app_ctx_t *ctx)
 {
     for (;;) {
@@ -117,7 +117,7 @@ static bool wait_back(app_ctx_t *ctx)
     }
 }
 
-// --- Reti WiFi ---
+// --- WiFi networks ---
 
 static void wifi_detail(app_ctx_t *ctx, const net_ap_t *ap)
 {
@@ -127,7 +127,7 @@ static void wifi_detail(app_ctx_t *ctx, const net_ap_t *ap)
     ui_begin();
     gfx_text_fit(&gfx_font_small, 6, UI_CONTENT_Y + 2, UI_W - 12, *ap->ssid ? ssid : "(hidden)", ACCENT);
     gfx_text(&gfx_font_small, 6, UI_CONTENT_Y + 14, mac, UI_TEXT);
-    // Il vendor dell'AP aiuta a capire che apparato è (router di casa, mesh, hotspot)
+    // The AP's vendor helps tell what device it is (home router, mesh, hotspot)
     char vendor[29] = "";
     FILE *f = fopen(STORAGE_ROOT "/oui.bin", "rb");
     if (f) {
@@ -171,7 +171,7 @@ static void screen_wifi(app_ctx_t *ctx)
         return;
     }
     net_ap_t *aps = calloc(MAX_APS, sizeof(*aps));
-    // Righe del menu: Rescan, le reti, Back. Il testo vive finché il menu è aperto.
+    // Menu rows: Rescan, the networks, Back. The text lives as long as the menu is open.
     char (*names)[34] = calloc(MAX_APS, sizeof(*names));
     char (*rights)[12] = calloc(MAX_APS, sizeof(*rights));
     const char **items = calloc(MAX_APS + 2, sizeof(*items));
@@ -226,7 +226,7 @@ out:
 typedef struct {
     char ssid[33], ip[24], gw[16], dns[16];
     int rssi;
-    // Esito di ogni controllo: -2 non ancora eseguito, -1 fallito, altrimenti ms
+    // Result of each check: -2 not run yet, -1 failed, otherwise ms
     int gw_ms, dns_ms, web_ms, web_code;
 } info_t;
 
@@ -238,8 +238,8 @@ static void draw_info(const info_t *r)
     snprintf(val[0], sizeof(val[0]), "%s  %d dBm", r->ssid, r->rssi);
     snprintf(val[1], sizeof(val[1]), "%s", r->ip);
     col[0] = col[1] = UI_TEXT;
-    // Un gateway che non risponde al ping è un avviso, non un errore: molti lo filtrano
-    // Il gateway sta quasi sempre nella stessa rete dell'IP già mostrato: bastano gli ultimi ottetti
+    // A gateway that does not answer ping is a warning, not an error: many filter it
+    // The gateway is almost always on the same network as the IP already shown: the last octets are enough
     const char *gw_tail = strrchr(r->gw, '.');
     snprintf(val[2], sizeof(val[2]), r->gw_ms == -2 ? "…" : (r->gw_ms < 0 ? "%s no reply" : "%s %dms"), gw_tail ? gw_tail : r->gw, r->gw_ms);
     col[2] = r->gw_ms == -2 ? UI_DIM : (r->gw_ms < 0 ? UI_WARN : UI_OK);
@@ -452,7 +452,7 @@ static bool dhcp_progress(int elapsed, int found, void *arg)
     return !app_should_exit(u->ctx);
 }
 
-// Durata del lease leggibile: "24h", "1h30m", "59m59s"
+// Human-readable lease time: "24h", "1h30m", "59m59s"
 static void lease_str(uint32_t s, char *out, size_t n)
 {
     unsigned h = s / 3600, m = s / 60 % 60, sec = s % 60;
@@ -486,7 +486,7 @@ static void dhcp_detail(app_ctx_t *ctx, const lan_dhcp_server_t *d)
     ip_str(o->dns, a, sizeof(a));
     snprintf(l, sizeof(l), "DNS %s", a);
     gfx_text_fit(&gfx_font_small, 6, y + 45, UI_W - 12, l, UI_TEXT);
-    // Niente suggerimento "click: back": la riga serve alla durata del lease
+    // No "click: back" hint: the row is needed for the lease time
     snprintf(l, sizeof(l), "Lease %s", lease);
     gfx_text_fit(&gfx_font_small, 6, y + 54, UI_W - 12, l, UI_TEXT);
     ui_end();
@@ -535,9 +535,9 @@ static void screen_dhcp(app_ctx_t *ctx)
                 break;
             }
             save_dhcp(srv, n, ni.ssid);
-            // Un server è normale; nessuno è un guasto; più di uno vuol dire
-            // che qualcuno ne ha acceso un altro (router collegato al
-            // contrario, PC con la condivisione della connessione, attacco)
+            // One server is normal; none is a fault; more than one means
+            // someone turned on another one (router plugged in the wrong
+            // way round, PC with connection sharing, attack)
             uint32_t col = n == 1 ? UI_OK : UI_ERR;
             led_set(LED_LAYER_APP, LED_FX_SOLID, col, 0);
             if (n > 1) ui_toast("More than one DHCP server!", UI_ERR, 3000);
@@ -545,7 +545,7 @@ static void screen_dhcp(app_ctx_t *ctx)
             items[0] = "Rescan";
             for (int i = 0; i < n; i++) {
                 ip_str(srv[i].offer.server, ips[i], sizeof(ips[i]));
-                // Testo a destra corto: l'IP del server è ciò che conta e non va troncato
+                // Short right-hand text: the server's IP is what matters and must not be truncated
                 strlcpy(rights[i], ns_mac_is_private(srv[i].mac) ? "private" : srv[i].vendor, sizeof(rights[i]));
                 items[i + 1] = ips[i];
                 rtext[i + 1] = rights[i];

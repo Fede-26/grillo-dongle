@@ -1,8 +1,9 @@
-// USB disk: espone la microSD al PC come disco (MSC).
+// USB disk: exposes the microSD to the PC as a disk (MSC).
 //
-// Il sistema presta la scheda all'host prima di avviare l'app (profilo
-// USB_PROFILE_MSC) e la riprende all'uscita. L'app mostra lo stato e
-// protegge dall'uscita senza espulsione, che può corrompere il filesystem.
+// The system lends the card to the host before launching the app
+// (USB_PROFILE_MSC profile) and takes it back on exit. The app shows the
+// state and guards against exiting without ejecting, which can corrupt the
+// filesystem.
 
 #include <stdio.h>
 #include "esp_timer.h"
@@ -29,7 +30,7 @@ static void draw(bool mounted, bool ejected)
     gfx_text(&gfx_font_small, 50, UI_CONTENT_Y + 36, line2, UI_DIM);
 
     if (mounted && !ejected) {
-        // Tre puntini che scorrono: segnala che il disco è "vivo"
+        // Three scrolling dots: signals that the disk is "alive"
         int phase = (esp_timer_get_time() / 250000) % 3;
         for (int i = 0; i < 3; i++) gfx_fill_rect(50 + i * 6, UI_CONTENT_Y + 48, 3, 3, i == phase ? ACCENT : UI_FAINT);
     }
@@ -54,15 +55,15 @@ static void usbdisk_run(app_ctx_t *ctx)
                 ejected = true;
                 ui_toast("Disk ejected", UI_OK, 1500);
             } else if (ev.arg == USBDEV_EV_UNMOUNTED) {
-                // Scollegato dal PC: se non era stato espulso non possiamo
-                // farci nulla, ma almeno lo segnaliamo.
+                // Unplugged from the PC: if it had not been ejected we can't
+                // do anything about it, but at least we report it.
                 if (!ejected) ui_toast("Host gone", UI_WARN, 2000);
             }
         } else if (ev.type == APP_EV_EXIT) {
             if (ejected || !usbdev_mounted()) return;
             if (app_confirm(ctx, "Not ejected!", "Exit anyway? Unsaved data on the SD may be lost.", false)) return;
-            // Uscita annullata: si resta nell'app. Un'espulsione arrivata
-            // mentre la conferma era aperta è rimasta in coda (app_ui.c).
+            // Exit canceled: stay in the app. An eject that arrived while
+            // the confirmation was open is still queued (app_ui.c).
             app_cancel_exit(ctx);
         }
     }
@@ -83,8 +84,8 @@ const app_desc_t usbdisk_app = {
     .name = "USB Disk",
     .icon = &icon_disk,
     .accent = ACCENT,
-    // Basta che la scheda ci sia: anche se non è FAT32 la si può
-    // riformattare dal PC proprio tramite questa app.
+    // The card just has to be present: even if it is not FAT32 it can be
+    // reformatted from the PC through this very app.
     .requires = APP_REQ_CARD,
     .usb = USB_PROFILE_MSC,
     .stack = 4096,

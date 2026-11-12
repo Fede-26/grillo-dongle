@@ -41,10 +41,10 @@ bool ns_oui_lookup(FILE *f, const uint8_t mac[6], char *out, size_t n)
     return false;
 }
 
-// --- DNS (formato comune a NBNS e mDNS) ---
+// --- DNS (format shared by NBNS and mDNS) ---
 
-// Offset subito dopo il nome che inizia a `off` (si ferma al primo puntatore
-// di compressione). -1 se il pacchetto è troncato.
+// Offset right after the name starting at `off` (stops at the first compression
+// pointer). -1 if the packet is truncated.
 static int skip_name(const uint8_t *b, int len, int off)
 {
     while (off < len) {
@@ -56,15 +56,15 @@ static int skip_name(const uint8_t *b, int len, int off)
     return -1;
 }
 
-// Decodifica un nome in "a.b.c". Segue i puntatori, al massimo 8: un
-// pacchetto malevolo potrebbe farli girare in cerchio.
+// Decodes a name into "a.b.c". Follows pointers, at most 8: a
+// malicious packet could make them loop around.
 static bool decode_name(const uint8_t *b, int len, int off, char *out, size_t n)
 {
     size_t o = 0;
     for (int jumps = 0; off >= 0 && off < len;) {
         uint8_t l = b[off];
         if (l == 0) {
-            if (o) o--; // il punto finale
+            if (o) o--; // the trailing dot
             out[o < n ? o : n - 1] = 0;
             return true;
         }
@@ -86,14 +86,14 @@ int ns_nbns_query(uint8_t buf[50])
     static const uint8_t head[12] = {0x47, 0x52, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0};
     memcpy(buf, head, 12);
     buf[12] = 0x20;
-    // Nome "*" + 15 NUL, ogni byte codificato come due lettere A..P
+    // Name "*" + 15 NULs, each byte encoded as two letters A..P
     buf[13] = 'C';
     buf[14] = 'K';
     for (int i = 15; i < 45; i++) buf[i] = 'A';
     buf[45] = 0;
     buf[46] = 0x00; // NBSTAT = 0x0021
     buf[47] = 0x21;
-    buf[48] = 0x00; // classe IN
+    buf[48] = 0x00; // class IN
     buf[49] = 0x01;
     return 50;
 }
@@ -103,7 +103,7 @@ bool ns_nbns_parse(const uint8_t *b, int len, char *name, size_t n)
     if (len < 12 || (b[3] & 0x0F) != 0 || (b[6] << 8 | b[7]) < 1) return false;
     int p = skip_name(b, len, 12);
     if (p < 0 || p + 11 > len) return false;
-    p += 10; // tipo, classe, ttl, lunghezza dati
+    p += 10; // type, class, ttl, data length
     int count = b[p++];
     const uint8_t *pick = NULL;
     for (int i = 0; i < count && p + 18 <= len; i++, p += 18) {
@@ -138,11 +138,11 @@ int ns_mdns_ptr_query(uint8_t *buf, size_t n, const uint8_t ip[4])
         o += l;
     }
     static const char tail[] = "\7in-addr\4arpa";
-    memcpy(buf + o, tail, sizeof(tail)); // include il NUL finale
+    memcpy(buf + o, tail, sizeof(tail)); // includes the trailing NUL
     o += sizeof(tail);
     buf[o++] = 0x00; // PTR = 12
     buf[o++] = 0x0C;
-    buf[o++] = 0x00; // classe IN
+    buf[o++] = 0x00; // class IN
     buf[o++] = 0x01;
     return o;
 }
@@ -182,7 +182,7 @@ void ns_display_text(char *dst, size_t n, const char *src)
     size_t o = 0;
     for (const unsigned char *s = (const unsigned char *)src; *s && o + 1 < n; s++) {
         if (*s >= 0x80) {
-            if (*s >= 0xC0) dst[o++] = '?'; // un solo '?' per carattere multibyte
+            if (*s >= 0xC0) dst[o++] = '?'; // a single '?' per multibyte character
         } else {
             dst[o++] = (*s >= 0x20 && *s != 0x7F) ? *s : '?';
         }
@@ -194,21 +194,21 @@ size_t ns_csv_field(char *dst, size_t n, const char *src)
 {
     if (n == 0) return 0;
     size_t o = 0;
-    // Il controllo va fatto sul primo carattere che resterà nel campo: i
-    // controlli iniziali vengono tolti sotto, e con "\t=HYPERLINK(...)" un
-    // controllo sul primo byte grezzo lasciava passare la formula.
+    // The check must be done on the first character that will remain in the field: leading
+    // control characters are removed below, and with "\t=HYPERLINK(...)" a
+    // check on the first raw byte let the formula through.
     while (*src && ((unsigned char)*src < 0x20 || *src == 0x7F)) src++;
     bool quote = false, formula = strchr("=+-@", *src) && *src;
-    // Un numero con segno (l'RSSI, "-77") non è una formula: l'apice lo trasformerebbe in testo
+    // A signed number (the RSSI, "-77") is not a formula: the apostrophe would turn it into text
     if (formula && src[1] && strspn(src + 1, "0123456789.") == strlen(src + 1) && *src != '=' && *src != '@') formula = false;
     for (const char *s = src; *s; s++) {
         if (*s == ',' || *s == '"') quote = true;
     }
-    // Spazio per le virgolette (2), l'apice (1) e il NUL
+    // Room for the quotes (2), the apostrophe (1) and the NUL
     if (quote && o + 1 < n) dst[o++] = '"';
     if (formula && o + 1 < n) dst[o++] = '\'';
     for (const unsigned char *s = (const unsigned char *)src; *s && o + 3 < n; s++) {
-        if (*s < 0x20 || *s == 0x7F) continue; // a capo e controlli spezzerebbero la riga
+        if (*s < 0x20 || *s == 0x7F) continue; // newlines and control characters would break the row
         if (*s == '"') dst[o++] = '"';
         dst[o++] = *s;
     }
@@ -226,10 +226,10 @@ void ns_file_slug(char *dst, size_t n, const char *src)
 
 bool ns_sweep_range(uint32_t ip, uint32_t mask, uint32_t *first, uint32_t *last)
 {
-    // Una maschera più corta di /24 (rete più grande) si limita alla /24 dell'IP
+    // A mask shorter than /24 (larger network) is limited to the IP's /24
     if (mask < 0xFFFFFF00u) mask = 0xFFFFFF00u;
     uint32_t net = ip & mask, bcast = net | ~mask;
-    if (bcast - net < 3) return false; // /31, /32: nessun host da cercare
+    if (bcast - net < 3) return false; // /31, /32: no hosts to look for
     *first = net + 1;
     *last = bcast - 1;
     return true;
@@ -237,8 +237,8 @@ bool ns_sweep_range(uint32_t ip, uint32_t mask, uint32_t *first, uint32_t *last)
 
 // --- DHCP ---
 
-#define DHCP_FIXED   236 // campi BOOTP fino a `file` compreso
-#define DHCP_MIN_LEN 300 // alcuni server scartano messaggi BOOTP più corti (RFC 1542)
+#define DHCP_FIXED   236 // BOOTP fields up to and including `file`
+#define DHCP_MIN_LEN 300 // some servers drop shorter BOOTP messages (RFC 1542)
 #define UDP_HDR      8
 
 static uint32_t sum16(uint32_t s, const uint8_t *p, int len)
@@ -261,12 +261,12 @@ int ns_dhcp_discover(uint8_t *buf, size_t n, const uint8_t mac[6], uint32_t xid,
     d[5] = xid >> 16;
     d[6] = xid >> 8;
     d[7] = xid;
-    d[10] = 0x80; // flag broadcast
+    d[10] = 0x80; // broadcast flag
     memcpy(d + 28, mac, 6);
     static const uint8_t opts[] = {
         0x63, 0x82, 0x53, 0x63, // magic cookie
         53, 1, 1,               // DHCPDISCOVER
-        55, 5, 1, 3, 6, 51, 54, // chiede maschera, router, DNS, durata, server id
+        55, 5, 1, 3, 6, 51, 54, // asks for mask, router, DNS, lease time, server id
         255,
     };
     memcpy(d + DHCP_FIXED, opts, sizeof(opts));
@@ -275,8 +275,8 @@ int ns_dhcp_discover(uint8_t *buf, size_t n, const uint8_t mac[6], uint32_t xid,
     buf[3] = 67;
     buf[4] = len >> 8;
     buf[5] = len;
-    // Checksum UDP con lo pseudo-header IPv4. In IPv4 sarebbe facoltativo, ma
-    // qualche server o firewall scarta i datagrammi con checksum zero.
+    // UDP checksum with the IPv4 pseudo-header. It is optional in IPv4, but
+    // some servers or firewalls drop datagrams with a zero checksum.
     static const uint8_t bcast[4] = {255, 255, 255, 255};
     uint32_t c = sum16(0, src, 4);
     c = sum16(c, bcast, 4);
@@ -284,7 +284,7 @@ int ns_dhcp_discover(uint8_t *buf, size_t n, const uint8_t mac[6], uint32_t xid,
     c = sum16(c, buf, len);
     while (c >> 16) c = (c & 0xFFFF) + (c >> 16);
     uint16_t sum = ~c;
-    if (sum == 0) sum = 0xFFFF; // 0 vorrebbe dire "nessun checksum"
+    if (sum == 0) sum = 0xFFFF; // 0 would mean "no checksum"
     buf[6] = sum >> 8;
     buf[7] = sum;
     return len;
@@ -313,14 +313,14 @@ bool ns_dhcp_parse_offer(const uint8_t *pkt, int len, uint32_t xid, ns_dhcp_offe
             i++;
             continue;
         }
-        if (i + 1 >= dl || i + 2 + d[i + 1] > dl) return false; // opzione tronca
+        if (i + 1 >= dl || i + 2 + d[i + 1] > dl) return false; // truncated option
         int ol = d[i + 1];
         const uint8_t *v = d + i + 2;
         if (code == 53 && ol == 1) type = v[0];
         else if (code == 54 && ol == 4) memcpy(out->server, v, 4);
         else if (code == 1 && ol == 4) memcpy(out->mask, v, 4);
-        else if (code == 3 && ol >= 4) memcpy(out->router, v, 4); // il primo router
-        else if (code == 6 && ol >= 4) memcpy(out->dns, v, 4);    // il primo DNS
+        else if (code == 3 && ol >= 4) memcpy(out->router, v, 4); // the first router
+        else if (code == 6 && ol >= 4) memcpy(out->dns, v, 4);    // the first DNS
         else if (code == 51 && ol == 4) out->lease_s = (uint32_t)v[0] << 24 | v[1] << 16 | v[2] << 8 | v[3];
         i += 2 + ol;
     }

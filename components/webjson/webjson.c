@@ -28,7 +28,7 @@ void jb_lit(jbuf_t *b, const char *s)
     jb_raw(b, s, strlen(s));
 }
 
-// Lunghezza della sequenza UTF-8 valida che inizia in s, 0 se non valida
+// Length of the valid UTF-8 sequence starting at s, 0 if invalid
 static int utf8_len(const unsigned char *s)
 {
     unsigned char c = s[0];

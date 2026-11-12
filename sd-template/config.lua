@@ -1,33 +1,33 @@
--- Configurazione di Grillo. Questo file è uno script Lua che deve
--- restituire una tabella. Tutte le chiavi sono facoltative: ogni riga
--- commentata qui sotto mostra il valore predefinito, usato quando la chiave
--- manca. Per cambiare un valore togli il "--" iniziale e modificalo.
--- Riferimento completo: docs/reference/config-lua.md
+-- Grillo configuration. This file is a Lua script that must return a
+-- table. Every key is optional: each commented-out line below shows the
+-- default value, used when the key is missing. To change a value, remove the
+-- leading "--" and edit it.
+-- Full reference: docs/reference/config-lua.md
 
 return {
-  -- Reti WiFi note (solo WPA2/WPA3-Personal: una voce senza pass è ignorata).
-  -- L'ordine non conta: con più reti visibili si sceglie dal display.
-  -- trusted = true: rete sicura, le app web non chiedono il PIN (default false).
-  -- Predefinito: nessuna rete.
+  -- Known WiFi networks (WPA2/WPA3-Personal only: an entry without pass is ignored).
+  -- Order does not matter: with several networks in range you pick one on the display.
+  -- trusted = true: safe network, the web apps do not ask for the PIN (default false).
+  -- Default: no networks.
   wifi = {
-    -- { ssid = "Casa", pass = "password", trusted = true },
-    -- { ssid = "Ufficio", pass = "altra-password" },
+    -- { ssid = "Home", pass = "password", trusted = true },
+    -- { ssid = "Office", pass = "other-password" },
   },
 
-  -- Hotspot creato se nessuna rete nota è raggiungibile. ssid predefinito:
-  -- "Grillo-XXXX" (ultime cifre del MAC). Una pass più corta di 8 caratteri
-  -- è sostituita da quella predefinita. trusted = true: niente PIN sull'hotspot,
-  -- da usare solo con una pass tua.
+  -- Hotspot created when no known network is reachable. Default ssid:
+  -- "Grillo-XXXX" (last digits of the MAC). A pass shorter than 8 characters
+  -- is replaced by the default one. trusted = true: no PIN on the hotspot,
+  -- use only with a pass of your own.
   -- hotspot = { ssid = "Grillo-XXXX", pass = "grillo-dongle", trusted = false },
 
-  -- App avviata all'accensione dopo un conto alla rovescia annullabile
-  -- (secondi). Predefinito: nessuna app, si apre il launcher.
+  -- App started at power-up after a countdown that can be canceled
+  -- (seconds). Default: no app, the launcher opens.
   -- autorun = { app = "injector", payload = "kiosk/setup.lua", delay = 3 },
 
-  -- Tastiera del PC: default degli script dell'injector e del Web HID
-  -- (un'intestazione di script li sovrascrive). layout: "us", "it" o
-  -- "colemak"; os: "windows", "linux" o "mac"; tempi in ms (0..60000).
-  -- start_delay vale solo per l'injector.
+  -- PC keyboard: defaults for injector scripts and Web HID
+  -- (a script header overrides them). layout: "us", "it" or
+  -- "colemak"; os: "windows", "linux" or "mac"; timings in ms (0..60000).
+  -- start_delay applies to the injector only.
   -- keyboard = {
   --   layout = "us",
   --   os = "windows",
@@ -38,34 +38,34 @@ return {
   --   start_delay = 1000,
   -- },
 
-  -- Password digitabili da kb.type_secret("nome"): lo script non le legge
-  -- mai come stringa. Credenziali in chiaro sulla SD: rischio accettato.
-  -- sudo è quella usata dalla libreria pcdisk con mount = "sudo".
-  -- Predefinito: nessuna.
+  -- Passwords typed by kb.type_secret("name"): the script never reads them
+  -- as a string. Plaintext credentials on the SD: accepted risk.
+  -- sudo is the one used by the pcdisk library with mount = "sudo".
+  -- Default: none.
   -- secrets = { admin = "...", sudo = "..." },
 
-  -- Come lib/pcdisk.lua monta la SD sul PC Linux: "auto" (automount) o
-  -- "sudo" (mount a mano).
+  -- How lib/pcdisk.lua mounts the SD on a Linux PC: "auto" (automount) or
+  -- "sudo" (manual mount).
   -- pcdisk = { mount = "auto" },
 
-  -- Display: luminosità 0..100, rotazione 0 o 180 (90 e 270 non supportati).
+  -- Display: brightness 0..100, rotation 0 or 180 (90 and 270 not supported).
   -- ui = { brightness = 80, rotation = 0 },
 
-  -- LED: luminosità 0..100.
+  -- LED: brightness 0..100.
   -- led = { brightness = 30 },
 
-  -- PIN delle app web. true: PIN chiesto sulle reti non marcate trusted.
-  -- false: niente PIN su nessuna rete, chiunque sulla stessa rete (o
-  -- sull'hotspot) usa la pagina.
+  -- Web app PIN. true: PIN asked on networks not marked trusted.
+  -- false: no PIN on any network, anyone on the same network (or
+  -- on the hotspot) can use the page.
   -- webhid = { pin = true },
   -- webinjector = { pin = true },
   -- webfiles = { pin = true },
 
-  -- Fuso orario POSIX (Europe/Rome, con l'ora legale) per i log, sys.date()
-  -- e i nomi dei CSV di Netscan; server NTP usato a ogni collegamento a una rete.
+  -- POSIX time zone (Europe/Rome, with daylight saving time) for logs, sys.date()
+  -- and Netscan CSV names; NTP server used on every connection to a network.
   -- timezone = "CET-1CEST,M3.5.0,M10.5.0/3",
   -- ntp = "pool.ntp.org",
 
-  -- Netscan: host del controllo "Web" (deve rispondere 204 a /generate_204).
+  -- Netscan: host for the "Web" check (must answer 204 to /generate_204).
   -- netscan = { probe_host = "connectivitycheck.gstatic.com" },
 }

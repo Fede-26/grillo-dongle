@@ -5,32 +5,32 @@
 #include "gfx.h"
 #include "net.h"
 
-// Schermate delle app comandate da una pagina web.
+// Screens of the apps driven by a web page.
 
-// PIN della sessione in `pin` (almeno 7 byte): 6 cifre casuali, oppure ""
-// (nessun PIN) se la config `pin_key` (es. "webhid.pin") è false o se la rete
-// attuale è marcata sicura in config.lua. Da chiamare con la rete già su.
+// Session PIN in `pin` (at least 7 bytes): 6 random digits, or "" (no PIN)
+// if the config `pin_key` (e.g. "webhid.pin") is false or if the current
+// network is marked trusted in config.lua. Call with the network already up.
 void webui_make_pin(const char *pin_key, char *pin, size_t len);
 
-// In attesa della rete: icona dell'app e "Looking for a known network".
+// Waiting for the network: app icon and "Looking for a known network".
 void webui_draw_connecting(const gfx_icon_t *icon, uint32_t accent);
 
-// QR code a sinistra, rete, indirizzo e PIN a destra. page 0: QR della
-// pagina (STA e hotspot); page 1 (solo hotspot): QR delle credenziali WiFi.
-// client: IP del telefono collegato, "" se nessuno.
+// QR code on the left, network, address and PIN on the right. page 0: QR of
+// the page (STA and hotspot); page 1 (hotspot only): QR of the WiFi
+// credentials. client: IP of the connected phone, "" if none.
 void webui_draw_main(const net_info_t *ni, const char *pin, int page, const char *client, uint32_t accent);
 
-// Quale QR mostrare. In hotspot si parte dalle credenziali WiFi (il QR
-// dell'indirizzo non serve finché il telefono non è sulla rete del dongle) e,
-// appena un dispositivo si unisce all'hotspot, si passa da soli
-// all'indirizzo: è il passo successivo. Un click alterna le due pagine. Su
-// una rete nota c'è solo l'indirizzo.
+// Which QR to show. In hotspot mode it starts from the WiFi credentials (the
+// address QR is useless until the phone is on the dongle's network) and, as
+// soon as a device joins the hotspot, it switches by itself to the address:
+// that is the next step. A click toggles between the two pages. On a known
+// network there is only the address.
 typedef struct {
-    int page;    // -1 finché la rete non è su
-    int clients; // dispositivi sull'hotspot all'ultimo controllo
+    int page;    // -1 until the network is up
+    int clients; // devices on the hotspot at the last check
 } webui_qr_t;
 #define WEBUI_QR_INIT {-1, 0}
-// A ogni giro del ciclo dell'app, con lo stato attuale della rete.
+// On every iteration of the app loop, with the current network state.
 void webui_qr_update(webui_qr_t *q, const net_info_t *ni);
-// Click del pulsante.
+// Button click.
 void webui_qr_toggle(webui_qr_t *q, const net_info_t *ni);

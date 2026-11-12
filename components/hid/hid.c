@@ -15,7 +15,7 @@ static hid_timing_t s_timing;
 static hid_poll_fn s_poll;
 static void *s_poll_arg;
 
-// Stato attuale della tastiera virtuale (per hid_down/hid_up)
+// Current state of the virtual keyboard (for hid_down/hid_up)
 static uint8_t s_mods;
 static uint8_t s_keys[6];
 static uint8_t s_buttons;
@@ -96,14 +96,14 @@ static hid_result_t pause_between(void)
     return hid_sleep(d > 0 ? d : 0);
 }
 
-// Caps Lock attivo sull'host inverte maiuscole e minuscole delle lettere:
-// lo compensiamo invertendo lo Shift. Va deciso dal carattere, non dal
-// keycode: nel Colemak la 'o' sta sul tasto del ';' (0x33) e il ';' sul
-// tasto della P (0x13), quindi il controllo sul range 0x04..0x1D sbagliava.
+// Caps Lock active on the host swaps upper and lower case of letters: we
+// compensate by inverting Shift. It must be decided from the character, not
+// the keycode: on Colemak the 'o' is on the ';' key (0x33) and the ';' on the
+// P key (0x13), so checking the 0x04..0x1D range got it wrong.
 static bool cased_letter(uint32_t cp)
 {
     if ((cp >= 'a' && cp <= 'z') || (cp >= 'A' && cp <= 'Z')) return true;
-    // Lettere Latin-1 con maiuscola e minuscola (escluse × ÷ ß ÿ)
+    // Latin-1 letters with upper and lower case (excluding × ÷ ß ÿ)
     return cp >= 0xC0 && cp <= 0xFE && cp != 0xD7 && cp != 0xF7 && cp != 0xDF;
 }
 
@@ -117,13 +117,13 @@ static hid_result_t tap(uint8_t key, uint8_t mods, bool letter)
     if (r == HID_OK) r = hid_sleep(s_timing.hold);
     s_keys[0] = 0;
     s_mods = saved;
-    hid_result_t r2 = send(); // il rilascio va inviato comunque
+    hid_result_t r2 = send(); // the release must be sent anyway
     if (r == HID_OK) r = r2;
     if (r == HID_OK) r = pause_between();
     return r;
 }
 
-// Alt tenuto premuto durante tutte le cifre del tastierino (Windows)
+// Alt held down during all the keypad digits (Windows)
 static hid_result_t type_altcode(const hid_stroke_t *s, int n)
 {
     bool restore_numlock = false;
@@ -173,7 +173,7 @@ hid_result_t hid_type(const char *s, uint32_t *bad_cp)
     hid_get_layout();
     while (*s) {
         uint32_t cp = utf8_next(&s);
-        if (cp == '\r') continue; // i file Windows hanno \r\n: basta l'Enter del \n
+        if (cp == '\r') continue; // Windows files have \r\n: the Enter for \n is enough
         hid_stroke_t st[8];
         bool numpad;
         int n = hid_translate(s_layout, s_os, cp, st, 8, &numpad);
@@ -185,9 +185,9 @@ hid_result_t hid_type(const char *s, uint32_t *bad_cp)
         if (numpad) {
             r = type_altcode(st, n);
         } else {
-            // Con un tasto morto la lettera è il secondo tasto: Caps Lock
-            // agisce solo su quello. Le sequenze più lunghe (Ctrl+Shift+U di
-            // Linux) non producono lettere da compensare.
+            // With a dead key the letter is the second key: Caps Lock only
+            // affects that one. Longer sequences (Linux Ctrl+Shift+U) do not
+            // produce letters to compensate.
             bool letter = cased_letter(cp) && n <= 2;
             for (int i = 0; i < n && r == HID_OK; i++) r = tap(st[i].key, st[i].mods, letter && i == n - 1);
         }
@@ -214,8 +214,8 @@ hid_result_t hid_chord(uint8_t mods, const uint8_t *keys, int nkeys)
 {
     uint8_t saved_mods = s_mods;
     s_mods |= mods;
-    // Prima i modificatori da soli: alcune applicazioni ignorano la
-    // combinazione se modificatore e tasto arrivano nello stesso report.
+    // Modifiers alone first: some applications ignore the combination
+    // if modifier and key arrive in the same report.
     hid_result_t r = send();
     if (r == HID_OK) r = hid_sleep(s_timing.hold);
     for (int i = 0; i < nkeys && i < 6 && r == HID_OK; i++) {
@@ -281,7 +281,7 @@ hid_result_t hid_mouse_move(int dx, int dy)
         if (r != HID_OK) return r;
         dx -= sx;
         dy -= sy;
-        // Un report per ms al massimo (bInterval 1): non serve attendere
+        // At most one report per ms (bInterval 1): no need to wait
         if (s_poll && !s_poll(s_poll_arg)) return HID_ABORTED;
     }
     return HID_OK;

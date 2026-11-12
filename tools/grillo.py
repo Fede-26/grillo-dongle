@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Client per la console di debug di Grillo (components/devcon).
+"""Client for the Grillo debug console (components/devcon).
 
-Trova da solo la porta (USB-Serial-JTAG o CDC di debug) e la apre senza
-toccare DTR/RTS, così il dongle non si resetta.
+Finds the port by itself (USB-Serial-JTAG or debug CDC) and opens it without
+touching DTR/RTS, so the dongle does not reset.
 
-Uso:
-    tools/grillo.py cmd state            # esegue un comando e stampa l'output
+Usage:
+    tools/grillo.py cmd state            # runs a command and prints the output
     tools/grillo.py cmd launch usbdisk
-    tools/grillo.py shot screen.png      # screenshot del display (PNG 4x)
-    tools/grillo.py log 10               # mostra i log per 10 secondi
-Opzioni: --port /dev/cu.usbmodemXXX, -q (nasconde le righe di log)
+    tools/grillo.py shot screen.png      # display screenshot (PNG 4x)
+    tools/grillo.py log 10               # shows the logs for 10 seconds
+Options: --port /dev/cu.usbmodemXXX, -q (hides the log lines)
 """
 import argparse
 import base64
@@ -28,19 +28,19 @@ LOG_RE = re.compile(r"^(\x1b\[[0-9;]*m)?[EWIDV] \(\d+\) ")
 def find_port():
     ports = sorted(glob.glob("/dev/cu.usbmodem*"))
     if not ports:
-        sys.exit("nessuna porta /dev/cu.usbmodem* trovata")
+        sys.exit("no /dev/cu.usbmodem* port found")
     return ports[0]
 
 
 def open_port(path):
-    # DTR/RTS non vanno toccati: macOS li alza entrambi all'apertura, e
-    # abbassare DTR lasciando RTS alto è la sequenza che resetta il chip
-    # sulla USB-Serial-JTAG.
+    # DTR/RTS must not be touched: macOS raises both on open, and
+    # lowering DTR while leaving RTS high is the sequence that resets the chip
+    # on the USB-Serial-JTAG.
     return serial.Serial(path, 115200, timeout=0.1)
 
 
 def run(s, command, timeout, quiet):
-    """Invia un comando e restituisce (righe di output, rc)."""
+    """Sends a command and returns (output lines, rc)."""
     s.reset_input_buffer()
     s.write((command + "\n").encode())
     lines, buf, end = [], b"", time.time() + timeout
@@ -83,8 +83,8 @@ def write_png(path, w, h, rgb565be, scale):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port")
-    ap.add_argument("-q", action="store_true", help="nascondi le righe di log")
-    ap.add_argument("-t", type=float, default=5, help="timeout comando (s)")
+    ap.add_argument("-q", action="store_true", help="hide the log lines")
+    ap.add_argument("-t", type=float, default=5, help="command timeout (s)")
     sub = ap.add_subparsers(dest="action", required=True)
     c = sub.add_parser("cmd")
     c.add_argument("words", nargs="+")
@@ -100,7 +100,7 @@ def main():
         lines, rc = run(s, " ".join(a.words), a.t, a.q)
         print("\n".join(lines))
         if rc is None:
-            sys.exit("timeout: nessuna risposta")
+            sys.exit("timeout: no reply")
         sys.exit(rc)
     if a.action == "shot":
         lines, rc = run(s, "shot", max(a.t, 10), True)
@@ -108,7 +108,7 @@ def main():
             start = next(i for i, l in enumerate(lines) if l.startswith("SHOT "))
             end = lines.index("END", start)
         except (StopIteration, ValueError):
-            sys.exit("screenshot non ricevuto")
+            sys.exit("screenshot not received")
         _, w, h, _ = lines[start].split()
         data = base64.b64decode("".join(lines[start + 1:end]))
         write_png(a.out, int(w), int(h), data, a.scale)

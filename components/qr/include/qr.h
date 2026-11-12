@@ -3,14 +3,14 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-// QR code sul display, per le app che si raggiungono dal telefono (Web HID,
-// e in futuro il file browser web e l'injector web).
+// QR code on the display, for the apps reached from the phone (Web HID, and
+// in the future the web file browser and the web injector).
 
-// Disegna un QR code nel framebuffer (da chiamare tra ui_begin e ui_end),
-// con il suo bordo chiaro, nel quadrato di lato `box` px con angolo (x, y).
-// Restituisce false se il testo non entra in `box` o la codifica fallisce.
+// Draws a QR code in the framebuffer (call between ui_begin and ui_end),
+// with its light border, in the square of side `box` px with corner (x, y).
+// Returns false if the text does not fit in `box` or the encoding fails.
 bool qr_draw(const char *text, int x, int y, int box);
 
-// Testo del QR che collega un telefono a una rete WPA ("WIFI:T:WPA;S:..;P:..;;"),
-// con l'escape dei caratteri speciali del formato.
+// Text of the QR that joins a phone to a WPA network ("WIFI:T:WPA;S:..;P:..;;"),
+// with the format's special characters escaped.
 void qr_wifi_text(char *out, size_t len, const char *ssid, const char *pass);

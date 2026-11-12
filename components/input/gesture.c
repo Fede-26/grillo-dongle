@@ -43,15 +43,15 @@ gesture_t gesture_feed(gesture_ctx_t *g, bool pressed, uint32_t now, uint8_t *pr
                     g->state = ST_IDLE;
                     return GESTURE_DOUBLE;
                 }
-                // Il click si emette solo a finestra scaduta, per poterlo
-                // distinguere dal doppio click.
+                // The click is emitted only once the window has expired, so it
+                // can be told apart from the double click.
                 g->state = ST_WAIT_DOUBLE;
                 g->t0 = now;
                 return GESTURE_NONE;
             }
             g->state = ST_IDLE;
-            // Rilasciare durante l'anello annulla: chi voleva uscire e ci ha
-            // ripensato non deve ritrovarsi una conferma involontaria.
+            // Releasing during the ring cancels: whoever wanted to exit and
+            // changed their mind must not end up with an unintended confirm.
             return held < GESTURE_HOLD_START_MS ? GESTURE_LONG : GESTURE_HOLD_CANCEL;
         }
         if (held >= GESTURE_HOLD_MS) {

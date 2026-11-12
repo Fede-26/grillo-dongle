@@ -22,7 +22,7 @@ esp_err_t webtheme_register(void)
         {"/theme.css", "text/css", theme_css_gz_start, theme_css_gz_end, WEBSRV_GZIP},
         {"/theme.js", "text/javascript", theme_js_gz_start, theme_js_gz_end, WEBSRV_GZIP},
         {"/grillo.svg", "image/svg+xml", grillo_svg_gz_start, grillo_svg_gz_end, WEBSRV_GZIP},
-        // woff2 è già compresso: niente gzip, e cambia solo con un nuovo font
+        // woff2 is already compressed: no gzip, and it only changes with a new font
         {"/fonts/silkscreen.woff2", "font/woff2", silkscreen_woff2_start, silkscreen_woff2_end, WEBSRV_CACHE},
         {"/fonts/iosevka.woff2", "font/woff2", iosevka_woff2_start, iosevka_woff2_end, WEBSRV_CACHE},
     };

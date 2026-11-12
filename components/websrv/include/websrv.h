@@ -5,77 +5,78 @@
 #include "esp_err.h"
 #include "esp_http_server.h"
 
-// Server HTTP + WebSocket per le app comandate da una pagina web (Web HID,
-// in futuro il file browser web e l'injector web). Una sola istanza alla
-// volta: appartiene all'app in primo piano, che la ferma all'uscita.
+// HTTP + WebSocket server for the apps driven by a web page (Web HID, in the
+// future the web file browser and the web injector). Only one instance at a
+// time: it belongs to the foreground app, which stops it on exit.
 //
-// Rotte fisse:
-//   GET /cfg  "pin" o "nopin": la pagina sa se chiedere il PIN senza
-//             consumare tentativi.
-//   GET /ws   WebSocket. L'handshake è rifiutato se l'header Origin non è
-//             http://<IP del dongle> (un sito qualunque aperto in un browser
-//             sulla stessa rete non può collegarsi). Il primo messaggio
-//             deve essere "p<PIN>"; il server
-//             risponde "ok", "no" (PIN errato), "locked" (troppi errori da
-//             quell'indirizzo, 30 s) o "busy" (sessione aperta da un altro
-//             dispositivo). Dopo "ok" arriva "T<token>" per le rotte HTTP
-//             (websrv_authorized); poi i messaggi di testo vanno all'app.
+// Fixed routes:
+//   GET /cfg  "pin" or "nopin": the page knows whether to ask for the PIN
+//             without using up attempts.
+//   GET /ws   WebSocket. The handshake is refused if the Origin header is not
+//             http://<dongle IP> (an arbitrary site open in a browser on the
+//             same network cannot connect). The first message must be
+//             "p<PIN>"; the server
+//             replies "ok", "no" (wrong PIN), "locked" (too many errors from
+//             that address, 30 s) or "busy" (session opened by another
+//             device). After "ok" comes "T<token>" for the HTTP routes
+//             (websrv_authorized); then the text messages go to the app.
 //
-// Un solo client autenticato alla volta. Lo stesso indirizzo IP con il PIN
-// giusto subentra alla propria sessione: è il telefono che si riconnette
-// mentre la vecchia connessione non è ancora stata chiusa.
+// Only one authenticated client at a time. The same IP address with the
+// right PIN takes over its own session: it is the phone reconnecting while
+// the old connection has not been closed yet.
 
 typedef struct {
-    const char *pin;   // "" = nessun PIN: chiunque sulla rete entra
-    size_t stack_size; // del task httpd: dipende da cosa fanno i callback
-    size_t max_frame;  // un messaggio più lungo chiude la connessione
-    // Messaggio di testo del client autenticato, terminato da 0. Gira nel
-    // task httpd: un lavoro lungo blocca le altre richieste e va interrotto
-    // quando websrv_stopping() diventa true.
+    const char *pin;   // "" = no PIN: anyone on the network gets in
+    size_t stack_size; // of the httpd task: depends on what the callbacks do
+    size_t max_frame;  // a longer message closes the connection
+    // Text message from the authenticated client, 0-terminated. Runs in the
+    // httpd task: a long job blocks the other requests and must be
+    // interrupted when websrv_stopping() becomes true.
     void (*on_message)(httpd_req_t *req, char *msg, size_t len);
-    // Facoltativa: subito dopo "ok", per mandare alla pagina lo stato iniziale.
+    // Optional: right after "ok", to send the initial state to the page.
     void (*on_auth)(httpd_req_t *req);
-    // Facoltativa: il client autenticato se n'è andato o è stato sostituito,
-    // e a ogni websrv_stop. Per rilasciare ciò che la sessione teneva (es.
-    // tasti premuti).
+    // Optional: the authenticated client left or was replaced, and on every
+    // websrv_stop. To release what the session was holding (e.g. pressed
+    // keys).
     void (*on_session_end)(void);
 } websrv_config_t;
 
 esp_err_t websrv_start(const websrv_config_t *cfg);
 void websrv_stop(void);
 
-// Pagina statica già compressa con gzip (il browser la decomprime da sé),
-// tipicamente "/" con il file incorporato nel firmware. Dopo websrv_start.
+// Static page already gzip-compressed (the browser decompresses it by
+// itself), typically "/" with the file embedded in the firmware. After
+// websrv_start.
 esp_err_t websrv_add_page(const char *uri, const char *type, const uint8_t *gz, size_t len);
-// File statico qualunque (tema, font, immagini), al massimo 8 compresa la
-// pagina. WEBSRV_GZIP: il contenuto è già in gzip. WEBSRV_CACHE: il browser
-// può tenerlo una settimana (solo per ciò che non cambia col firmware).
+// Any static file (theme, fonts, images), at most 8 including the page.
+// WEBSRV_GZIP: the content is already gzipped. WEBSRV_CACHE: the browser may
+// keep it for a week (only for what does not change with the firmware).
 enum { WEBSRV_GZIP = 1 << 0, WEBSRV_CACHE = 1 << 1 };
 esp_err_t websrv_add_file(const char *uri, const char *type, const uint8_t *data, size_t len, unsigned flags);
-// Rotta aggiuntiva (API, download). Dopo websrv_start. Non è protetta dal
-// PIN: l'handler chiama websrv_authorized() prima di fare qualcosa.
+// Additional route (API, download). After websrv_start. It is not protected
+// by the PIN: the handler calls websrv_authorized() before doing anything.
 esp_err_t websrv_add_route(const httpd_uri_t *uri);
-// true se la richiesta porta il token della sessione autenticata, nell'header
-// X-Grillo-Token o nel parametro t (per i link di download). Il token arriva
-// alla pagina subito dopo "ok", nel messaggio "T<token>", e cambia a ogni
-// accesso: basarsi sull'IP non basterebbe, dietro un NAT più dispositivi lo
-// condividono.
+// true if the request carries the authenticated session's token, in the
+// X-Grillo-Token header or in the t parameter (for download links). The token
+// reaches the page right after "ok", in the "T<token>" message, and changes
+// at every login: relying on the IP would not be enough, behind a NAT several
+// devices share it.
 bool websrv_authorized(httpd_req_t *req);
-// Parametro `key` della query string, decodificato (%XX, +). false se manca
-// o non entra in `len`.
+// Query string parameter `key`, decoded (%XX, +). false if missing or if it
+// does not fit in `len`.
 bool websrv_query(httpd_req_t *req, const char *key, char *out, size_t len);
-// true se la richiesta arriva dall'indirizzo del client autenticato.
+// true if the request comes from the authenticated client's address.
 bool websrv_is_client(httpd_req_t *req);
 
-// Messaggio di testo al client della richiesta in corso.
+// Text message to the client of the current request.
 void websrv_reply(httpd_req_t *req, const char *msg);
-// Messaggio di testo al client autenticato, da un task qualunque (per
-// esempio quello dell'app). Copiato: il buffer si può riusare subito.
-// ESP_ERR_INVALID_STATE se nessuno è collegato.
+// Text message to the authenticated client, from any task (for example the
+// app's). Copied: the buffer can be reused immediately.
+// ESP_ERR_INVALID_STATE if nobody is connected.
 esp_err_t websrv_send(const char *msg);
-// IP del client autenticato, stringa vuota se nessuno.
+// IP of the authenticated client, empty string if none.
 const char *websrv_client_ip(void);
-// true da quando è stata chiamata websrv_stop: httpd_stop attende che le
-// richieste in corso finiscano, quindi un lavoro lungo in on_message deve
-// controllarlo e smettere.
+// true from when websrv_stop was called: httpd_stop waits for the requests
+// in progress to finish, so a long job in on_message must check it and
+// stop.
 bool websrv_stopping(void);

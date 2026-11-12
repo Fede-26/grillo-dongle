@@ -3,8 +3,8 @@ idf_component_register(SRCS "webhid.c" "web_server.c"
                        REQUIRES appfw
                        PRIV_REQUIRES ui led usbdev hid net config websrv webtheme webui)
 
-# La pagina viene compressa in fase di build: in flash resta solo il gzip,
-# che il browser decomprime da sé (Content-Encoding: gzip).
+# The page is compressed at build time: only the gzip ends up in flash,
+# and the browser decompresses it on its own (Content-Encoding: gzip).
 set(WEB_HTML ${CMAKE_CURRENT_SOURCE_DIR}/web/index.html)
 set(WEB_GZ ${CMAKE_CURRENT_BINARY_DIR}/index.html.gz)
 add_custom_command(OUTPUT ${WEB_GZ}

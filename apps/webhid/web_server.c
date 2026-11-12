@@ -10,12 +10,12 @@
 extern const uint8_t index_html_gz_start[] asm("_binary_index_html_gz_start");
 extern const uint8_t index_html_gz_end[] asm("_binary_index_html_gz_end");
 
-#define MAX_FRAME      2048 // la pagina spezza gli incolla in blocchi più piccoli
+#define MAX_FRAME      2048 // the page splits pastes into smaller chunks
 #define MAX_ERASE      500
 #define ACCENT         0x4070FF
 
-// Lunghezza in byte del carattere UTF-8 in `s`, 0 se la sequenza non è
-// valida o è troncata (fine del frame): così non si legge oltre il buffer.
+// Length in bytes of the UTF-8 character at `s`, 0 if the sequence is
+// invalid or truncated (end of frame): this avoids reading past the buffer.
 static int utf8_len(const char *s)
 {
     const uint8_t *p = (const uint8_t *)s;
@@ -38,16 +38,16 @@ static uint32_t utf8_first(const char *s)
     }
 }
 
-// Digita il testo un carattere alla volta. Un carattere che il layout non ha
-// diventa '?': prima la digitazione si fermava lì e perdeva il resto del
-// blocco, e nel live typing la pagina contava un carattere che sul PC non
-// c'era (i backspace successivi ne cancellavano uno di troppo).
+// Types the text one character at a time. A character the layout lacks
+// becomes '?': previously typing stopped there and lost the rest of the
+// chunk, and in live typing the page counted a character that was not on
+// the PC (the following backspaces deleted one too many).
 static hid_result_t type_text(const char *s, int *skipped)
 {
     char one[5];
     while (*s) {
         int n = utf8_len(s);
-        if (n == 0) n = 1; // byte non valido: lo si tratta come carattere a sé
+        if (n == 0) n = 1; // invalid byte: treated as a character of its own
         memcpy(one, s, n);
         one[n] = 0;
         s += n;
@@ -72,21 +72,21 @@ static int clamp(int v, int lim)
     return v < -lim ? -lim : (v > lim ? lim : v);
 }
 
-// Comandi (testo, un carattere di tipo + argomenti):
-//   m dx dy     muove il mouse        b mask      stato dei pulsanti
-//   w dy dx     rotella (dx facoltativo)
-//   t testo     digita il testo nel layout dell'host
-//   c mods ch   combinazione: modificatori + carattere (es. Ctrl+C)
-//   k mods key  combinazione con usage HID grezzo (tasti speciali, F-key)
-//   e n         n backspace di seguito, 1..MAX_ERASE (il live typing cancella così)
-//   l nome      layout dell'host (it, us, colemak)
-//   o nome      OS dell'host (windows, linux, mac): sceglie i ripieghi per i caratteri mancanti
+// Commands (text, one type character + arguments):
+//   m dx dy     moves the mouse       b mask      button state
+//   w dy dx     wheel (dx optional)
+//   t text      types the text in the host's layout
+//   c mods ch   chord: modifiers + character (e.g. Ctrl+C)
+//   k mods key  chord with a raw HID usage (special keys, F-keys)
+//   e n         n backspaces in a row, 1..MAX_ERASE (this is how live typing deletes)
+//   l name      host layout (it, us, colemak)
+//   o name      host OS (windows, linux, mac): picks the fallbacks for missing characters
 static hid_result_t command(const char *m, int *skipped)
 {
     int a = 0, b = 0;
     switch (m[0]) {
     case 'm':
-        // Un dx enorme teneva occupato il task httpd per ore di report
+        // A huge dx kept the httpd task busy for hours of reports
         if (sscanf(m + 1, "%d %d", &a, &b) == 2) return hid_mouse_move(clamp(a, 2000), clamp(b, 2000));
         break;
     case 'b':
@@ -104,7 +104,7 @@ static hid_result_t command(const char *m, int *skipped)
         }
         break;
     case 'e':
-        // La pagina spezza le cancellazioni lunghe in blocchi da MAX_ERASE
+        // The page splits long deletions into MAX_ERASE chunks
         if (sscanf(m + 1, "%d", &a) == 1 && a > 0 && a <= MAX_ERASE) {
             uint8_t bs = 0x2A; // Backspace
             for (int i = 0; i < a; i++) {
@@ -134,15 +134,15 @@ static hid_result_t command(const char *m, int *skipped)
     return HID_OK;
 }
 
-// La sessione finisce (pagina chiusa, telefono che si riconnette, uscita
-// dall'app): nessun tasto o pulsante del mouse deve restare premuto sul PC.
+// The session ends (page closed, phone reconnecting, app
+// exit): no key or mouse button must stay pressed on the PC.
 static void release_all(void)
 {
     hid_release_all();
     hid_mouse_buttons(0);
 }
 
-// Layout e OS correnti, per allineare i selettori della pagina
+// Current layout and OS, to sync the page's selectors
 static void on_auth(httpd_req_t *req)
 {
     static const char *const os_names[] = {"windows", "linux", "mac"};
@@ -156,8 +156,8 @@ static void on_message(httpd_req_t *req, char *msg, size_t len)
     led_flash(ACCENT, 15);
     int skipped = 0;
     hid_result_t r = command(msg, &skipped);
-    // "hostok" solo al ritorno del PC, non a ogni comando: toglie
-    // l'avviso "PC not ready" dalla pagina, che prima restava per sempre.
+    // "hostok" only when the PC comes back, not on every command: it clears
+    // the "PC not ready" warning from the page, which previously stayed forever.
     static bool host_bad;
     if (r == HID_NO_HOST) websrv_reply(req, "nohost");
     else if (r == HID_OK && host_bad) websrv_reply(req, "hostok");
@@ -174,7 +174,7 @@ esp_err_t web_start(const char *pin)
     hid_set_poll(keep_typing, NULL);
     websrv_config_t cfg = {
         .pin = pin,
-        .stack_size = 6144, // hid_type usa array di tasti sullo stack
+        .stack_size = 6144, // hid_type uses key arrays on the stack
         .max_frame = MAX_FRAME,
         .on_message = on_message,
         .on_auth = on_auth,

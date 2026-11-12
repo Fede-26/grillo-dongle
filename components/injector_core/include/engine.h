@@ -5,33 +5,33 @@
 #include "payload.h"
 #include "ui.h"
 
-// Esecuzione di uno script dell'injector, comune alle app che la usano
-// (Injector dal display, Web Injector dal telefono).
+// Execution of an injector script, shared by the apps that use it
+// (Injector from the display, Web Injector from the phone).
 //
-// Un "engine" sa eseguire un tipo di file (oggi solo Lua; DuckyScript in
-// futuro). inj_run_payload prepara un inj_run_t, sceglie l'engine con
-// can_run() e chiama run(): lo script gira nel task dell'app, quindi i
-// dialoghi (ui.menu, ui.confirm) possono usare direttamente la coda eventi.
+// An "engine" knows how to run one file type (only Lua today; DuckyScript in
+// the future). inj_run_payload prepares an inj_run_t, picks the engine with
+// can_run() and calls run(): the script runs in the app task, so dialogs
+// (ui.menu, ui.confirm) can use the event queue directly.
 
 typedef struct inj_run inj_run_t;
 
-// Agganci facoltativi del front-end: il Web Injector li usa per rispecchiare
-// sul telefono ciò che lo script mostra sul display. Tutti nel task dell'app;
-// ogni campo può essere NULL.
+// Optional front-end hooks: the Web Injector uses them to mirror on the phone
+// what the script shows on the display. All run in the app task; any field
+// may be NULL.
 typedef struct {
     void *arg;
-    // Stato, avanzamento o attesa dell'host cambiati
+    // Status, progress or host wait changed
     void (*state)(void *arg, const inj_run_t *r);
-    // Riga di sys.log
+    // Line from sys.log
     void (*log)(void *arg, const char *text);
-    // Dialogo aperto sul display (il front-end può rispondere con
-    // APP_EV_ANSWER); chiuso da dialog_end, chiunque abbia risposto, con la
-    // risposta come testo (voce del menu, "Yes"/"No", gesto del pulsante) o
-    // NULL se non ce n'è una (abort, chiusura dell'esito).
+    // Dialog opened on the display (the front-end can answer with
+    // APP_EV_ANSWER); closed by dialog_end, whoever answered, with the
+    // answer as text (menu item, "Yes"/"No", button gesture) or
+    // NULL if there is none (abort, closing of the result).
     void (*menu)(void *arg, const char *title, const char *const *items, int n);
     void (*confirm)(void *arg, const char *title, const char *text, bool yes);
     void (*wait_button)(void *arg);
-    // Esito, mostrato poi sul display fino a un click o a un APP_EV_ANSWER
+    // Result, then shown on the display until a click or an APP_EV_ANSWER
     void (*done)(void *arg, const inj_run_t *r);
     void (*dialog_end)(void *arg, const char *answer);
 } inj_hooks_t;
@@ -41,19 +41,19 @@ struct inj_run {
     const payload_meta_t *meta;
     const inj_hooks_t *hooks;
 
-    // Stato mostrato dalla schermata di esecuzione, aggiornato dallo script
+    // Status shown by the run screen, updated by the script
     char status[48];
-    ui_scroll_t status_scroll; // stato lungo: scorre da solo (vedi inj_redraw)
-    int64_t redraw_us;         // prossimo ridisegno periodico da inj_pump
-    int progress, progress_max; // barra nascosta se progress_max == 0
+    ui_scroll_t status_scroll; // long status: scrolls by itself (see inj_redraw)
+    int64_t redraw_us;         // next periodic redraw by inj_pump
+    int progress, progress_max; // bar hidden if progress_max == 0
     bool waiting_host;
     int64_t started_us;
 
-    // Eventi raccolti da inj_pump() mentre lo script gira
+    // Events collected by inj_pump() while the script runs
     uint32_t clicks, doubles, longs;
-    bool ejected; // l'host ha espulso il disco (profilo HID_DISK)
+    bool ejected; // the host ejected the disk (HID_DISK profile)
 
-    // Esito
+    // Result
     bool ok, aborted, timed_out;
     char error[160];
 };
@@ -66,17 +66,17 @@ typedef struct {
 
 extern const inj_engine_t engine_lua;
 
-// Esegue lo script e mostra l'esito sul display. hooks può essere NULL.
+// Runs the script and shows the result on the display. hooks may be NULL.
 void inj_run_payload(app_ctx_t *ctx, const payload_meta_t *m, const inj_hooks_t *hooks);
 
-// --- Per gli engine ---
+// --- For the engines ---
 
-// Ridisegna la schermata di esecuzione.
+// Redraws the run screen.
 void inj_redraw(inj_run_t *r);
-// Svuota la coda eventi dell'app (contando click, eject...) e aggiorna lo
-// schermo se serve. false = lo script deve fermarsi (hold 3 s o timeout).
+// Drains the app event queue (counting clicks, eject...) and updates the
+// screen if needed. false = the script must stop (3 s hold or timeout).
 bool inj_pump(inj_run_t *r);
-// Chiama un aggancio del front-end, se c'è.
+// Calls a front-end hook, if present.
 #define INJ_HOOK(r, fn, ...)                                                          \
     do {                                                                              \
         if ((r)->hooks && (r)->hooks->fn) (r)->hooks->fn((r)->hooks->arg, ##__VA_ARGS__); \

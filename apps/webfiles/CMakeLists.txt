@@ -3,9 +3,9 @@ idf_component_register(SRCS "webfiles.c" "secrets.c"
                        REQUIRES appfw
                        PRIV_REQUIRES injector_core luart lua clock ui led storage usbdev net config websrv webjson webtheme webui)
 
-# La pagina viene compressa in fase di build, come quella del Web HID
+# The page is compressed at build time, like the Web HID one
 set(WEB_HTML ${CMAKE_CURRENT_SOURCE_DIR}/web/index.html)
-set(WEB_GZ ${CMAKE_CURRENT_BINARY_DIR}/webfiles.html.gz) # nome unico: il simbolo binario deriva dal nome del file
+set(WEB_GZ ${CMAKE_CURRENT_BINARY_DIR}/webfiles.html.gz) # unique name: the binary symbol is derived from the file name
 add_custom_command(OUTPUT ${WEB_GZ}
                    COMMAND ${PYTHON} -c "import gzip,sys;open(sys.argv[2],'wb').write(gzip.compress(open(sys.argv[1],'rb').read(),9,mtime=0))" ${WEB_HTML} ${WEB_GZ}
                    DEPENDS ${WEB_HTML}

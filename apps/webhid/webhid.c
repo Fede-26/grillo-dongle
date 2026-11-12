@@ -1,9 +1,9 @@
-// Web HID: tastiera e mouse del PC comandati da un browser sulla stessa rete.
+// Web HID: the PC's keyboard and mouse controlled by a browser on the same network.
 //
-// Il dongle prende un lease di rete (rete nota da config.lua, altrimenti
-// hotspot), avvia il server e mostra su LCD un QR code, l'IP e un PIN a 6
-// cifre generato a ogni avvio. In modalità hotspot il QR ha due pagine:
-// prima le credenziali WiFi, poi l'indirizzo della pagina.
+// The dongle acquires a network lease (known network from config.lua, otherwise
+// hotspot), starts the server and shows on the LCD a QR code, the IP and a 6-digit
+// PIN generated at every start. In hotspot mode the QR has two pages:
+// first the WiFi credentials, then the page address.
 
 #include <stdio.h>
 #include <string.h>
@@ -21,8 +21,8 @@
 
 #define ACCENT 0x4070FF
 
-// Tempo in ms da config.lua, limitato a 0..60000 (i campi di hid_timing_t
-// sono uint16_t: un -1 diventava 65535).
+// Time in ms from config.lua, clamped to 0..60000 (hid_timing_t fields
+// are uint16_t: a -1 became 65535).
 static int config_ms(const char *key, int def)
 {
     int v = config_int(key, def);
@@ -39,7 +39,7 @@ static void apply_keyboard_config(void)
     t->key_delay = config_ms("keyboard.key_delay", 8);
     t->hold = config_ms("keyboard.hold", 5);
     t->jitter = config_ms("keyboard.jitter", 0);
-    // Anche line_delay: la documentazione dice che valgono tutte le keyboard.*
+    // line_delay too: the documentation says all keyboard.* keys apply
     t->line_delay = config_ms("keyboard.line_delay", 0);
 }
 
@@ -47,7 +47,7 @@ static void webhid_run(app_ctx_t *ctx)
 {
     webui_draw_connecting(&icon_mouse, ACCENT);
     esp_err_t err = app_net_acquire(ctx, NET_AUTO, 15000);
-    if (err == ESP_ERR_NOT_FINISHED) return; // uscita durante la scelta della rete
+    if (err == ESP_ERR_NOT_FINISHED) return; // exit during network selection
     if (err != ESP_OK) {
         char msg[40];
         snprintf(msg, sizeof(msg), "WiFi failed: %s", esp_err_to_name(err));
@@ -56,7 +56,7 @@ static void webhid_run(app_ctx_t *ctx)
     }
 
     apply_keyboard_config();
-    // webhid.pin = false o rete sicura: nessun PIN, chiunque sulla rete del dongle comanda il PC
+    // webhid.pin = false or secure network: no PIN, anyone on the dongle's network controls the PC
     char pin[8];
     webui_make_pin("webhid.pin", pin, sizeof(pin));
     err = web_start(pin);
@@ -68,7 +68,7 @@ static void webhid_run(app_ctx_t *ctx)
     }
 
     led_set(LED_LAYER_APP, LED_FX_PULSE, ACCENT, 2000);
-    // Pagina del QR: credenziali o indirizzo, vedi webui.h
+    // QR page: credentials or address, see webui.h
     webui_qr_t qr = WEBUI_QR_INIT;
     char last_client[16] = "";
     for (;;) {

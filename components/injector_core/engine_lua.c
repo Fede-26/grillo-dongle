@@ -1,7 +1,7 @@
-// Engine Lua dell'injector: VM sandbox (luart) più i moduli kb, mouse,
-// led, ui, sys, fs, cfg e require. Ciò che lo script mostra sul display
-// passa anche dagli agganci del front-end (INJ_HOOK), che il Web Injector
-// rispecchia sul telefono.
+// Injector Lua engine: sandboxed VM (luart) plus the kb, mouse, led, ui,
+// sys, fs, cfg and require modules. What the script shows on the display
+// also goes through the front-end hooks (INJ_HOOK), which the Web Injector
+// mirrors on the phone.
 
 #include <ctype.h>
 #include <stddef.h>
@@ -32,9 +32,9 @@ static const char *TAG = "inj";
 
 #define LUA_MEM_LIMIT  (96 * 1024)
 #define FS_READ_MAX    (16 * 1024)
-#define HOST_WAIT_MS   (24 * 3600 * 1000) // "per sempre": si esce con hold 3 s
+#define HOST_WAIT_MS   (24 * 3600 * 1000) // "forever": exit with a 3 s hold
 
-// Uno script alla volta: lo stato dell'esecuzione corrente è statico.
+// One script at a time: the state of the current run is static.
 static inj_run_t *s_run;
 
 static bool poll(void *arg)
@@ -42,7 +42,7 @@ static bool poll(void *arg)
     return inj_pump(s_run);
 }
 
-// Converte un risultato HID in errore Lua (non ritorna se != HID_OK).
+// Converts a HID result into a Lua error (does not return if != HID_OK).
 static void check_hid(lua_State *L, hid_result_t r, uint32_t bad_cp)
 {
     switch (r) {
@@ -65,9 +65,9 @@ static int opt_ms(lua_State *L, int idx)
 // ---------------------------------------------------------------------------
 // kb
 
-// "${nome}" sostituito con vars[nome] (tabella all'indice `vars`, 0 = usa
-// le variabili globali dello script). Una variabile mancante è un errore:
-// digitare "${user}" alla lettera non è mai ciò che si voleva.
+// "${name}" replaced with vars[name] (table at index `vars`, 0 = use the
+// script's global variables). A missing variable is an error: typing
+// "${user}" literally is never what was intended.
 static const char *expand(lua_State *L, const char *s, int vars)
 {
     if (!strstr(s, "${")) return s;
@@ -112,8 +112,8 @@ static int kb_type(lua_State *L)
     return 0;
 }
 
-// Le password stanno in config.lua (tabella `secrets`) e non passano mai
-// per una stringa Lua: lo script non può stamparle né salvarle.
+// Passwords live in config.lua (`secrets` table) and never pass through a
+// Lua string: the script can neither print nor save them.
 static int kb_type_secret(lua_State *L)
 {
     const char *name = luaL_checkstring(L, 1);
@@ -123,8 +123,8 @@ static int kb_type_secret(lua_State *L)
     if (!v) return luaL_error(L, "secret '%s' not in config.lua", name);
     uint32_t bad = 0;
     hid_result_t r = hid_type(v, &bad);
-    // Il messaggio generico rivelerebbe un carattere della password (U+XXXX)
-    // sul display e nel log.
+    // The generic message would reveal a password character (U+XXXX)
+    // on the display and in the log.
     if (r == HID_UNTYPEABLE) {
         return luaL_error(L, "secret '%s' has a character not typeable with layout %s", name, hid_get_layout()->name);
     }
@@ -132,13 +132,13 @@ static int kb_type_secret(lua_State *L)
     return 0;
 }
 
-// Nome di tasto ("ENTER", "F5", "CTRL") o singolo carattere ("r").
+// Key name ("ENTER", "F5", "CTRL") or single character ("r").
 static void key_arg(lua_State *L, int idx, uint8_t *key, uint8_t *mods)
 {
     const char *name = luaL_checkstring(L, idx);
     *key = *mods = 0;
     if (hid_key_by_name(name, key, mods)) return;
-    // Un solo carattere UTF-8 (1..4 byte, es. "€"): lo si cerca nel layout corrente
+    // A single UTF-8 character (1..4 bytes, e.g. "€"): looked up in the current layout
     const unsigned char *p = (const unsigned char *)name;
     size_t len = strlen(name);
     int n = p[0] < 0x80 ? 1 : (p[0] & 0xE0) == 0xC0 ? 2 : (p[0] & 0xF0) == 0xE0 ? 3 : (p[0] & 0xF8) == 0xF0 ? 4 : 0;
@@ -148,7 +148,7 @@ static void key_arg(lua_State *L, int idx, uint8_t *key, uint8_t *mods)
         if ((p[i] & 0xC0) != 0x80) luaL_argerror(L, idx, "unknown key name");
         cp = (cp << 6) | (p[i] & 0x3F);
     }
-    // Lettera maiuscola in una combinazione: si intende il tasto, non lo Shift
+    // Uppercase letter in a combination: it means the key, not Shift
     if (cp >= 'A' && cp <= 'Z') cp += 'a' - 'A';
     if (!hid_char_key(cp, key, mods)) luaL_argerror(L, idx, "key not in layout");
 }
@@ -162,7 +162,7 @@ static int kb_tap(lua_State *L)
     return 0;
 }
 
-// kb.press("CTRL", "ALT", "DELETE"): tutti insieme, poi rilascio.
+// kb.press("CTRL", "ALT", "DELETE"): all together, then release.
 static int kb_press(lua_State *L)
 {
     int n = lua_gettop(L);
@@ -205,8 +205,8 @@ static int kb_os(lua_State *L)
     return 1;
 }
 
-// Le quattro impostazioni di tempo hanno la stessa forma: kb.x(ms) imposta,
-// kb.x() legge. L'upvalue è l'offset del campo in hid_timing_t.
+// The four timing settings have the same shape: kb.x(ms) sets,
+// kb.x() reads. The upvalue is the field offset in hid_timing_t.
 static int kb_timing(lua_State *L)
 {
     uint16_t *field = (uint16_t *)((char *)hid_timing() + lua_tointeger(L, lua_upvalueindex(1)));
@@ -249,7 +249,7 @@ static uint8_t button_arg(lua_State *L, int idx)
     return bits[luaL_checkoption(L, idx, "left", names)];
 }
 
-// Senza questo controllo l'errore sarebbe un generico "host not responding"
+// Without this check the error would be a generic "host not responding"
 static void check_mouse(lua_State *L)
 {
     if (!usbdev_has_mouse()) luaL_error(L, "no mouse while the disk is attached");
@@ -322,7 +322,7 @@ static void open_led(lua_State *L)
     lua_setglobal(L, "led");
 }
 
-// Intestazione "@led pulse 00FFCC": effetto ed eventuale colore esadecimale.
+// Header "@led pulse 00FFCC": effect and optional hex color.
 static void apply_header_led(const char *spec)
 {
     char fx[12] = "";
@@ -339,7 +339,7 @@ static void apply_header_led(const char *spec)
 static int ui_status(lua_State *L)
 {
     strlcpy(s_run->status, luaL_optstring(L, 1, ""), sizeof(s_run->status));
-    s_run->status_scroll.text = NULL; // testo nuovo: inj_redraw riparte dall'inizio
+    s_run->status_scroll.text = NULL; // new text: inj_redraw starts over from the beginning
     inj_redraw(s_run);
     INJ_HOOK(s_run, state, s_run);
     return 0;
@@ -354,7 +354,7 @@ static int ui_progress(lua_State *L)
     return 0;
 }
 
-// Indice 1-based della voce scelta, nil se l'utente esce (hold 3 s).
+// 1-based index of the chosen item, nil if the user exits (3 s hold).
 static int ui_menu(lua_State *L)
 {
     const char *title = luaL_checkstring(L, 1);
@@ -365,7 +365,7 @@ static int ui_menu(lua_State *L)
     luaL_checkstack(L, n, "menu items");
     for (int i = 0; i < n; i++) {
         lua_geti(L, 2, i + 1);
-        items[i] = luaL_checkstring(L, -1); // resta sullo stack: la stringa non viene raccolta
+        items[i] = luaL_checkstring(L, -1); // stays on the stack: the string is not collected
     }
     INJ_HOOK(s_run, menu, title, items, n);
     int sel = app_menu(s_run->ctx, title, items, n, 0);
@@ -392,7 +392,7 @@ static int ui_confirm(lua_State *L)
     return 1;
 }
 
-// Attende un gesto del pulsante: "click", "double" o "long".
+// Waits for a button gesture: "click", "double" or "long".
 static int ui_wait_button(lua_State *L)
 {
     uint32_t c = s_run->clicks, d = s_run->doubles, l = s_run->longs;
@@ -433,8 +433,8 @@ static int sys_sleep(lua_State *L)
     return 0;
 }
 
-// Attende che l'host abbia montato la tastiera. true, oppure false allo
-// scadere del timeout (ms, default: per sempre).
+// Waits until the host has mounted the keyboard. true, or false when the
+// timeout expires (ms, default: forever).
 static int sys_wait_host(lua_State *L)
 {
     lua_Integer t = luaL_optinteger(L, 1, HOST_WAIT_MS);
@@ -458,8 +458,8 @@ static int sys_log(lua_State *L)
     return 0;
 }
 
-// sys.time() -> secondi UTC dal 1970, o nil se l'ora non è nota (il dongle
-// non ha batteria: la impostano SNTP o host.clock()).
+// sys.time() -> UTC seconds since 1970, or nil if the time is unknown (the
+// dongle has no battery: SNTP or host.clock() sets it).
 static int sys_time(lua_State *L)
 {
     if (!clock_valid()) return 0;
@@ -467,8 +467,8 @@ static int sys_time(lua_State *L)
     return 1;
 }
 
-// sys.date([formato]) -> ora locale (fuso di config.lua) formattata con
-// strftime, default "%Y-%m-%d %H:%M:%S"; nil se l'ora non è nota.
+// sys.date([format]) -> local time (config.lua time zone) formatted with
+// strftime, default "%Y-%m-%d %H:%M:%S"; nil if the time is unknown.
 static int sys_date(lua_State *L)
 {
     const char *fmt = luaL_optstring(L, 1, "%Y-%m-%d %H:%M:%S");
@@ -477,14 +477,14 @@ static int sys_date(lua_State *L)
     struct tm tm;
     localtime_r(&now, &tm);
     char buf[64];
-    // 0 sia per un risultato vuoto sia per uno troppo lungo: in entrambi i
-    // casi lo script riceve "", non un buffer non terminato.
+    // 0 both for an empty result and for one that is too long: in both
+    // cases the script gets "", not an unterminated buffer.
     size_t n = strftime(buf, sizeof(buf), fmt, &tm);
     lua_pushlstring(L, buf, n);
     return 1;
 }
 
-// sys.set_time(secondi UTC): usata da host.clock() in lib/host.lua.
+// sys.set_time(UTC seconds): used by host.clock() in lib/host.lua.
 static int sys_set_time(lua_State *L)
 {
     if (!clock_set((time_t)luaL_checkinteger(L, 1))) return luaL_error(L, "sys.set_time: time before 2023");
@@ -502,9 +502,9 @@ static void open_sys(lua_State *L)
 }
 
 // ---------------------------------------------------------------------------
-// fs (sola lettura, solo /payloads e /data)
+// fs (read-only, /payloads and /data only)
 
-// Percorso dello script ("/data/x.csv") -> percorso VFS ("/sd/data/x.csv").
+// Script path ("/data/x.csv") -> VFS path ("/sd/data/x.csv").
 static const char *fs_path(lua_State *L, int idx, char *out, size_t len)
 {
     const char *p = luaL_checkstring(L, idx);
@@ -519,8 +519,8 @@ static int fs_read(lua_State *L)
 {
     char path[PAYLOAD_PATH_MAX];
     fs_path(L, 1, path, sizeof(path));
-    // Il buffer prima del file: se l'allocazione fallisce Lua solleva un
-    // errore e un FILE già aperto non verrebbe più chiuso (max_files = 8).
+    // The buffer before the file: if the allocation fails Lua raises an
+    // error and an already open FILE would never be closed (max_files = 8).
     luaL_Buffer b;
     char *dst = luaL_buffinitsize(L, &b, FS_READ_MAX);
     FILE *f = fopen(path, "rb");
@@ -537,8 +537,8 @@ static int fs_read(lua_State *L)
     return 1;
 }
 
-// fs.lines restituisce un iteratore che tiene aperto il file in un
-// userdata: __gc lo chiude anche se lo script esce dal for a metà.
+// fs.lines returns an iterator that keeps the file open in a
+// userdata: __gc closes it even if the script leaves the for loop midway.
 static int lines_gc(lua_State *L)
 {
     FILE **f = luaL_checkudata(L, 1, "inj.lines");
@@ -617,28 +617,28 @@ static void open_fs(lua_State *L)
 }
 
 // ---------------------------------------------------------------------------
-// host: canale di ritorno dal PC sulla seriale CDC.
+// host: return channel from the PC over the CDC serial port.
 //
-// Il PC scrive una riga "@G<nonce>:<codice>" sulla porta seriale del dongle
-// (lo fa il comando che lo script ha digitato, vedi lib/host.lua). Passa solo
-// "finito" e un codice di uscita numerico: nient'altro del PC arriva allo
-// script, e ogni altra riga è scartata dal filtro. Il nonce lega la risposta
-// al comando atteso, così una risposta vecchia non viene scambiata per nuova.
+// The PC writes a line "@G<nonce>:<code>" to the dongle's serial port
+// (the command the script typed does it, see lib/host.lua). Only "finished"
+// and a numeric exit code get through: nothing else from the PC reaches the
+// script, and every other line is discarded by the filter. The nonce binds the
+// reply to the expected command, so an old reply is not mistaken for a new one.
 
 static struct {
     char nonce[16];
-    volatile bool armed; // il filtro accetta una risposta con questo nonce
-    bool pending;        // expect() chiamata e wait() non ancora
+    volatile bool armed; // the filter accepts a reply with this nonce
+    bool pending;        // expect() called and wait() not yet
     volatile int code;
-    char text[264]; // testo ripulito dopo i due punti (get/log)
+    char text[264]; // sanitized text after the colon (get/log)
     SemaphoreHandle_t sem;
 } s_host;
 
-// Deve stare in una riga della console (devcon LINE_LEN) insieme a "@G<nonce>:"
+// Must fit in one console line (devcon LINE_LEN) together with "@G<nonce>:"
 #define HOST_TEXT_MAX 256
 
-// Lunghezza della sequenza UTF-8 multibyte valida che inizia in s, 0 se non
-// lo è (ASCII, byte di continuazione isolato, sequenza troncata)
+// Length of the valid multibyte UTF-8 sequence starting at s, 0 if there is
+// none (ASCII, stray continuation byte, truncated sequence)
 static int utf8_seq(const unsigned char *s)
 {
     int n = s[0] >= 0xC2 && s[0] <= 0xDF ? 2 : s[0] >= 0xE0 && s[0] <= 0xEF ? 3 : s[0] >= 0xF0 && s[0] <= 0xF4 ? 4 : 0;
@@ -648,11 +648,11 @@ static int utf8_seq(const unsigned char *s)
     return n;
 }
 
-// Ripulisce un testo arrivato dal PC: solo caratteri innocui per CSV e per
-// essere ridigitati (A-Z a-z 0-9 . _ : - e spazio, più i caratteri UTF-8
-// non ASCII: lettere accentate di un commento in italiano), il resto
-// diventa '_'. strict = solo A-Z a-z 0-9 _ - (nomi di file). Spazi ai bordi
-// tolti. `max` conta i byte; un carattere UTF-8 non viene mai tagliato a metà.
+// Sanitizes a text received from the PC: only characters harmless for CSV and
+// for being typed again (A-Z a-z 0-9 . _ : - and space, plus non-ASCII UTF-8
+// characters: accented letters of a comment in Italian), the rest becomes
+// '_'. strict = only A-Z a-z 0-9 _ - (file names). Leading and trailing
+// spaces removed. `max` counts bytes; a UTF-8 character is never cut in half.
 static void host_clean(char *dst, size_t dstlen, const char *src, size_t max, bool strict)
 {
     size_t n = 0;
@@ -676,7 +676,7 @@ static void host_clean(char *dst, size_t dstlen, const char *src, size_t max, bo
     if (p != dst) memmove(dst, p, strlen(p) + 1);
 }
 
-// Chiamato dal task della console per ogni riga ricevuta sulla CDC.
+// Called by the console task for every line received on the CDC.
 static bool host_filter(const char *line)
 {
     if (strncmp(line, "@G", 2) != 0) return false;
@@ -686,13 +686,13 @@ static bool host_filter(const char *line)
     if (n != strlen(s_host.nonce) || strncmp(line + 2, s_host.nonce, n) != 0) return true;
     s_host.code = atoi(colon + 1);
     host_clean(s_host.text, sizeof(s_host.text), colon + 1, HOST_TEXT_MAX, false);
-    s_host.armed = false; // vale la prima risposta
+    s_host.armed = false; // the first reply wins
     xSemaphoreGive(s_host.sem);
     return true;
 }
 
-// host.expect(nonce): da chiamare PRIMA di digitare il comando; se la risposta
-// arrivasse mentre lo script sta ancora digitando andrebbe persa.
+// host.expect(nonce): call it BEFORE typing the command; a reply arriving
+// while the script is still typing would otherwise be lost.
 static int host_expect(lua_State *L)
 {
     const char *nonce = luaL_checkstring(L, 1);
@@ -700,18 +700,18 @@ static int host_expect(lua_State *L)
     luaL_argcheck(L, n > 0 && n < sizeof(s_host.nonce), 1, "1..15 characters");
     for (size_t i = 0; i < n; i++) luaL_argcheck(L, isalnum((unsigned char)nonce[i]), 1, "letters and digits only");
     s_host.armed = false;
-    xSemaphoreTake(s_host.sem, 0); // scarta una risposta rimasta in sospeso
+    xSemaphoreTake(s_host.sem, 0); // discard a leftover pending reply
     strlcpy(s_host.nonce, nonce, sizeof(s_host.nonce));
     s_host.pending = true;
     s_host.armed = true;
     return 0;
 }
 
-// host.wait([timeout_ms]) -> codice di uscita, testo; nil allo scadere (default 60 s).
-// Il testo (max 256 caratteri ripuliti) serve a host.get; con host.run è il codice in cifre.
-// host.wait([timeout_ms [, on_click]]): con on_click un click del pulsante
-// restituisce false e lascia l'attesa armata (host.input preme Invio al posto
-// dell'utente e attende di nuovo lo stesso nonce).
+// host.wait([timeout_ms]) -> exit code, text; nil on timeout (default 60 s).
+// The text (max 256 sanitized characters) is for host.get; with host.run it is the code in digits.
+// host.wait([timeout_ms [, on_click]]): with on_click a button click
+// returns false and leaves the wait armed (host.input presses Enter on the
+// user's behalf and waits again for the same nonce).
 static int host_wait(lua_State *L)
 {
     if (!s_host.pending) return luaL_error(L, "call host.expect() first");
@@ -755,9 +755,9 @@ static void open_host(lua_State *L)
 }
 
 // ---------------------------------------------------------------------------
-// disk: la SD come disco in sola lettura sul PC, mentre la tastiera resta
-// attiva. Solo primitive lato dongle: i comandi per copiare ed espellere
-// sul PC li digita lo script con kb.type.
+// disk: the SD as a read-only disk on the PC, while the keyboard stays
+// active. Dongle-side primitives only: the commands to copy and eject on
+// the PC are typed by the script with kb.type.
 
 static bool s_attached;
 
@@ -768,11 +768,11 @@ static void disk_release(void)
     if (!s_attached) return;
     app_usb_apply(USB_PROFILE_HID);
     s_attached = false;
-    hlog_flush(); // dopo il detach la SD è di nuovo solo del dongle
+    hlog_flush(); // after the detach the SD belongs to the dongle alone again
 }
 
-// disk.attach([timeout_ms]): il dongle si ri-enumera, quindi attende che
-// l'host rimonti la tastiera. Il mouse non è disponibile finché il disco è collegato.
+// disk.attach([timeout_ms]): the dongle re-enumerates, so it waits for the
+// host to mount the keyboard again. The mouse is unavailable while the disk is attached.
 static int disk_attach(lua_State *L)
 {
     lua_Integer t = luaL_optinteger(L, 1, 15000);
@@ -788,8 +788,8 @@ static int disk_attach(lua_State *L)
     return 0;
 }
 
-// disk.wait_eject([timeout_ms]): "eject" se l'host ha espulso il disco,
-// "click" se l'utente ha premuto il pulsante, nil allo scadere del tempo.
+// disk.wait_eject([timeout_ms]): "eject" if the host ejected the disk,
+// "click" if the user pressed the button, nil when the time runs out.
 static int disk_wait_eject(lua_State *L)
 {
     if (!s_attached) return luaL_error(L, "call disk.attach() first");
@@ -819,10 +819,10 @@ static int disk_detach(lua_State *L)
 
 
 // ---------------------------------------------------------------------------
-// Log per macchina: /logs/host/<id>.csv, una riga "data,script,etichetta,valore".
-// Il firmware compone il percorso da un id ripulito, mai da testo del PC.
-// Con il disco collegato la SD è condivisa col PC: scriverci rischia di
-// lasciargli una FAT incoerente, quindi le righe aspettano in RAM fino al detach.
+// Per-machine log: /logs/host/<id>.csv, one line "date,script,label,value".
+// The firmware builds the path from a sanitized id, never from PC text.
+// With the disk attached the SD is shared with the PC: writing to it risks
+// leaving the PC an inconsistent FAT, so the lines wait in RAM until the detach.
 
 #define HLOG_DIR      "/sd/logs/host"
 #define HLOG_MAX_FILE (256 * 1024)
@@ -833,7 +833,7 @@ typedef struct {
     char id[28], line[384];
 } hlog_t;
 
-static hlog_t *s_hlog_q; // allocata solo se serve
+static hlog_t *s_hlog_q; // allocated only when needed
 static int s_hlog_n;
 
 static esp_err_t hlog_write(const char *id, const char *line)
@@ -842,7 +842,7 @@ static esp_err_t hlog_write(const char *id, const char *line)
     snprintf(path, sizeof(path), HLOG_DIR "/%s.csv", id);
     struct stat st;
     if (stat(path, &st) != 0) {
-        // File nuovo: tetto al numero di macchine, così un PC non riempie la SD di file
+        // New file: cap on the number of machines, so a PC cannot fill the SD with files
         mkdir("/sd/logs", 0777);
         mkdir(HLOG_DIR, 0777);
         int count = 0;
@@ -863,14 +863,14 @@ static esp_err_t hlog_write(const char *id, const char *line)
 static void hlog_flush(void)
 {
     for (int i = 0; i < s_hlog_n; i++) {
-        if (hlog_write(s_hlog_q[i].id, s_hlog_q[i].line) != ESP_OK) ESP_LOGW(TAG, "log host: riga persa");
+        if (hlog_write(s_hlog_q[i].id, s_hlog_q[i].line) != ESP_OK) ESP_LOGW(TAG, "host log: line lost");
     }
     s_hlog_n = 0;
     free(s_hlog_q);
     s_hlog_q = NULL;
 }
 
-// host.append(id, data, etichetta, valore): usata da lib/host.lua.
+// host.append(id, date, label, value): used by lib/host.lua.
 static int host_append(lua_State *L)
 {
     char id[28], date[32], label[28], value[HOST_TEXT_MAX + 1], script[48];
@@ -905,10 +905,10 @@ static void open_disk(lua_State *L)
 }
 
 // ---------------------------------------------------------------------------
-// cfg e require
+// cfg and require
 
-// cfg("chiave", default): valore di config.lua come stringa (o il default).
-// I segreti restano fuori: si usano solo con kb.type_secret.
+// cfg("key", default): config.lua value as a string (or the default).
+// Secrets stay out: they are usable only with kb.type_secret.
 static int l_cfg(lua_State *L)
 {
     const char *key = luaL_checkstring(L, 1);
@@ -918,7 +918,7 @@ static int l_cfg(lua_State *L)
     return 1;
 }
 
-// require("nome") carica /payloads/lib/nome.lua una volta sola.
+// require("name") loads /payloads/lib/name.lua only once.
 static int l_require(lua_State *L)
 {
     const char *name = luaL_checkstring(L, 1);
@@ -927,10 +927,10 @@ static int l_require(lua_State *L)
     }
     lua_getfield(L, LUA_REGISTRYINDEX, "inj.loaded");
     lua_getfield(L, -1, name);
-    // Il segnaposto "loading" marca un modulo in caricamento: ritrovarlo qui
-    // vuol dire che due moduli si richiedono a vicenda. Senza questo controllo
-    // la ricorsione finirebbe lo stack C del task (10 KB) prima del limite di
-    // annidamento di Lua, con un panic invece di un errore dello script.
+    // The "loading" placeholder marks a module being loaded: finding it here
+    // means two modules require each other. Without this check the recursion
+    // would exhaust the task's C stack (10 KB) before Lua's nesting limit,
+    // with a panic instead of a script error.
     if (lua_type(L, -1) == LUA_TLIGHTUSERDATA) return luaL_error(L, "require loop on module '%s'", name);
     if (!lua_isnil(L, -1)) return 1;
     lua_pop(L, 1);
@@ -941,7 +941,7 @@ static int l_require(lua_State *L)
     char path[PAYLOAD_PATH_MAX], err[160];
     snprintf(path, sizeof(path), "%s/%s.lua", PAYLOAD_LIB_DIR, name);
     if (!luart_dofile(L, path, 1, err, sizeof(err))) {
-        // Tolto il segnaposto, un nuovo require dello stesso modulo riprova
+        // With the placeholder removed, a new require of the same module retries
         lua_pushnil(L);
         lua_setfield(L, -2, name);
         return luaL_error(L, "%s", err);
@@ -967,20 +967,20 @@ static void on_timeout(void *arg)
 {
     inj_run_t *r = arg;
     r->timed_out = true;
-    // Con l'evento in coda si chiudono anche ui.menu e ui.confirm, che
-    // attendono senza scadenza; il solo flag fermava soltanto il codice Lua.
+    // With the event queued ui.menu and ui.confirm, which wait with no
+    // deadline, close too; the flag alone stopped only the Lua code.
     app_post(r->ctx, APP_EV_EXIT, 0);
 }
 
-// Tempo in ms da config.lua, limitato a 0..60000 come kb.speed: i campi di
-// hid_timing_t sono uint16_t e un -1 diventava 65535.
+// Time in ms from config.lua, clamped to 0..60000 like kb.speed: the
+// hid_timing_t fields are uint16_t and a -1 became 65535.
 static int config_ms(const char *key, int def)
 {
     int v = config_int(key, def);
     return v < 0 ? 0 : (v > 60000 ? 60000 : v);
 }
 
-// Default da config.lua, poi intestazione dello script.
+// Defaults from config.lua, then the script header.
 static void apply_settings(const payload_meta_t *m)
 {
     hid_reset();
@@ -1016,7 +1016,7 @@ static void lua_run(inj_run_t *r)
         esp_timer_start_once(timer, m->timeout * 1000000LL);
     }
 
-    // Attesa dell'host, poi start_delay: l'host deve aver caricato il driver
+    // Wait for the host, then start_delay: the host must have loaded the driver
     r->waiting_host = true;
     inj_redraw(r);
     INJ_HOOK(r, state, r);
@@ -1028,7 +1028,7 @@ static void lua_run(inj_run_t *r)
     if (hr == HID_OK) hr = hid_sleep(m->start_delay >= 0 ? m->start_delay : config_ms("keyboard.start_delay", 1000));
 
     if (hr == HID_OK) {
-        // 2 KB liberi bastano a sollevare e propagare l'errore di overflow
+        // 2 KB free are enough to raise and propagate the overflow error
         luart_opts_t opts = {
             .mem_limit = LUA_MEM_LIMIT, .abort_flag = &r->ctx->exit_requested, .stack_guard = 2048};
         lua_State *L = luart_new(&opts);
@@ -1050,7 +1050,7 @@ static void lua_run(inj_run_t *r)
             lua_register(L, "require", l_require);
 
             r->ok = luart_dofile(L, m->path, 0, r->error, sizeof(r->error));
-            // Un errore va anche nel log su SD (syslog copia solo W/E)
+            // An error also goes to the SD log (syslog copies only W/E)
             if (r->ok) ESP_LOGI(TAG, "%s: ok (Lua peak %u B)", m->path, (unsigned)luart_mem_peak(L));
             else ESP_LOGW(TAG, "%s: %s (Lua peak %u B)", m->path, r->error, (unsigned)luart_mem_peak(L));
             luart_close(L);
@@ -1064,7 +1064,7 @@ static void lua_run(inj_run_t *r)
     devcon_set_line_filter(NULL);
     hid_set_poll(NULL, NULL);
     hid_release_all();
-    disk_release(); // script finito o interrotto con il disco ancora collegato
+    disk_release(); // script finished or interrupted with the disk still attached
     s_run = NULL;
 }
 

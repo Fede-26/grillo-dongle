@@ -81,8 +81,8 @@ void gfx_round_rect(int x, int y, int w, int h, int r, uint32_t rgb, bool filled
 {
     uint16_t c = gfx_rgb(rgb);
     for (int yy = 0; yy < h; yy++) {
-        // Distanza dall'angolo più vicino in verticale, per calcolare
-        // quanti pixel "tagliare" ai lati su questa riga.
+        // Vertical distance from the nearest corner, to work out how
+        // many pixels to "cut" at the sides on this row.
         int dy = yy < r ? r - yy - 1 : (yy >= h - r ? yy - (h - r) : -1);
         int inset = 0;
         if (dy >= 0) {
@@ -94,7 +94,7 @@ void gfx_round_rect(int x, int y, int w, int h, int r, uint32_t rgb, bool filled
         } else {
             gfx_pixel(x + inset, y + yy, c);
             gfx_pixel(x + w - 1 - inset, y + yy, c);
-            // Sulle righe curve servono più pixel per chiudere il bordo
+            // Curved rows need more pixels to close the border
             if (dy >= 0) {
                 int prev = yy < r ? yy - 1 : yy + 1;
                 int pdy = prev < r ? r - prev - 1 : (prev >= h - r ? prev - (h - r) : -1);
@@ -132,7 +132,7 @@ void gfx_arc(int cx, int cy, int r, int thick, int deg, uint32_t rgb)
         for (int dx = -r; dx <= r; dx++) {
             int d = dx * dx + dy * dy;
             if (d > ro2 || d < ri2) continue;
-            // Angolo in senso orario dalle ore 12
+            // Clockwise angle from 12 o'clock
             float a = atan2f((float)dx, (float)-dy) * 57.29578f;
             if (a < 0) a += 360.0f;
             if (a <= deg) gfx_pixel(cx + dx, cy + dy, c);
@@ -140,7 +140,7 @@ void gfx_arc(int cx, int cy, int r, int thick, int deg, uint32_t rgb)
     }
 }
 
-// Decodifica UTF-8 minimale: restituisce il codepoint e avanza *s.
+// Minimal UTF-8 decoding: returns the codepoint and advances *s.
 static uint32_t utf8_next(const char **s)
 {
     const uint8_t *p = (const uint8_t *)*s;
@@ -160,7 +160,7 @@ static uint32_t utf8_next(const char **s)
 
 static int glyph_index(const gfx_font_t *f, uint32_t cp)
 {
-    if (cp >= 0x20 && cp < 0x7F) return cp - 0x20; // ASCII: accesso diretto
+    if (cp >= 0x20 && cp < 0x7F) return cp - 0x20; // ASCII: direct access
     for (int i = 0x7F - 0x20; i < f->count; i++) {
         if (f->codepoints[i] == cp) return i;
     }
@@ -235,13 +235,13 @@ void gfx_text_fit(const gfx_font_t *f, int x, int y, int max_w, const char *s, u
         gfx_text(f, x, y, s, rgb);
         return;
     }
-    // Tronca carattere per carattere finché testo + "…" entra.
+    // Truncate character by character until text + "…" fits.
     char buf[96];
     size_t n = strnlen(s, sizeof(buf) - 4);
     memcpy(buf, s, n);
     int ell = gfx_text_width(f, "…") + 1;
     while (n > 0) {
-        // Arretra di un intero carattere UTF-8
+        // Step back by a whole UTF-8 character
         do { n--; } while (n > 0 && ((uint8_t)buf[n] & 0xC0) == 0x80);
         buf[n] = 0;
         if (gfx_text_width(f, buf) + ell <= max_w) break;

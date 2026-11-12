@@ -1,4 +1,4 @@
-// Comandi di sistema della console di debug (vedi components/devcon).
+// System commands of the debug console (see components/devcon).
 
 #include <dirent.h>
 #include <stdio.h>
@@ -54,7 +54,7 @@ static int cmd_launch(int argc, char **argv)
         return 1;
     }
     appmgr_launch(a, argc > 2 ? argv[2] : NULL);
-    appmgr_request_exit(); // l'app corrente (anche il launcher) cede il posto
+    appmgr_request_exit(); // the current app (even the launcher) gives way
     return 0;
 }
 
@@ -71,7 +71,7 @@ static int cmd_btn(int argc, char **argv)
         gesture_t g;
     } map[] = {
         {"click", GESTURE_CLICK}, {"double", GESTURE_DOUBLE}, {"long", GESTURE_LONG}, {"hold", GESTURE_HOLD_EXIT},
-        // Solo il segnale della pressione lunga, senza evento: serve agli screenshot
+        // Only the long-press cue, without an event: used for screenshots
         {"armed", GESTURE_LONG_ARMED},
     };
     for (size_t i = 0; argc > 1 && i < sizeof(map) / sizeof(map[0]); i++) {
@@ -84,7 +84,7 @@ static int cmd_btn(int argc, char **argv)
     return 1;
 }
 
-// Screenshot: framebuffer RGB565 (byte-swapped) in base64, righe da 76 caratteri.
+// Screenshot: RGB565 framebuffer (byte-swapped) in base64, 76-character lines.
 static int cmd_shot(int argc, char **argv)
 {
     const size_t total = DISPLAY_W * DISPLAY_H * 2;
@@ -145,9 +145,9 @@ static int cmd_cat(int argc, char **argv)
 static int cmd_config(int argc, char **argv)
 {
     if (argc >= 2 && strcmp(argv[1], "reload") == 0) {
-        // Ricaricare mentre un'app gira libererebbe stringhe che l'app sta
-        // usando: si ricarica tra un'app e l'altra, dal gestore. Dal
-        // launcher basta farlo ripartire.
+        // Reloading while an app is running would free strings the app is
+        // using: the manager reloads between one app and the next. From the
+        // launcher it is enough to restart it.
         const char *cur = appmgr_current_id();
         if (!cur || strcmp(cur, "launcher") != 0) {
             devcon_printf("exit the app first (config.lua is in use)\n");
@@ -183,8 +183,8 @@ static int cmd_log(int argc, char **argv)
     return 1;
 }
 
-// Cambia profilo USB senza passare da un'app (diagnosi). L'app manager lo
-// riporta a quello dell'app al prossimo cambio app.
+// Switches the USB profile without going through an app (diagnostics). The app manager
+// restores the app's profile at the next app switch.
 static int cmd_usb(int argc, char **argv)
 {
     static const struct {

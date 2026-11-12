@@ -20,8 +20,8 @@
 
 static const char *TAG = "usbdev";
 
-// Un'opzione Kconfig bool disattivata non è definita affatto: usarla come
-// valore non compilava con sdkconfig.release.
+// A disabled Kconfig bool option is not defined at all: using it as a value
+// did not compile with sdkconfig.release.
 #ifdef CONFIG_GRILLO_USB_DEBUG_CDC
 #define DEBUG_CDC 1
 #else
@@ -35,34 +35,34 @@ static volatile bool s_mounted;
 static volatile uint8_t s_leds;
 static volatile bool s_msc_readonly;
 static tinyusb_msc_storage_handle_t s_msc;
-// La CDC è usata da altri task (console, host link): il mutex evita di
-// scriverci mentre viene distrutta durante un cambio profilo.
+// The CDC is used by other tasks (console, host link): the mutex prevents
+// writing to it while it is being destroyed during a profile change.
 static SemaphoreHandle_t s_cdc_lock;
 static bool s_cdc_active;
 static SemaphoreHandle_t s_parked, s_unpark;
 
-// Indice dell'istanza HID di tastiera e mouse (-1 se assente). TinyUSB
-// numera le istanze HID nell'ordine in cui compaiono nel descrittore.
+// Index of the keyboard and mouse HID instance (-1 if absent). TinyUSB
+// numbers the HID instances in the order they appear in the descriptor.
 static int s_hid_kbd = -1, s_hid_mouse = -1;
 
 // ---------------------------------------------------------------------------
-// Descrittori
+// Descriptors
 
 #define VID 0x303A // Espressif
-// Stesso schema dei PID degli esempi TinyUSB/esp_tinyusb: un bit per classe.
-// Uso solo personale: non sono PID assegnati ufficialmente.
+// Same scheme as the PIDs of the TinyUSB/esp_tinyusb examples: one bit per
+// class. Personal use only: these are not officially assigned PIDs.
 #define PID_BASE 0x4000
 #define PID_CDC  0x01
 #define PID_MSC  0x02
 #define PID_HID  0x04
-#define PID_NO_MOUSE 0x08 // composito senza mouse: interfacce diverse, PID diverso
+#define PID_NO_MOUSE 0x08 // composite without mouse: different interfaces, different PID
 
 enum { STR_LANG, STR_MANUF, STR_PRODUCT, STR_SERIAL, STR_CDC, STR_COUNT };
 
 static const uint8_t s_kbd_report[] = {TUD_HID_REPORT_DESC_KEYBOARD()};
 static const uint8_t s_mouse_report[] = {TUD_HID_REPORT_DESC_MOUSE()};
 
-// Spazio per il descrittore di configurazione più grande (tutte le interfacce)
+// Room for the largest configuration descriptor (all interfaces)
 static uint8_t s_cfg[TUD_CONFIG_DESC_LEN + 2 * TUD_HID_DESC_LEN + TUD_MSC_DESC_LEN + TUD_CDC_DESC_LEN];
 
 static tusb_desc_device_t s_dev = {
@@ -80,14 +80,14 @@ static tusb_desc_device_t s_dev = {
 
 static char s_serial[13];
 static const char *s_strings[STR_COUNT] = {
-    [STR_LANG] = (const char[]){0x09, 0x04}, // inglese (0x0409)
+    [STR_LANG] = (const char[]){0x09, 0x04}, // English (0x0409)
     [STR_MANUF] = "Grillo",
     [STR_CDC] = "Grillo Serial",
 };
 
-// Compone il descrittore di configurazione. Interfacce ed endpoint sono
-// assegnati in sequenza; la CDC va per ultima così le altre interfacce
-// mantengono lo stesso numero con o senza CDC.
+// Builds the configuration descriptor. Interfaces and endpoints are assigned
+// in sequence; the CDC goes last so the other interfaces keep the same
+// number with or without the CDC.
 static size_t build_config(uint32_t f)
 {
     uint8_t itf = 0, ep = 1;
@@ -97,8 +97,8 @@ static size_t build_config(uint32_t f)
     s_hid_kbd = s_hid_mouse = -1;
 
     if (f & USB_F_KBD) {
-        // bInterval 1 ms: fino a 1000 report/s, la digitazione non è
-        // limitata dal polling dell'host.
+        // bInterval 1 ms: up to 1000 reports/s, typing is not limited by
+        // the host's polling.
         uint8_t d[] = {TUD_HID_DESCRIPTOR(itf, 0, HID_ITF_PROTOCOL_KEYBOARD, sizeof(s_kbd_report), 0x80 | ep, 8, 1)};
         memcpy(p, d, sizeof(d));
         p += sizeof(d), len += sizeof(d), itf++, ep++;
@@ -126,7 +126,7 @@ static size_t build_config(uint32_t f)
 }
 
 // ---------------------------------------------------------------------------
-// Callback TinyUSB
+// TinyUSB callbacks
 
 uint8_t const *tud_hid_descriptor_report_cb(uint8_t instance)
 {
@@ -142,8 +142,8 @@ uint16_t tud_hid_get_report_cb(uint8_t instance, uint8_t report_id, hid_report_t
 void tud_hid_set_report_cb(uint8_t instance, uint8_t report_id, hid_report_type_t type, uint8_t const *buf,
                            uint16_t len)
 {
-    // L'unico output report è quello dei LED della tastiera: serve per
-    // sapere se sull'host è attivo Caps Lock / Num Lock.
+    // The only output report is the keyboard LEDs one: it tells whether
+    // Caps Lock / Num Lock is active on the host.
     if (instance == s_hid_kbd && type == HID_REPORT_TYPE_OUTPUT && len >= 1) s_leds = buf[0];
 }
 
@@ -165,23 +165,23 @@ static void on_msc_event(tinyusb_msc_storage_handle_t h, tinyusb_msc_event_t *e,
     ESP_LOGD(TAG, "msc event %d (mount point %d)", e->id, e->mount_point);
 }
 
-// Hook deboli di TinyUSB che esp_tinyusb lascia liberi.
+// TinyUSB weak hooks that esp_tinyusb leaves free.
 
-// Chiamata dopo ogni comando SCSI: la usiamo per diagnosi (log a livello
-// debug) e per rilevare l'espulsione.
+// Called after every SCSI command: we use it for diagnostics (debug-level
+// logs) and to detect the eject.
 void tud_msc_scsi_complete_cb(uint8_t lun, uint8_t const scsi_cmd[16])
 {
     uint8_t op = scsi_cmd[0];
-    // READ(10)/WRITE(10)/TEST UNIT READY sono continui: non li logghiamo
+    // READ(10)/WRITE(10)/TEST UNIT READY are continuous: we do not log them
     if (op != 0x28 && op != 0x2A && op != 0x00) ESP_LOGD(TAG, "scsi 0x%02X", op);
-    // START STOP UNIT con LoEj=1 e Start=0: l'host ha espulso il disco e ha
-    // già scritto tutto. esp_tinyusb con auto_mount_off non reagisce, quindi
-    // lo segnaliamo noi; l'app chiamerà usbdev_msc_detach().
+    // START STOP UNIT with LoEj=1 and Start=0: the host ejected the disk and
+    // has already written everything. esp_tinyusb with auto_mount_off does not
+    // react, so we signal it ourselves; the app will call usbdev_msc_detach().
     if (op == 0x1B && (scsi_cmd[4] & 0x03) == 0x02 && s_cb) s_cb(USBDEV_EV_MSC_EJECTED);
 }
 
-// Disco in sola lettura per l'host (MODE SENSE con write-protect): serve
-// quando il firmware tiene la SD montata in parallelo.
+// Read-only disk for the host (MODE SENSE with write-protect): needed when
+// the firmware keeps the SD mounted in parallel.
 bool tud_msc_is_writable_cb(uint8_t lun)
 {
     return !s_msc_readonly;
@@ -226,25 +226,25 @@ bool usbdev_has_mouse(void)
     return s_hid_mouse >= 0 && s_profile != USB_PROFILE_NONE;
 }
 
-// Riassegna la PHY interna alla USB-Serial-JTAG. usb_del_phy() (chiamata
-// da tinyusb_driver_uninstall) disabilita i pad ma lascia il mux sull'OTG:
-// senza questo la porta seriale/flash non riappare finché non si scollega.
+// Reassigns the internal PHY to the USB-Serial-JTAG. usb_del_phy() (called
+// by tinyusb_driver_uninstall) disables the pads but leaves the mux on the
+// OTG: without this the serial/flash port does not reappear until unplugged.
 static void restore_usj_phy(void)
 {
-    usb_serial_jtag_ll_phy_enable_external(false); // PHY interna -> USJ
+    usb_serial_jtag_ll_phy_enable_external(false); // internal PHY -> USJ
     usb_serial_jtag_ll_phy_disable_pull_override();
     usb_serial_jtag_ll_phy_enable_pad(true);
 }
 
-// tinyusb_driver_uninstall elimina il task di TinyUSB dall'esterno
-// (vTaskDelete) in un punto qualunque. Se in quel momento il task serviva
-// una lettura del disco, il mutex del controller SDMMC restava preso per
-// sempre e la FAT del firmware si bloccava alla prima lettura: visto il
-// 2026-11-10 con disk.detach mentre il Mac (Spotlight) leggeva il disco.
-// Questa funzione la esegue il task stesso tra un evento e l'altro, dove non
-// tiene risorse, e lo ferma lì finché non lo si sblocca o lo si elimina.
-// Semafori e non vTaskSuspend: uno sblocco chiesto prima che il task si sia
-// fermato non va perso.
+// tinyusb_driver_uninstall deletes the TinyUSB task from outside
+// (vTaskDelete) at an arbitrary point. If at that moment the task was serving
+// a disk read, the SDMMC controller mutex stayed taken forever and the
+// firmware's FAT hung on the first read: seen on 2026-11-10 with disk.detach
+// while the Mac (Spotlight) was reading the disk.
+// This function is run by the task itself between one event and the next,
+// where it holds no resources, and stops it there until it is unblocked or
+// deleted. Semaphores and not vTaskSuspend: an unblock requested before the
+// task has stopped is not lost.
 static void park_tinyusb(void *arg)
 {
     xSemaphoreGive(s_parked);
@@ -254,27 +254,27 @@ static void park_tinyusb(void *arg)
 static void park(void)
 {
     usbd_defer_func(park_tinyusb, NULL, false);
-    if (xSemaphoreTake(s_parked, pdMS_TO_TICKS(1000)) != pdTRUE) ESP_LOGW(TAG, "task TinyUSB non fermato");
+    if (xSemaphoreTake(s_parked, pdMS_TO_TICKS(1000)) != pdTRUE) ESP_LOGW(TAG, "TinyUSB task not stopped");
 }
 
 static void teardown(void)
 {
     if (s_profile == USB_PROFILE_NONE) return;
-    // Segnali rimasti da un teardown precedente in cui il task non si era
-    // fermato in tempo: farebbero credere parcheggiato un task che non lo è.
+    // Signals left over from a previous teardown in which the task did not
+    // stop in time: they would make a task look parked when it is not.
     xSemaphoreTake(s_parked, 0);
     xSemaphoreTake(s_unpark, 0);
-    // Staccandoci dal bus l'host smette di inviare comandi; quelli già
-    // ricevuti il task li completa prima di arrivare al parcheggio.
+    // Once we detach from the bus the host stops sending commands; the task
+    // completes those already received before reaching the parking point.
     tud_disconnect();
     park();
     if (s_msc) {
-        // Con una copia in corso esp_tinyusb rifiuta di eliminare lo storage
-        // finché restano scritture differite, che esegue il task di TinyUSB:
-        // lo si sblocca finché non le ha scritte (la coda è FIFO, quindi le
-        // esegue prima del parcheggio successivo). Senza questa attesa il
-        // driver MSC restava allocato e ogni profilo successivo con il disco
-        // falliva fino al riavvio.
+        // With a copy in progress esp_tinyusb refuses to delete the storage
+        // while deferred writes remain, which the TinyUSB task executes: it is
+        // unblocked until it has written them (the queue is FIFO, so it runs
+        // them before the next parking). Without this wait the MSC driver
+        // stayed allocated and every later profile with the disk failed until
+        // the reboot.
         esp_err_t e = ESP_FAIL;
         for (int i = 0; i < 200; i++) {
             e = tinyusb_msc_delete_storage(s_msc);
@@ -303,24 +303,24 @@ static void teardown(void)
     restore_usj_phy();
 }
 
-// Endpoint IN usati, escluso EP0: uno per tastiera, mouse e disco, due per
-// la CDC (notifiche e dati).
+// IN endpoints used, excluding EP0: one each for keyboard, mouse and disk,
+// two for the CDC (notifications and data).
 static int in_endpoints(uint32_t f)
 {
     return !!(f & USB_F_KBD) + !!(f & USB_F_MOUSE) + !!(f & USB_F_DISK) + ((f & USB_F_CDC) ? 2 : 0);
 }
 
-// Con tastiera + mouse + disco + CDC (5) l'installazione riesce ma il Mac
-// enumera solo l'HID e perde disco e seriale (provato sul dispositivo il
-// 2026-11-09); con 4 (tastiera + disco + CDC) funziona. Il limite è quello
-// misurato: meglio rifiutare il profilo che enumerarlo a metà.
+// With keyboard + mouse + disk + CDC (5) the installation succeeds but the
+// Mac enumerates only the HID and loses disk and serial (tested on the device
+// on 2026-11-09); with 4 (keyboard + disk + CDC) it works. The limit is the
+// measured one: better to refuse the profile than to enumerate it halfway.
 #define MAX_IN_ENDPOINTS 4
 
 static esp_err_t msc_create(sdmmc_card_t *card)
 {
-    // Lo storage va creato prima di installare il driver, così all'enumerazione
-    // il disco è già presente. auto_mount_off: niente rimontaggio automatico
-    // sulla VFS al distacco, il possesso della SD lo gestisce storage.c.
+    // The storage must be created before installing the driver, so the disk is
+    // already present at enumeration. auto_mount_off: no automatic remount on
+    // the VFS on detach, storage.c manages ownership of the SD.
     tinyusb_msc_driver_config_t mcfg = {
         .user_flags.auto_mount_off = 1,
         .callback = on_msc_event,
@@ -328,10 +328,10 @@ static esp_err_t msc_create(sdmmc_card_t *card)
     ESP_RETURN_ON_ERROR(tinyusb_msc_install_driver(&mcfg), TAG, "msc driver");
     tinyusb_msc_storage_config_t scfg = {
         .medium.card = card,
-        // Path diverso da /sd: è dove esp_tinyusb monta la scheda dopo
-        // l'espulsione, e non deve sovrapporsi alla VFS di storage.c.
+        // Path other than /sd: it is where esp_tinyusb mounts the card after
+        // the eject, and it must not overlap storage.c's VFS.
         .fat_fs.base_path = "/usbmsc",
-        // Mai formattare: una scheda non FAT resta intatta.
+        // Never format: a non-FAT card stays intact.
         .fat_fs.do_not_format = true,
         .mount_point = TINYUSB_MSC_STORAGE_MOUNT_USB,
     };
@@ -353,16 +353,17 @@ esp_err_t usbdev_apply(usb_profile_t profile, sdmmc_card_t *msc_card)
     if (profile == s_profile) return ESP_OK;
     teardown();
     if (profile == USB_PROFILE_NONE) {
-        ESP_LOGI(TAG, "profilo NONE");
+        ESP_LOGI(TAG, "profile NONE");
         return ESP_OK;
     }
-    // La seriale di debug si aggiunge a ogni profilo; la tiene il profilo
-    // attivo (s_profile), così il confronto con quello richiesto resta esatto.
+    // The debug serial is added to every profile; the active profile
+    // (s_profile) does not include it, so the comparison with the requested one
+    // stays exact.
     uint32_t f = profile | (DEBUG_CDC ? USB_F_CDC : 0);
-    ESP_RETURN_ON_FALSE((f & USB_F_DISK) != USB_F_DISK, ESP_ERR_INVALID_ARG, TAG, "disco RW e RO insieme");
-    ESP_RETURN_ON_FALSE(in_endpoints(f) <= MAX_IN_ENDPOINTS, ESP_ERR_NOT_SUPPORTED, TAG, "troppi endpoint IN (0x%x)",
+    ESP_RETURN_ON_FALSE((f & USB_F_DISK) != USB_F_DISK, ESP_ERR_INVALID_ARG, TAG, "disk RW and RO together");
+    ESP_RETURN_ON_FALSE(in_endpoints(f) <= MAX_IN_ENDPOINTS, ESP_ERR_NOT_SUPPORTED, TAG, "too many IN endpoints (0x%x)",
                         (unsigned)f);
-    ESP_RETURN_ON_FALSE(!(f & USB_F_DISK) || msc_card, ESP_ERR_INVALID_ARG, TAG, "disco senza scheda");
+    ESP_RETURN_ON_FALSE(!(f & USB_F_DISK) || msc_card, ESP_ERR_INVALID_ARG, TAG, "disk without a card");
 
     if (!s_serial[0]) {
         uint8_t mac[6];
@@ -373,7 +374,7 @@ esp_err_t usbdev_apply(usb_profile_t profile, sdmmc_card_t *msc_card)
     }
     s_dev.idProduct = PID_BASE | ((f & USB_F_CDC) ? PID_CDC : 0) | ((f & USB_F_DISK) ? PID_MSC : 0) |
                       ((f & USB_F_KBD) ? PID_HID : 0) | ((f & USB_F_KBD) && !(f & USB_F_MOUSE) ? PID_NO_MOUSE : 0);
-    // Con la CDC serve l'IAD (Interface Association), quindi classe "misc"
+    // With the CDC the IAD (Interface Association) is needed, hence class "misc"
     bool iad = f & USB_F_CDC;
     s_dev.bDeviceClass = iad ? TUSB_CLASS_MISC : 0;
     s_dev.bDeviceSubClass = iad ? MISC_SUBCLASS_COMMON : 0;
@@ -387,7 +388,7 @@ esp_err_t usbdev_apply(usb_profile_t profile, sdmmc_card_t *msc_card)
     cfg.descriptor.string_count = STR_COUNT;
     cfg.descriptor.full_speed_config = s_cfg;
 
-    // In sola lettura la SD resta montata anche dal firmware
+    // When read-only the SD also stays mounted by the firmware
     s_msc_readonly = f & USB_F_DISK_RO;
     if (f & USB_F_DISK) ESP_RETURN_ON_ERROR(msc_create(msc_card), TAG, "msc");
 
@@ -412,14 +413,14 @@ esp_err_t usbdev_apply(usb_profile_t profile, sdmmc_card_t *msc_card)
             xSemaphoreGive(s_cdc_lock);
         }
     }
-    ESP_LOGI(TAG, "profilo %s (PID 0x%04X)", usbdev_profile_name(profile), s_dev.idProduct);
+    ESP_LOGI(TAG, "profile %s (PID 0x%04X)", usbdev_profile_name(profile), s_dev.idProduct);
     return ESP_OK;
 }
 
 void usbdev_msc_detach(void)
 {
-    // Lo storage passa "all'app": l'host vede il supporto come non presente
-    // e non lo rimonta (macOS ci riprova un secondo dopo l'espulsione).
+    // The storage goes "to the app": the host sees the medium as not present
+    // and does not remount it (macOS retries a second after the eject).
     if (s_msc) tinyusb_msc_set_storage_mount_point(s_msc, TINYUSB_MSC_STORAGE_MOUNT_APP);
 }
 
@@ -442,8 +443,8 @@ static bool wait_ready(int instance, uint32_t timeout_ms)
     uint32_t waited = 0;
     while (!tud_hid_n_ready(instance)) {
         if (s_profile == USB_PROFILE_NONE || waited >= timeout_ms) return false;
-        // Se l'host ha sospeso il bus, lo risvegliamo (es. PC in standby
-        // durante un'installazione lunga).
+        // If the host suspended the bus, we wake it up (e.g. PC in standby
+        // during a long installation).
         if (tud_suspended()) tud_remote_wakeup();
         vTaskDelay(1);
         waited++;
@@ -487,16 +488,16 @@ size_t usbdev_cdc_read(uint8_t *buf, size_t len)
 
 void usbdev_cdc_write(const uint8_t *buf, size_t len)
 {
-    // Timeout brevi: chi scrive può essere un log emesso dal task di
-    // TinyUSB stesso, che non deve mai restare bloccato qui.
+    // Short timeouts: the writer may be a log emitted by the TinyUSB task
+    // itself, which must never get stuck here.
     if (!s_cdc_lock || xSemaphoreTake(s_cdc_lock, pdMS_TO_TICKS(10)) != pdTRUE) return;
     int stalls = 0;
     while (len && s_cdc_active && tud_cdc_n_connected(0)) {
         size_t n = tinyusb_cdcacm_write_queue(TINYUSB_CDC_ACM_0, buf, len);
         tinyusb_cdcacm_write_flush(TINYUSB_CDC_ACM_0, 0);
         if (n == 0) {
-            // Buffer pieno: diamo tempo all'host di leggere (fino a ~100 ms),
-            // poi lasciamo perdere il resto piuttosto che bloccare.
+            // Buffer full: give the host time to read (up to ~100 ms), then
+            // drop the rest rather than block.
             if (++stalls > 100) break;
             vTaskDelay(1);
             continue;

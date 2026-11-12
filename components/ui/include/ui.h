@@ -5,13 +5,13 @@
 #include <stdint.h>
 #include "gfx.h"
 
-// Toolkit UI di Grillo: tema, status bar di sistema, primitive di layout.
+// Grillo UI toolkit: theme, system status bar, layout primitives.
 //
-// Lo schermo è diviso in due zone:
-//  - status bar (y 0..UI_BAR_H-1) + linea d'accento: di proprietà del sistema;
-//  - area contenuto (UI_CONTENT_Y..79): dell'app in primo piano.
-// Le notifiche di sistema (toast, barra di "tieni premuto per uscire")
-// vivono nella status bar, così non sporcano mai il contenuto dell'app.
+// The screen is split into two zones:
+//  - status bar (y 0..UI_BAR_H-1) + accent line: owned by the system;
+//  - content area (UI_CONTENT_Y..79): owned by the foreground app.
+// System notifications (toasts, the "hold to exit" bar) live in the status
+// bar, so they never dirty the app's content.
 
 #define UI_W          160
 #define UI_H          80
@@ -29,107 +29,108 @@
 #define UI_OK       0x3FB950
 #define UI_WARN     0xD29922
 #define UI_ERR      0xF85149
-#define UI_GRILLO   0x7CFC00 // verde del logo
+#define UI_GRILLO   0x7CFC00 // logo green
 
 typedef enum {
-    UI_IND_SD,   // 0 assente, 1 montata, 2 non FAT, 3 prestata all'host
-    UI_IND_USB,  // 0 nessun profilo, 1 HID, 2 MSC, 3 HID + disco
-    UI_IND_WIFI, // 0 spento, 1 connessione in corso, 2..5 RSSI a barre, 6 hotspot
+    UI_IND_SD,   // 0 absent, 1 mounted, 2 not FAT, 3 lent to the host
+    UI_IND_USB,  // 0 no profile, 1 HID, 2 MSC, 3 HID + disk
+    UI_IND_WIFI, // 0 off, 1 connecting, 2..5 RSSI bars, 6 hotspot
     UI_IND_COUNT,
 } ui_indicator_t;
 
 void ui_init(void);
 
-// Lock del framebuffer, per chi lo legge dall'esterno (screenshot).
+// Framebuffer lock, for whoever reads it from outside (screenshot).
 void ui_lock(void);
 void ui_unlock(void);
 
-// Disegno dell'area contenuto da parte dell'app:
+// Drawing of the content area by the app:
 //   ui_begin();  ...gfx_*...  ui_end();
-// ui_begin prende il lock, pulisce il contenuto e imposta il clipping;
-// ui_end ridisegna la status bar, invia il frame e rilascia il lock.
+// ui_begin takes the lock, clears the content and sets the clipping;
+// ui_end redraws the status bar, sends the frame and releases the lock.
 void ui_begin(void);
 void ui_end(void);
 
-// Come ui_begin/ui_end ma senza pulire né limitare all'area contenuto
-// (splash a schermo intero).
+// Like ui_begin/ui_end but without clearing or limiting to the content area
+// (full-screen splash).
 void ui_begin_full(void);
 void ui_end_full(void);
 
-// Stato mostrato nella status bar (ridisegnata subito).
+// State shown in the status bar (redrawn immediately).
 void ui_set_title(const char *title, uint32_t accent);
-// Copia il titolo corrente (per ripristinarlo dopo un dialogo).
+// Copies the current title (to restore it after a dialog).
 void ui_get_title(char *buf, size_t len);
 uint32_t ui_accent(void);
 void ui_set_indicator(ui_indicator_t ind, uint8_t value);
-// Avanzamento dell'hold di uscita 0..100; 0 = nascosto.
+// Progress of the exit hold 0..100; 0 = hidden.
 void ui_set_hold(uint8_t progress);
-// Pressione lunga "armata": la linea sotto la status bar diventa bianca
-// finché il rilascio vale come conferma.
+// "Armed" long press: the line below the status bar turns white while
+// releasing counts as confirmation.
 void ui_set_armed(bool armed);
-// Lampo breve della status bar (pressione lunga riconosciuta).
+// Short flash of the status bar (long press recognized).
 void ui_flash_bar(uint32_t ms);
-// Messaggio temporaneo al posto del titolo.
+// Temporary message in place of the title.
 void ui_toast(const char *msg, uint32_t color, uint32_t ms);
-// Nasconde la status bar (splash) o la ripristina.
+// Hides the status bar (splash) or restores it.
 void ui_bar_visible(bool visible);
 
-// --- Elementi di layout riutilizzabili (da chiamare tra begin/end) ---
+// --- Reusable layout elements (call between begin/end) ---
 
-// Riga di lista alta UI_ROW_H; `selected` la evidenzia con l'accento.
+// List row UI_ROW_H tall; `selected` highlights it with the accent.
 #define UI_ROW_H 11
 void ui_draw_row(int y, const char *text, const char *right, bool selected, bool enabled);
-// La riga selezionata che non entra scorre in orizzontale. Chi disegna la
-// lista la ridisegna di continuo finché ui_marquee_active() è vero (vale per
-// l'ultimo ui_draw_list); ui_marquee_reset() fa ripartire la pausa iniziale.
+// A selected row that does not fit scrolls horizontally. Whoever draws the
+// list keeps redrawing it while ui_marquee_active() is true (it refers to the
+// last ui_draw_list); ui_marquee_reset() restarts the initial pause.
 void ui_marquee_reset(void);
 bool ui_marquee_active(void);
-// Lista scrollabile: disegna `visible` righe a partire da `top`.
+// Scrollable list: draws `visible` rows starting from `top`.
 typedef const char *(*ui_label_fn)(int index, void *arg, const char **right, bool *enabled);
 void ui_draw_list(int top, int sel, int count, ui_label_fn label, void *arg);
 int ui_list_visible_rows(void);
-int ui_list_scroll(int top, int sel, int count); // nuovo `top` che mantiene `sel` visibile
+int ui_list_scroll(int top, int sel, int count); // new `top` that keeps `sel` visible
 
 void ui_draw_progress(int x, int y, int w, int h, int value, int max, uint32_t color);
-// Pallini di pagina centrati
+// Centered page dots
 void ui_draw_pager(int y, int count, int current, uint32_t color);
-// Testo su più righe con a capo automatico; restituisce le righe usate.
+// Multi-line text with automatic wrapping; returns the lines used.
 int ui_draw_wrapped(const gfx_font_t *f, int x, int y, int w, int max_lines, const char *text, uint32_t rgb);
-// Come ui_draw_wrapped ma senza troncare: salta le prime `skip` righe, disegna al
-// massimo `max_lines` righe intere e restituisce il numero TOTALE di righe del
-// testo (con max_lines = 0 non disegna nulla: serve a contare, per scorrere).
+// Like ui_draw_wrapped but without truncating: skips the first `skip` lines, draws
+// at most `max_lines` whole lines and returns the TOTAL number of lines of the
+// text (with max_lines = 0 it draws nothing: used to count, for scrolling).
 int ui_draw_wrapped_scroll(const gfx_font_t *f, int x, int y, int w, int max_lines, int skip, const char *text,
                            uint32_t rgb);
-// Barra in basso con suggerimenti per i gesti, es. "click next · hold back"
+// Bottom bar with gesture hints, e.g. "click next · hold back"
 void ui_draw_hint(const char *hint);
 
-// --- Testo a scorrimento automatico ---
+// --- Auto-scrolling text ---
 //
-// Testo su più righe in un'area di `lines` righe. Se non entra, scorre da
-// solo a passi di una riga: pausa iniziale, un passo alla volta, pausa sulle
-// ultime righe, poi ricomincia dall'inizio. Così errori e descrizioni lunghi
-// si leggono per intero senza premere nulla. Il chiamante:
+// Multi-line text in an area of `lines` lines. If it does not fit, it scrolls
+// by itself one line at a time: initial pause, one step at a time, pause on
+// the last lines, then it starts over from the beginning. This way long
+// errors and descriptions can be read in full without pressing anything. The
+// caller:
 //   ui_scroll_init(&s, ...);
-//   for (;;) { ui_begin(); ui_scroll_draw(&s, colore); ui_end();
+//   for (;;) { ui_begin(); ui_scroll_draw(&s, color); ui_end();
 //              app_next_event(ctx, &ev, ui_scroll_wait_ms(&s)); ui_scroll_tick(&s); ... }
 typedef struct {
     const gfx_font_t *font;
-    const char *text; // non copiato: deve restare valido finché si usa lo scroller
+    const char *text; // not copied: must stay valid while the scroller is in use
     int x, y, w, lines;
-    int total;   // righe del testo una volta spezzato
-    int top;     // prima riga visibile
-    int cycles;  // giri completi già mostrati (utile a chi vuole chiudere dopo il primo)
+    int total;   // lines of the text once wrapped
+    int top;     // first visible line
+    int cycles;  // full cycles already shown (useful to close after the first one)
     int64_t next_us;
 } ui_scroll_t;
 
 void ui_scroll_init(ui_scroll_t *s, const gfx_font_t *f, int x, int y, int w, int lines, const char *text);
-// true se il testo non entra nell'area e quindi scorre.
+// true if the text does not fit in the area and therefore scrolls.
 bool ui_scroll_active(const ui_scroll_t *s);
-// Avanza di un passo se è il momento; true se il contenuto è cambiato.
+// Advances one step if it is time; true if the content changed.
 bool ui_scroll_tick(ui_scroll_t *s);
-// Passo manuale (es. click): avanza subito e rimanda il passo automatico.
+// Manual step (e.g. click): advances immediately and postpones the automatic step.
 void ui_scroll_step(ui_scroll_t *s);
-// Millisecondi al prossimo passo automatico, portMAX_DELAY se il testo non scorre.
+// Milliseconds to the next automatic step, portMAX_DELAY if the text does not scroll.
 uint32_t ui_scroll_wait_ms(const ui_scroll_t *s);
-// Disegna le righe visibili e, se scorre, una barra sottile a destra dell'area.
+// Draws the visible lines and, if it scrolls, a thin bar to the right of the area.
 void ui_scroll_draw(const ui_scroll_t *s, uint32_t rgb);

@@ -7,8 +7,8 @@
 #define PAYLOAD_LIB_DIR PAYLOAD_DIR "/lib"
 #define PAYLOAD_PATH_MAX 160
 
-// Metadati letti dall'intestazione di uno script ("--- @chiave valore"),
-// senza eseguirlo. I campi numerici valgono -1 se assenti.
+// Metadata read from the header of a script ("--- @key value"),
+// without running it. Numeric fields are -1 if missing.
 typedef struct {
     char path[PAYLOAD_PATH_MAX];
     char name[48];
@@ -16,44 +16,44 @@ typedef struct {
     char layout[16];
     char os[12];
     char led[32];
-    char tags[40]; // @tags: parole separate da virgole o spazi
+    char tags[40]; // @tags: words separated by commas or spaces
     int key_delay, hold, jitter, line_delay, start_delay, timeout;
-    char error[96]; // intestazione non valida: messaggio con numero di riga
+    char error[96]; // invalid header: message with line number
 } payload_meta_t;
 
 typedef struct {
-    char name[64];  // nome file o cartella
-    char title[48]; // @name o nome file senza estensione
+    char name[64];  // file or folder name
+    char title[48]; // @name or file name without extension
     bool is_dir;
-    // Solo per gli script, come scritti nell'intestazione (vuoti se assenti:
-    // il default viene da config.lua, lo risolve chi mostra la riga).
+    // Scripts only, as written in the header (empty if missing: the default
+    // comes from config.lua, resolved by whoever shows the row).
     char layout[16];
     char os[12];
     char tags[40];
-    char path[PAYLOAD_PATH_MAX]; // percorso completo, serve alle viste che non seguono le cartelle
+    char path[PAYLOAD_PATH_MAX]; // full path, needed by the views that do not follow folders
 } payload_entry_t;
 
-// Elenca cartelle e script .lua di `dir` (cartelle prima, ordine alfabetico).
-// Salta file nascosti, file AppleDouble ("._*") e la cartella lib.
+// Lists folders and .lua scripts in `dir` (folders first, alphabetical order).
+// Skips hidden files, AppleDouble files ("._*") and the lib folder.
 int payload_list(const char *dir, payload_entry_t *out, int max);
 bool payload_read_meta(const char *path, payload_meta_t *m);
-// Come payload_read_meta da un file già aperto (anche fmemopen: il file
-// browser controlla l'intestazione di un testo non ancora salvato).
+// Like payload_read_meta from an already open file (fmemopen too: the file
+// browser checks the header of a text not yet saved).
 void payload_parse_meta(FILE *f, const char *path, payload_meta_t *m);
 
-// Come payload_list ma ricorsivo (fino a 3 livelli) e solo script, in un
-// elenco piatto: base delle viste per OS e per tag.
+// Like payload_list but recursive (up to 3 levels) and scripts only, in a
+// flat list: basis for the by-OS and by-tag views.
 int payload_scan(const char *dir, payload_entry_t *out, int max);
-// true se `tag` compare in `tags` (confronto senza maiuscole, parole intere).
+// true if `tag` appears in `tags` (case-insensitive, whole words).
 bool payload_has_tag(const char *tags, const char *tag);
 
-// Layout e OS effettivi dello script: intestazione, altrimenti config.lua.
-// payload_os restituisce un hid_os_t.
+// Effective layout and OS of the script: header, otherwise config.lua.
+// payload_os returns a hid_os_t.
 const char *payload_layout(const payload_entry_t *e);
 int payload_os(const payload_entry_t *e);
 
-// Tag distinti presenti negli script, in ordine alfabetico, al massimo `max`.
-// PAYLOAD_TAG_LEN come il campo tags: un tag troncato non combaciava più con
+// Distinct tags found in the scripts, in alphabetical order, at most `max`.
+// PAYLOAD_TAG_LEN matches the tags field: a truncated tag no longer matched
 // payload_has_tag.
 #define PAYLOAD_TAG_LEN sizeof(((payload_entry_t *)0)->tags)
 int payload_collect_tags(const payload_entry_t *e, int n, char tags[][PAYLOAD_TAG_LEN], int max);

@@ -14,7 +14,7 @@ html,body{margin:0;font-size:18px;-webkit-text-size-adjust:100%;text-size-adjust
 body{display:flex;flex-direction:column;padding:8px;gap:8px;min-height:100vh;min-height:100dvh}
 button,input,select{font:inherit;color:inherit}
 button{min-height:44px;padding:0 12px}
-/* Sotto i 16px i browser mobili zoomano la pagina quando compare la tastiera */
+/* Below 16px mobile browsers zoom the page when the keyboard appears */
 input,select{min-height:44px;padding:0 10px;font-size:18px}
 header{display:flex;align-items:center}
 #st{font-size:12px;color:var(--dim)}
@@ -45,7 +45,7 @@ label.chk input{min-height:0;width:20px;height:20px;clip-path:none}
 .prog div{height:100%;width:0;background:var(--acc)}
 html.arcade .prog div{background:repeating-linear-gradient(90deg,var(--acc) 0 8px,transparent 8px 10px)}
 
-/* Editor: a tutta pagina, alto quanto la parte visibile (meno la tastiera) */
+/* Editor: full page, as tall as the visible area (minus the keyboard) */
 #edit{position:fixed;left:0;top:0;width:100%;height:100vh;background:var(--bg);padding:8px;z-index:4}
 #edit.view{gap:6px}
 #ename{font-family:var(--f-mono);font-size:16px;overflow-wrap:anywhere;min-width:0}
@@ -61,7 +61,7 @@ html.arcade .prog div{background:repeating-linear-gradient(90deg,var(--acc) 0 8p
 .edw{position:relative;flex:1;min-width:0}
 #hl,#ta{position:absolute;inset:0;width:100%;height:100%;white-space:pre;overflow:auto;border:0}
 #hl{pointer-events:none;color:var(--text);overflow:hidden}
-/* Il testo vero è trasparente: si vede quello colorato sotto, il cursore resta */
+/* The real text is transparent: the colored one underneath shows, the caret stays */
 #ta{background:transparent;color:transparent;caret-color:var(--text);resize:none;outline:0;clip-path:none;text-shadow:none;-webkit-text-fill-color:transparent}
 #ta::selection{background:color-mix(in srgb,var(--acc) 35%,transparent)}
 #hl .k{color:var(--acc)}#hl .s{color:var(--ok)}#hl .c{color:var(--dim);font-style:italic}#hl .n{color:var(--warn)}#hl .b{color:#79c0ff}
@@ -78,7 +78,7 @@ html.retro #hl .b{color:var(--text);text-decoration:underline}
 
 #ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);padding:16px;align-items:center;justify-content:center;z-index:10}
 #box{width:min(440px,100%);max-height:90vh;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:10px}
-/* Nomi di file nel titolo: il font pixel è tutto maiuscolo e confonderebbe le maiuscole del nome */
+/* File names in the title: the pixel font is all caps and would hide the case of the name */
 #box h2{margin:0;font:16px var(--f-mono);color:var(--acc);overflow-wrap:anywhere}
 #box .desc{white-space:pre-wrap;overflow-wrap:anywhere}
 #box .col{display:flex;flex-direction:column;gap:6px}
@@ -157,7 +157,7 @@ function toast(t, bad) {
 function show(id) { for (const v of ["files", "trash"]) $(v).style.display = v === id ? "flex" : "none"; }
 const store = { get(k, d) { try { return localStorage.getItem(k) ?? d; } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
 
-// --- Connessione: come il Web HID (PIN, riconnessione automatica) ---
+// --- Connection: like Web HID (PIN, automatic reconnection) ---
 function connect() {
   ws = new WebSocket("ws://" + location.host + "/ws");
   setSt("connecting…");
@@ -187,8 +187,8 @@ function fail(t) { pin = ""; $("msg").textContent = t; $("login").style.display 
 fetch("/cfg").then(r => r.text()).then(t => { if (t === "nopin") { pin = "-"; connect(); } }).catch(() => {});
 $("login").onsubmit = e => { e.preventDefault(); pin = $("pin").value.trim(); $("msg").textContent = ""; if (pin) connect(); };
 
-// --- Comandi: il dongle risponde nell'ordine in cui li riceve, una
-// risposta finale per comando ("end", "space", "ok", "error") ---
+// --- Commands: the dongle replies in the order it receives them, one
+// final reply per command ("end", "space", "ok", "error") ---
 const queue = [];
 function cmd(s) {
   return new Promise((res, rej) => {
@@ -204,13 +204,13 @@ function handle(m) {
   if (!q) return;
   if (m.t === "error") q.rej(new Error(m.text)); else { m.items = q.items; q.res(m); }
 }
-// Rotte HTTP: contenuti dei file, con il token ricevuto dopo il PIN
+// HTTP routes: file contents, with the token received after the PIN
 async function api(method, name, q, body) {
   const r = await fetch("/api/" + name + "?" + new URLSearchParams(q), { method, body, headers: { "X-Grillo-Token": token } });
   if (!r.ok) { const e = new Error((await r.text()) || r.statusText); e.status = r.status; throw e; }
   return r;
 }
-// Con XMLHttpRequest per la barra di avanzamento dell'upload
+// With XMLHttpRequest for the upload progress bar
 function put(path, body, overwrite, onprog) {
   return new Promise((res, rej) => {
     const x = new XMLHttpRequest();
@@ -224,7 +224,7 @@ function put(path, body, overwrite, onprog) {
 }
 const err = e => toast(e.message, true);
 
-// --- Dialoghi ---
+// --- Dialogs ---
 let dlgDone = null;
 function dialog(title, opts) {
   const box = $("box"); box.textContent = "";
@@ -249,7 +249,7 @@ function dialog(title, opts) {
     $("ov").style.display = "flex";
     if (input) {
       input.focus();
-      // Selezionato il nome senza estensione: di solito si cambia quello
+      // Select the name without the extension: that is usually what gets changed
       const s = input.value.lastIndexOf("/") + 1, d = input.value.lastIndexOf(".");
       input.setSelectionRange(s, d > s ? d : input.value.length);
     }
@@ -260,7 +260,7 @@ const askPath = (title, value, label) => dialog(title, { value, buttons: [["Canc
 $("ov").onclick = e => { if (e.target === $("ov") && dlgDone) dlgDone(); };
 document.addEventListener("keydown", e => { if (e.key === "Escape" && dlgDone) dlgDone(); });
 
-// --- Elenco della cartella ---
+// --- Folder listing ---
 let dir = "/", entries = [];
 const join = (d, n) => (d === "/" ? "" : d) + "/" + n;
 const parent = p => p.slice(0, p.lastIndexOf("/")) || "/";
@@ -272,7 +272,7 @@ function human(n) {
   return (i ? n.toFixed(n < 10 ? 1 : 0) : n) + " " + u[i];
 }
 function when(t) {
-  // FAT senza ora valida al momento della scrittura: date del 1980
+  // FAT without a valid clock at write time: dates from 1980
   if (t < 946684800) return "";
   return new Date(t * 1000).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
 }
@@ -324,7 +324,7 @@ function addRow(box, name, right, isDir, open, more) {
   box.appendChild(row);
 }
 
-// --- Azioni su un elemento ---
+// --- Actions on an item ---
 async function actions(e, path) {
   const opts = [];
   if (!e.dir && TEXT.test(e.name)) opts.push(["Edit", "main", "edit"]);
@@ -365,7 +365,7 @@ $("bfile").onclick = async () => {
   try { await cmd("n" + p); await load(); if (TEXT.test(p)) openEditor(p); } catch (e) { err(e); }
 };
 
-// --- Upload: pulsante o trascinamento (desktop), un file alla volta ---
+// --- Upload: button or drag and drop (desktop), one file at a time ---
 $("bup").onclick = () => $("picker").click();
 $("picker").onchange = () => { upload([...$("picker").files]); $("picker").value = ""; };
 let uploading = false;
@@ -373,8 +373,8 @@ async function upload(files) {
   if (uploading || !files.length) return;
   uploading = true;
   const total = files.reduce((s, f) => s + f.size, 0); let done = 0, n = 0;
-  // La cartella di partenza, anche se nel frattempo se ne apre un'altra. I
-  // nomi senza maiuscole: per la FAT "A.txt" sostituisce "a.txt"
+  // The starting folder, even if another one is opened in the meantime.
+  // Names case-insensitive: for FAT "A.txt" replaces "a.txt"
   const to = dir, names = new Map(entries.map(e => [e.name.toLowerCase(), e.dir]));
   $("up").style.display = "flex";
   const bar = $("up").querySelector(".prog div");
@@ -396,7 +396,7 @@ async function upload(files) {
   uploading = false;
   load();
 }
-// Non con l'editor aperto: il file andrebbe nella cartella nascosta sotto
+// Not with the editor open: the file would go into the folder hidden underneath
 const canDrop = () => authed && !ed && $("files").style.display === "flex";
 document.addEventListener("dragover", e => { if (canDrop()) { e.preventDefault(); $("list").classList.add("drop"); } });
 document.addEventListener("dragleave", e => { if (!e.relatedTarget) $("list").classList.remove("drop"); });
@@ -405,7 +405,7 @@ document.addEventListener("drop", e => {
   if (canDrop()) upload([...e.dataTransfer.files].filter(f => f.size || f.type));
 });
 
-// --- Cestino ---
+// --- Trash ---
 $("btrash").onclick = () => { show("trash"); loadTrash(); };
 $("tback").onclick = () => { show("files"); load(); };
 async function loadTrash() {
@@ -449,7 +449,7 @@ async function openEditor(path, reveal) {
   $("emode").style.display = ed.csv ? "" : "none";
   msg(ed.config && !reveal ? "Secrets are hidden as \"<secret:N>\": leave them as they are to keep the values." : "");
   errLine = 0; findHit = null; closeFind();
-  // Cursore all'inizio: dopo value è alla fine, e il focus scorrerebbe fin là
+  // Caret at the start: after setting value it is at the end, and focus would scroll there
   ta.value = text; ta.setSelectionRange(0, 0);
   $("edit").style.display = "flex"; fit();
   if (ed.csv) {
@@ -462,8 +462,8 @@ async function openEditor(path, reveal) {
 }
 function msg(t, cls) { $("emsg").textContent = t; $("emsg").className = cls || ""; }
 function current() { return ed.table ? csvWrite() : ta.value; }
-// In tabella le virgolette superflue spariscono: il testo riscritto senza
-// modifiche (norm) non conta come modifica
+// In the table, redundant quotes disappear: the text rewritten without
+// edits (norm) does not count as a change
 function dirty() { if (!ed) return false; const c = current(); return c !== ed.saved && c !== ed.norm; }
 function markDirty() { $("ename").classList.toggle("dirty", dirty()); }
 async function closeEditor() {
@@ -476,12 +476,12 @@ async function save() {
   if (saving) return;
   saving = true;
   const text = current();
-  // Fermo durante il salvataggio: config.lua viene poi sostituito dal
-  // testo rimascherato, e ciò che si scrive nel frattempo andrebbe perso
+  // Frozen while saving: config.lua is then replaced by the re-masked
+  // text, and anything typed in the meantime would be lost
   ta.readOnly = true;
   try {
-    // Un config.lua che non si carica lascia il dongle con i valori
-    // predefiniti (niente reti note): prima si controlla la sintassi
+    // A config.lua that fails to load leaves the dongle with the default
+    // values (no known networks): check the syntax first
     if (ed.config) {
       const r = await (await api("POST", "check", { path: ed.path }, text)).json();
       if (!r.ok && !(await confirmBox("config.lua has an error", (r.line ? "Line " + r.line + ": " : "") + r.error +
@@ -489,14 +489,14 @@ async function save() {
     }
     await put(ed.path, text, true);
     ed.saved = ed.norm = text;
-    // I segnaposto sono numerati sull'ordine dei segreti nel file: dopo
-    // aver aggiunto o tolto una rete, quelli rimasti nell'editor
-    // indicherebbero il segreto sbagliato al salvataggio successivo
+    // Placeholders are numbered by the order of the secrets in the file:
+    // after adding or removing a network, the ones left in the editor
+    // would point to the wrong secret on the next save
     if (ed.config && !ed.revealed) {
       const fresh = await (await api("GET", "file", { path: ed.path })).text();
       if (fresh !== text) {
-        // Cursore alla stessa riga e colonna: i segnaposto cambiano la
-        // lunghezza delle righe, non il loro numero
+        // Caret at the same line and column: placeholders change the
+        // length of the lines, not their number
         const pre = text.slice(0, ta.selectionStart).split("\n"), ln = pre.length - 1, top = ta.scrollTop;
         const fl = fresh.split("\n"), at = fl.slice(0, ln).reduce((n, l) => n + l.length + 1, 0) + Math.min(pre[ln].length, (fl[ln] || "").length);
         ta.value = ed.saved = fresh; ta.setSelectionRange(at, at); ta.scrollTop = top; repaint();
@@ -514,12 +514,12 @@ $("ereveal").onclick = async () => {
 };
 window.addEventListener("beforeunload", e => { if (dirty()) e.preventDefault(); });
 
-// Alto quanto la parte visibile: sul telefono la tastiera la riduce
+// As tall as the visible area: on the phone the keyboard shrinks it
 function fit() { const v = window.visualViewport; $("edit").style.height = (v ? v.height : innerHeight) + "px"; if (v) $("edit").style.top = v.offsetTop + "px"; }
 if (window.visualViewport) { visualViewport.addEventListener("resize", fit); visualViewport.addEventListener("scroll", fit); }
 
-// Controllo sul dongle: compila senza eseguire, e per gli script
-// dell'injector legge l'intestazione
+// Check on the dongle: compiles without running, and for injector
+// scripts reads the header
 let errLine = 0;
 $("echeck").onclick = async () => {
   try {
@@ -540,7 +540,7 @@ function goLine(n) {
 }
 const lineH = () => parseFloat(getComputedStyle(ta).lineHeight) || 24;
 
-// Evidenziazione Lua: commenti e stringhe lunghe, stringhe, numeri, parole
+// Lua highlighting: comments and long strings, strings, numbers, words
 const LUA = /--\[(=*)\[[\s\S]*?(?:\]\1\]|$)|--[^\n]*|\[(=*)\[[\s\S]*?(?:\]\2\]|$)|"(?:\\[\s\S]|[^"\\\n])*"?|'(?:\\[\s\S]|[^'\\\n])*'?|\b(?:0[xX][\da-fA-F]+|\d+\.?\d*(?:[eE][+-]?\d+)?)\b|[A-Za-z_]\w*/g;
 const KW = new Set("and break do else elseif end false for function goto if in local nil not or repeat return then true until while".split(" "));
 const BI = new Set("sys kb mouse ui host disk fs led cfg require print pairs ipairs pcall error type tostring tonumber select assert next string table math utf8 coroutine setmetatable getmetatable rawget rawset".split(" "));
@@ -566,7 +566,7 @@ function paint() {
   const [ms, me] = findHit || [-1, -1];
   let h = "";
   for (const [a, b, c] of segs) {
-    // Il risultato della ricerca può cadere a metà di un elemento
+    // The search match can fall in the middle of a token
     const cuts = [a, b, ms, me].filter(x => x >= a && x <= b).sort((x, y) => x - y);
     for (let i = 0; i < cuts.length - 1; i++) {
       const x = cuts[i], y = cuts[i + 1];
@@ -592,7 +592,7 @@ function sync() { hl.scrollTop = gut.scrollTop = ta.scrollTop; hl.scrollLeft = t
 ta.addEventListener("scroll", sync);
 ta.addEventListener("input", () => { findHit = null; repaint(); markDirty(); });
 
-// Inserimenti con execCommand: restano nella cronologia dell'annulla
+// Insertions via execCommand: they stay in the undo history
 function insert(text) {
   if (!document.execCommand("insertText", false, text)) { ta.setRangeText(text, ta.selectionStart, ta.selectionEnd, "end"); repaint(); markDirty(); }
 }
@@ -608,10 +608,10 @@ function indent(out) {
 ta.addEventListener("keydown", e => {
   if (e.key === "Tab") { e.preventDefault(); indent(e.shiftKey); }
   else if (e.key === "Enter" && !e.isComposing && !e.ctrlKey && !e.metaKey) {
-    // Nuova riga con il rientro di quella attuale
+    // New line with the indentation of the current one
     const v = ta.value, s = ta.selectionStart, ls = v.lastIndexOf("\n", s - 1) + 1;
     e.preventDefault(); insert("\n" + /^[ \t]*/.exec(v.slice(ls, s))[0]);
-  } else if (e.key === "Escape") ta.blur(); // per uscire con Tab dalla textarea
+  } else if (e.key === "Escape") ta.blur(); // to leave the textarea with Tab
 });
 document.addEventListener("keydown", e => {
   if (!ed || !(e.ctrlKey || e.metaKey)) return;
@@ -619,7 +619,7 @@ document.addEventListener("keydown", e => {
   else if (e.key === "f" && !ed.table) { e.preventDefault(); openFind(); }
 });
 
-// Ricerca: senza maiuscole, dal cursore in avanti e poi dall'inizio
+// Search: case-insensitive, from the caret forward and then from the start
 function openFind() { $("find").style.display = "flex"; const s = ta.value.slice(ta.selectionStart, ta.selectionEnd); if (s && !s.includes("\n")) $("fq").value = s; $("fq").focus(); $("fq").select(); }
 function closeFind() { $("find").style.display = "none"; findHit = null; repaint(); }
 function findNext() {
@@ -636,7 +636,7 @@ function findNext() {
 $("efind").onclick = openFind; $("fclose").onclick = closeFind; $("fnext").onclick = findNext;
 $("fq").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); findNext(); } else if (e.key === "Escape") { closeFind(); ta.focus(); } });
 
-// --- CSV: tabella modificabile (RFC 4180) o testo ---
+// --- CSV: editable table (RFC 4180) or text ---
 let rows = [], cur = { r: 0, c: 0 }, eol = "\n", tailEol = true;
 function guessSep(t) { const l = t.split("\n", 1)[0]; return (l.split(";").length > l.split(",").length) ? ";" : l.includes("\t") && !l.includes(",") ? "\t" : ","; }
 function csvRead(t, sep) {
@@ -671,7 +671,7 @@ function setMode(table) {
   markDirty();
 }
 $("emode").onclick = () => setMode(!ed.table);
-// Separatore sbagliato all'apertura: il testo si rilegge con quello scelto
+// Wrong separator on open: the text is re-parsed with the chosen one
 $("sep").onchange = () => {
   const t = ed.table ? csvWrite(ed.sep) : ta.value;
   ed.sep = $("sep").value;
@@ -690,7 +690,7 @@ function grid() {
     for (let c = 0; c < cols; c++) {
       const td = el("td"), inp = el("input"); inp.value = r[c] ?? ""; inp.spellcheck = false; inp.autocapitalize = "off";
       inp.onfocus = () => cur = { r: ri, c };
-      // Le righe corte restano corte finché non si scrive oltre la loro fine
+      // Short rows stay short until something is written past their end
       inp.oninput = () => { while (rows[ri].length <= c) rows[ri].push(""); rows[ri][c] = inp.value; markDirty(); };
       td.appendChild(inp); tr.appendChild(td);
     }

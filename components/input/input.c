@@ -22,7 +22,7 @@ static void input_task(void *arg)
     bool stable = input_is_pressed();
     int same = 0;
     for (;;) {
-        // Debounce: lo stato cambia solo dopo 3 letture uguali (30 ms).
+        // Debounce: the state changes only after 3 equal readings (30 ms).
         bool raw = input_is_pressed();
         if (raw != stable) {
             if (++same >= 3) {

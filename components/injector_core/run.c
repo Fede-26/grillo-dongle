@@ -1,6 +1,5 @@
-// Esecuzione di uno script con la sua schermata e l'esito: comune
-// all'Injector e al Web Injector, che differiscono solo per come si sceglie
-// lo script.
+// Running a script with its screen and result: shared by the Injector
+// and the Web Injector, which differ only in how the script is chosen.
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,7 +32,7 @@ void inj_redraw(inj_run_t *r)
         snprintf(t, sizeof(t), "%d:%02d", secs / 60, secs % 60);
         gfx_text_fit(&gfx_font_small, 6, UI_CONTENT_Y + 2, UI_W - 40, r->meta->name[0] ? r->meta->name : "Script", accent);
         gfx_text_aligned(&gfx_font_small, 0, UI_CONTENT_Y + 2, UI_W - 6, GFX_ALIGN_RIGHT, t, UI_DIM);
-        // Lo scroller va reinizializzato quando lo script cambia lo stato
+        // The scroller must be reinitialized when the script changes the status
         if (r->status_scroll.text != r->status) ui_scroll_init(&r->status_scroll, &gfx_font_small, 6, UI_CONTENT_Y + 16,
                                                              UI_W - 12, 2, r->status);
         ui_scroll_draw(&r->status_scroll, UI_TEXT);
@@ -46,8 +45,8 @@ void inj_redraw(inj_run_t *r)
 bool inj_pump(inj_run_t *r)
 {
     app_event_t ev;
-    // Una volta al secondo (cronometro) o al passo dello scorrimento dello
-    // stato: prima la schermata restava ferma durante un kb.type lungo.
+    // Once per second (stopwatch) or at each step of the status scroll:
+    // previously the screen stayed frozen during a long kb.type.
     int64_t now = esp_timer_get_time();
     bool step = ui_scroll_tick(&r->status_scroll);
     if (!r->waiting_host && (step || now >= r->redraw_us)) {
@@ -85,14 +84,14 @@ void inj_run_payload(app_ctx_t *ctx, const payload_meta_t *m, const inj_hooks_t 
     r->hooks = hooks;
     r->started_us = esp_timer_get_time();
     eng->run(r);
-    // Prima di annullare l'uscita: da qui il front-end non chiede più l'abort
-    // (EXIT), quindi un abort arrivato mentre lo script finiva viene tolto
-    // sotto e non chiude l'app.
+    // Before canceling the exit: from here on the front-end no longer requests
+    // the abort (EXIT), so an abort that arrived while the script was ending is
+    // removed below and does not close the app.
     INJ_HOOK(r, done, r);
-    // L'hold 3 s (o il timeout) ha solo interrotto lo script: si resta
-    // nell'app, e un secondo hold dalla lista esce. L'uscita va annullata
-    // prima dell'esito: con l'EXIT ancora in coda il messaggio si chiudeva
-    // subito e "Aborted" non si vedeva.
+    // The 3 s hold (or the timeout) only interrupted the script: we stay in
+    // the app, and a second hold from the list exits. The exit must be
+    // canceled before the result: with the EXIT still queued the message
+    // closed immediately and "Aborted" was never seen.
     app_cancel_exit(ctx);
 
     if (r->ok) {

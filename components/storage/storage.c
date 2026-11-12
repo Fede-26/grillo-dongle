@@ -22,9 +22,9 @@ static BYTE s_pdrv = 0xFF;
 static storage_state_t s_state = STORAGE_ABSENT;
 static uint32_t s_lend_count;
 static volatile bool s_shared;
-// Serializza le scritture dei task di sistema (syslog) con i passaggi di
-// possesso della scheda: senza, una riga di log poteva aprire un file mentre
-// storage_lend() smontava la FAT, lasciando cluster allocati e persi.
+// Serializes writes by the system tasks (syslog) with the card ownership
+// hand-overs: without it, a log line could open a file while storage_lend()
+// was unmounting the FAT, leaving lost allocated clusters.
 static SemaphoreHandle_t s_wlock;
 
 const char *storage_state_name(storage_state_t s)
@@ -62,16 +62,16 @@ static esp_err_t card_init(void)
     if (err != ESP_OK) return err;
     err = sdmmc_card_init(&host, &s_card);
     if (err != ESP_OK) {
-        // Alcune schede non reggono l'high speed: riprova a velocità standard
+        // Some cards cannot cope with high speed: retry at standard speed
         host.max_freq_khz = SDMMC_FREQ_DEFAULT;
         err = sdmmc_card_init(&host, &s_card);
     }
     return err;
 }
 
-// Distingue "nessun filesystem" da "filesystem che non sappiamo leggere":
-// il tipo partizione 0x07 nell'MBR indica exFAT/NTFS, il boot sector
-// exFAT ha la firma "EXFAT   " all'offset 3.
+// Tells "no filesystem" apart from "filesystem we cannot read":
+// partition type 0x07 in the MBR means exFAT/NTFS, the exFAT boot sector
+// has the signature "EXFAT   " at offset 3.
 static bool looks_like_exfat(void)
 {
     uint8_t *buf = heap_caps_malloc(512, MALLOC_CAP_DMA);
@@ -100,8 +100,8 @@ static esp_err_t mount(void)
         goto fail;
     }
     s_state = STORAGE_MOUNTED;
-    // Il marcatore permette agli script dell'injector di riconoscere questa
-    // SD tra le unità del PC, qualunque sia l'etichetta del volume.
+    // The marker lets the injector scripts recognize this SD among the
+    // PC's drives, whatever the volume label.
     FILE *m = fopen(STORAGE_MARKER, "r");
     if (m) {
         fclose(m);
@@ -131,7 +131,7 @@ esp_err_t storage_init(void)
     s_wlock = xSemaphoreCreateMutex();
     esp_err_t err = card_init();
     if (err != ESP_OK) {
-        ESP_LOGW(TAG, "nessuna SD (%s)", esp_err_to_name(err));
+        ESP_LOGW(TAG, "no SD (%s)", esp_err_to_name(err));
         s_state = STORAGE_ABSENT;
         return err;
     }
@@ -140,7 +140,7 @@ esp_err_t storage_init(void)
     err = mount();
     if (err != ESP_OK) {
         s_state = STORAGE_UNSUPPORTED;
-        ESP_LOGW(TAG, "SD non montabile%s", looks_like_exfat() ? ": exFAT, va formattata FAT32" : "");
+        ESP_LOGW(TAG, "SD not mountable%s", looks_like_exfat() ? ": exFAT, must be formatted FAT32" : "");
     }
     return err;
 }

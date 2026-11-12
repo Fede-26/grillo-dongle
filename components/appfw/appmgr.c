@@ -24,8 +24,8 @@ static const app_desc_t *s_next;
 static char s_next_arg[128];
 static bool s_has_arg;
 
-// Contesto dell'app in primo piano. Letto dal task del pulsante e dalle
-// callback USB: lo proteggiamo con una sezione critica.
+// Context of the foreground app. Read by the button task and by the USB
+// callbacks: we protect it with a critical section.
 static app_ctx_t *volatile s_current;
 static portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
 static TaskHandle_t s_mgr_task;
@@ -79,8 +79,8 @@ static void refresh_indicators(void)
     static const uint8_t sd_map[] = {[STORAGE_ABSENT] = 0, [STORAGE_MOUNTED] = 1, [STORAGE_UNSUPPORTED] = 2,
                                      [STORAGE_LENT] = 3};
     ui_set_indicator(UI_IND_SD, sd_map[storage_state()]);
-    // Dalle interfacce, non dal nome del profilo: un profilo nuovo ha
-    // l'indicatore giusto senza toccare questa funzione.
+    // From the interfaces, not from the profile name: a new profile gets the
+    // right indicator without touching this function.
     usb_profile_t p = usbdev_profile();
     bool hid = p & (USB_F_KBD | USB_F_MOUSE);
     uint8_t usb = 0;
@@ -93,14 +93,15 @@ static void refresh_indicators(void)
 esp_err_t app_usb_apply(usb_profile_t p)
 {
     if (p == usbdev_profile()) return ESP_OK;
-    // Prima l'host perde il disco, poi la SD torna al firmware, solo dopo la
-    // si presta di nuovo: passare da un modo all'altro senza staccare l'host
-    // smonterebbe la FAT mentre la sta leggendo.
+    // First the host loses the disk, then the SD goes back to the firmware,
+    // and only after that is it lent again: switching from one mode to the
+    // other without detaching the host would unmount the FAT while it is
+    // reading it.
     usbdev_apply(USB_PROFILE_NONE, NULL);
     storage_unshare();
     if (storage_state() == STORAGE_LENT) storage_reclaim();
     sdmmc_card_t *card = NULL;
-    if (p & USB_F_DISK) syslog_flush(); // da qui il firmware non scrive più sulla SD
+    if (p & USB_F_DISK) syslog_flush(); // from here on the firmware no longer writes to the SD
     if (p & USB_F_DISK_RW) card = storage_lend();
     else if (p & USB_F_DISK_RO) card = storage_share_ro();
     esp_err_t err = usbdev_apply(p, card);
@@ -139,7 +140,7 @@ static void on_gesture(gesture_t g, uint8_t progress)
         app_post(c, APP_EV_DOUBLE, 0);
         break;
     case GESTURE_LONG_ARMED:
-        // Segnala che il rilascio adesso vale come "conferma"
+        // Signals that releasing now counts as "confirm"
         led_flash(0xFFFFFF, 50);
         ui_set_armed(true);
         break;
@@ -149,9 +150,9 @@ static void on_gesture(gesture_t g, uint8_t progress)
         app_post(c, APP_EV_LONG, 0);
         break;
     case GESTURE_HOLD_PROGRESS:
-        // Da qui il rilascio annulla: la linea bianca non vale più
+        // From here releasing cancels: the white line no longer applies
         ui_set_armed(false);
-        // Nel launcher non c'è niente da cui uscire: niente barra
+        // In the launcher there is nothing to exit from: no bar
         if (!in_launcher) ui_set_hold(progress + 1);
         break;
     case GESTURE_HOLD_CANCEL:
@@ -159,13 +160,13 @@ static void on_gesture(gesture_t g, uint8_t progress)
         ui_set_hold(0);
         break;
     case GESTURE_HOLD_EXIT:
-        ui_set_armed(false); // già spenta dall'avanzamento, salvo `btn armed` + `btn hold`
+        ui_set_armed(false); // already turned off by the progress, except with `btn armed` + `btn hold`
         ui_set_hold(0);
         if (!in_launcher && c->exit_requested) {
-            // L'uscita era già stata chiesta e l'app è ancora qui: un task
-            // FreeRTOS non si può terminare dall'esterno in modo sicuro, quindi
-            // l'unica uscita garantita è il riavvio.
-            ESP_LOGW(TAG, "%s non esce: riavvio", c->app->id);
+            // Exit had already been requested and the app is still here: a
+            // FreeRTOS task cannot be terminated safely from outside, so the
+            // only guaranteed way out is a reboot.
+            ESP_LOGW(TAG, "%s does not exit: rebooting", c->app->id);
             ui_toast("Restarting…", UI_ERR, 2000);
             syslog_flush();
             esp_restart();
@@ -185,7 +186,7 @@ static void on_usb(usbdev_event_t ev)
     post_current(APP_EV_USB, ev);
 }
 
-// Aggiorna l'indicatore WiFi della status bar e avvisa l'app in primo piano.
+// Updates the status bar WiFi indicator and notifies the foreground app.
 static void on_net(net_event_t ev)
 {
     net_info_t info;
@@ -215,7 +216,7 @@ static void run_app(const app_desc_t *app, const char *arg)
         return;
     }
     size_t heap_before = heap_caps_get_free_size(MALLOC_CAP_8BIT);
-    ESP_LOGI(TAG, "avvio %s (heap libero %u)", app->id, (unsigned)heap_before);
+    ESP_LOGI(TAG, "starting %s (free heap %u)", app->id, (unsigned)heap_before);
 
     ui_set_title(app->name, app->accent);
     led_set(LED_LAYER_AMBIENT, LED_FX_PULSE, gfx_mix(0, app->accent, 90), 4000);
@@ -236,11 +237,11 @@ static void run_app(const app_desc_t *app, const char *arg)
 
     TaskHandle_t t = NULL;
     if (xTaskCreate(app_task, app->id, app->stack, &ctx, 4, &t) != pdPASS) {
-        ESP_LOGE(TAG, "task %s: memoria insufficiente", app->id);
+        ESP_LOGE(TAG, "task %s: out of memory", app->id);
         ui_toast("Out of memory", UI_ERR, 2500);
     } else {
-        // Se l'app non esce entro 3 s dalla richiesta, si dice all'utente
-        // che un secondo hold riavvia il dongle (vedi on_gesture).
+        // If the app does not exit within 3 s of the request, the user is told
+        // that a second hold reboots the dongle (see on_gesture).
         int waited = 0;
         while (!ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(500))) {
             waited = ctx.exit_requested ? waited + 1 : 0;
@@ -252,13 +253,14 @@ static void run_app(const app_desc_t *app, const char *arg)
     s_current = NULL;
     portEXIT_CRITICAL(&s_mux);
 
-    // Pulizia d'ufficio delle risorse condivise. Torna al profilo NONE anche
-    // se l'app l'ha cambiato con app_usb_apply, e riprende la SD prestata o
-    // condivisa (senza, syslog non scriveva più sulla SD fino al riavvio).
+    // Automatic cleanup of the shared resources. Returns to the NONE profile
+    // even if the app changed it with app_usb_apply, and takes back the lent
+    // or shared SD (without this, syslog stopped writing to the SD until the
+    // reboot).
     usbdev_apply(USB_PROFILE_NONE, NULL);
     if (storage_state() == STORAGE_LENT) storage_reclaim();
     storage_unshare();
-    // Solo i lease del task dell'app, che a questo punto è terminato
+    // Only the leases of the app's task, which has terminated by now
     if (t) net_release_task(t);
     for (int i = 0; i < s_ncleanups; i++) s_cleanups[i]();
     led_clear(LED_LAYER_APP);
@@ -267,7 +269,7 @@ static void run_app(const app_desc_t *app, const char *arg)
     refresh_indicators();
 
     size_t heap_after = heap_caps_get_free_size(MALLOC_CAP_8BIT);
-    ESP_LOGI(TAG, "fine %s (heap libero %u, delta %d)", app->id, (unsigned)heap_after,
+    ESP_LOGI(TAG, "end %s (free heap %u, delta %d)", app->id, (unsigned)heap_after,
              (int)heap_after - (int)heap_before);
 }
 
@@ -294,7 +296,7 @@ void appmgr_run(const app_desc_t *launcher, const app_desc_t *const *apps, size_
 }
 
 // ---------------------------------------------------------------------------
-// API per le app
+// API for the apps
 
 bool app_next_event(app_ctx_t *ctx, app_event_t *ev, uint32_t timeout_ms)
 {
@@ -320,8 +322,8 @@ void app_post(app_ctx_t *ctx, app_ev_type_t type, int32_t arg)
         return;
     }
     ctx->exit_requested = true;
-    // EXIT non deve mai andare perso: con la coda piena (es. click accumulati
-    // durante uno sweep) lo consegna app_next_event alla prima chiamata.
+    // EXIT must never be lost: with the queue full (e.g. clicks piled up
+    // during a sweep) app_next_event delivers it on the first call.
     if (xQueueSend(ctx->queue, &ev, pdMS_TO_TICKS(100)) != pdTRUE) ctx->exit_lost = true;
 }
 
@@ -343,8 +345,8 @@ void app_cancel_exit(app_ctx_t *ctx)
 {
     ctx->exit_requested = false;
     ctx->exit_lost = false;
-    // Una coda FreeRTOS non permette di togliere un solo elemento: la si
-    // svuota e si rimette ciò che non è un EXIT, nello stesso ordine.
+    // A FreeRTOS queue does not allow removing a single element: it is
+    // drained and whatever is not an EXIT is put back, in the same order.
     app_event_t keep[16], ev;
     int n = 0;
     while (n < 16 && xQueueReceive(ctx->queue, &ev, 0) == pdTRUE) {
@@ -354,7 +356,7 @@ void app_cancel_exit(app_ctx_t *ctx)
 }
 
 // ---------------------------------------------------------------------------
-// Console di debug
+// Debug console
 
 const char *appmgr_current_id(void)
 {

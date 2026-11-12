@@ -1,4 +1,4 @@
-// Dialoghi bloccanti comuni a tutte le app: menu, conferma, messaggio.
+// Blocking dialogs shared by all apps: menu, confirmation, message.
 
 #include <stdio.h>
 #include <string.h>
@@ -6,9 +6,9 @@
 #include "app.h"
 #include "ui.h"
 
-// Eventi non gestiti da un dialogo (USB, rete, TICK, USER). Prima venivano
-// scartati: un'espulsione del disco arrivata mentre era aperta una conferma
-// andava persa e l'app restava ad aspettarla.
+// Events not handled by a dialog (USB, network, TICK, USER). They used to be
+// discarded: a disk eject that arrived while a confirmation was open got
+// lost and the app kept waiting for it.
 typedef struct {
     app_event_t ev[8];
     int n;
@@ -16,7 +16,7 @@ typedef struct {
 
 static void stash_put(stash_t *s, const app_event_t *ev)
 {
-    // Una risposta esterna in ritardo non deve rispondere al dialogo successivo
+    // A late external answer must not answer the next dialog
     if (ev->type == APP_EV_CLICK || ev->type == APP_EV_DOUBLE || ev->type == APP_EV_LONG || ev->type == APP_EV_EXIT ||
         ev->type == APP_EV_ANSWER) {
         return;
@@ -24,7 +24,7 @@ static void stash_put(stash_t *s, const app_event_t *ev)
     if (s->n < (int)(sizeof(s->ev) / sizeof(s->ev[0]))) s->ev[s->n++] = *ev;
 }
 
-// Rimette gli eventi in testa alla coda, nell'ordine in cui erano arrivati.
+// Puts the events back at the head of the queue, in the order they arrived.
 static void stash_restore(app_ctx_t *ctx, stash_t *s)
 {
     for (int i = s->n - 1; i >= 0; i--) xQueueSendToFront(ctx->queue, &s->ev[i], 0);
@@ -62,8 +62,8 @@ int app_menu_timeout(app_ctx_t *ctx, const char *title, const char *const *items
     int shown_secs = -1;
     menu_t m = {items, rights};
     int top = 0;
-    // Il titolo del menu va nella status bar; poi si ripristina quello di
-    // prima (non il nome dell'app: un menu può essere aperto da un altro).
+    // The menu title goes in the status bar; afterwards the previous one is
+    // restored (not the app name: a menu may be opened from another one).
     char saved[24];
     uint32_t saved_accent = ui_accent();
     ui_get_title(saved, sizeof(saved));
@@ -73,10 +73,10 @@ int app_menu_timeout(app_ctx_t *ctx, const char *title, const char *const *items
     ui_marquee_reset();
     for (;;) {
         if (deadline) {
-            // Secondi residui nel titolo, aggiornati solo quando cambiano
+            // Remaining seconds in the title, updated only when they change
             int secs = (int)((deadline - esp_timer_get_time() + 999999) / 1000000);
             if (secs != shown_secs) {
-                // Più grande del titolo (24): il troncamento lo fa ui_set_title
+                // Larger than the title (24): ui_set_title does the truncation
                 char t[40];
                 snprintf(t, sizeof(t), "%s %ds", title ? title : saved, secs);
                 ui_set_title(t, ctx->app->accent);
@@ -89,11 +89,11 @@ int app_menu_timeout(app_ctx_t *ctx, const char *title, const char *const *items
         ui_end();
 
         app_event_t ev;
-        // ~30 fotogrammi al secondo mentre la riga selezionata scorre
+        // ~30 frames per second while the selected row scrolls
         uint32_t wait = ui_marquee_active() ? 33 : (deadline ? 250 : portMAX_DELAY);
         if (!app_next_event(ctx, &ev, wait)) {
             if (deadline && esp_timer_get_time() >= deadline) {
-                result = sel; // scaduto: vale la voce selezionata
+                result = sel; // expired: the selected item applies
                 break;
             }
             continue;
@@ -101,7 +101,7 @@ int app_menu_timeout(app_ctx_t *ctx, const char *title, const char *const *items
         if (ev.type == APP_EV_EXIT) break;
         if (ev.type == APP_EV_CLICK || ev.type == APP_EV_DOUBLE) {
             if (deadline) {
-                // L'utente è presente: niente più scadenza, titolo normale
+                // The user is present: no more timeout, normal title
                 deadline = 0;
                 ui_set_title(title ? title : saved, ctx->app->accent);
             }
@@ -137,7 +137,7 @@ bool app_confirm_timeout(app_ctx_t *ctx, const char *title, const char *text, bo
 {
     uint32_t accent = ctx->app->accent;
     int64_t deadline = timeout_ms ? esp_timer_get_time() + timeout_ms * 1000LL : 0;
-    // 3 righe tra il titolo e i pulsanti; la barra di scorrimento sta nel margine destro
+    // 3 lines between the title and the buttons; the scrollbar sits in the right margin
     ui_scroll_t sc;
     ui_scroll_init(&sc, &gfx_font_small, 6, UI_CONTENT_Y + 13, UI_W - 12, 3, text);
     stash_t st = {0};
@@ -146,7 +146,7 @@ bool app_confirm_timeout(app_ctx_t *ctx, const char *title, const char *text, bo
         ui_begin();
         char left[8] = "";
         if (deadline) snprintf(left, sizeof(left), "%ds", (int)((deadline - esp_timer_get_time() + 999999) / 1000000));
-        // Il conto alla rovescia sta a destra del titolo, che cede lo spazio
+        // The countdown sits to the right of the title, which gives up the space
         gfx_text_fit(&gfx_font_small, 6, UI_CONTENT_Y + 2, UI_W - 12 - (deadline ? 30 : 0), title, accent);
         if (deadline) gfx_text_aligned(&gfx_font_small, 0, UI_CONTENT_Y + 2, UI_W - 6, GFX_ALIGN_RIGHT, left, UI_DIM);
         ui_scroll_draw(&sc, UI_TEXT);
@@ -155,14 +155,14 @@ bool app_confirm_timeout(app_ctx_t *ctx, const char *title, const char *text, bo
         ui_end();
 
         app_event_t ev;
-        // Scatto di 250 ms per aggiornare i secondi residui; altrimenti ci si
-        // sveglia solo per il prossimo passo dello scorrimento.
+        // 250 ms tick to update the remaining seconds; otherwise we wake up
+        // only for the next scrolling step.
         uint32_t wait = ui_scroll_wait_ms(&sc);
         if (deadline && wait > 250) wait = 250;
         if (!app_next_event(ctx, &ev, wait)) {
             ui_scroll_tick(&sc);
             if (deadline && esp_timer_get_time() >= deadline) {
-                result = yes; // scaduto: vale la scelta predefinita
+                result = yes; // expired: the default choice applies
                 break;
             }
             continue;
@@ -173,7 +173,7 @@ bool app_confirm_timeout(app_ctx_t *ctx, const char *title, const char *text, bo
         }
         if (ev.type == APP_EV_CLICK || ev.type == APP_EV_DOUBLE) {
             yes = !yes;
-            deadline = 0; // l'utente è presente: niente più scadenza
+            deadline = 0; // the user is present: no more timeout
         } else if (ev.type == APP_EV_LONG) {
             result = yes;
             break;
@@ -208,9 +208,9 @@ void app_message(app_ctx_t *ctx, const char *title, const char *text, uint32_t c
 }
 
 // ---------------------------------------------------------------------------
-// Scelta della rete
+// Network choice
 
-#define NET_CHOICE_MS 6000 // senza risposta: la rete più forte
+#define NET_CHOICE_MS 6000 // no answer: the strongest network
 
 static int choose_network(const net_candidate_t *c, int n, void *arg)
 {
@@ -225,7 +225,7 @@ static int choose_network(const net_candidate_t *c, int n, void *arg)
     }
     int sel = app_menu_timeout(ctx, "WiFi", items, rights, n, 0, NET_CHOICE_MS);
     if (sel >= 0) {
-        // La connessione dura qualche secondo: il menu non deve restare a schermo
+        // Connecting takes a few seconds: the menu must not stay on screen
         ui_begin();
         gfx_text_aligned(&gfx_font_small, 0, UI_CONTENT_Y + 18, UI_W, GFX_ALIGN_CENTER, "Connecting to", UI_DIM);
         gfx_text_aligned(&gfx_font_small, 0, UI_CONTENT_Y + 30, UI_W, GFX_ALIGN_CENTER, c[sel].ssid, UI_TEXT);

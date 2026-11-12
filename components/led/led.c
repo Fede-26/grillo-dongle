@@ -11,18 +11,18 @@ typedef struct {
     led_fx_t fx;
     uint32_t rgb;
     uint16_t period;
-    int64_t until_us; // scadenza, usata solo dal lampo
+    int64_t until_us; // expiry, used only by the flash
 } layer_t;
 
 static layer_t s_layers[LED_LAYER_COUNT];
-// Il lampo sta sopra a tutti i livelli in uno slot separato, così quando
-// scade riappare lo stato SYSTEM precedente invece di essere cancellato.
+// The flash sits above all layers in a separate slot, so when it expires
+// the previous SYSTEM state reappears instead of being cleared.
 static layer_t s_flash;
 static uint8_t s_brightness = 30;
 static portMUX_TYPE s_lock = portMUX_INITIALIZER_UNLOCKED;
 
-// APA102: un solo LED, quindi bit-bang su GPIO (128 bit per frame) è più
-// semplice che occupare un bus SPI.
+// APA102: a single LED, so bit-banging on GPIO (128 bits per frame) is
+// simpler than taking up an SPI bus.
 static void apa_byte(uint8_t b)
 {
     for (int i = 7; i >= 0; i--) {
@@ -35,8 +35,8 @@ static void apa_byte(uint8_t b)
 static void apa_write(uint8_t r, uint8_t g, uint8_t b)
 {
     for (int i = 0; i < 4; i++) apa_byte(0x00); // start frame
-    apa_byte(0xE0 | 31);                         // luminosità globale al massimo: scaliamo noi i canali
-    apa_byte(b);                                 // ordine nativo BGR
+    apa_byte(0xE0 | 31);                         // global brightness at maximum: we scale the channels ourselves
+    apa_byte(b);                                 // native BGR order
     apa_byte(g);
     apa_byte(r);
     for (int i = 0; i < 4; i++) apa_byte(0xFF); // end frame
@@ -62,7 +62,7 @@ static void led_task(void *arg)
         if (s_flash.fx != LED_FX_OFF) top = s_flash;
         for (int i = LED_LAYER_COUNT - 1; i >= 0; i--) {
             layer_t *l = &s_layers[i];
-            if (top.fx != LED_FX_BLACK) break; // il lampo ha già vinto
+            if (top.fx != LED_FX_BLACK) break; // the flash has already won
             if (l->fx != LED_FX_OFF) {
                 top = *l;
                 break;
@@ -86,8 +86,8 @@ static void led_task(void *arg)
         default: c = 0; break;
         }
 
-        // Correzione gamma approssimata (quadratica) e luminosità globale:
-        // senza, le dissolvenze sembrano "saltare" vicino al nero.
+        // Approximate (quadratic) gamma correction and global brightness:
+        // without them, fades seem to "jump" near black.
         uint8_t ch[3];
         for (int i = 0; i < 3; i++) {
             uint32_t v = (c >> (16 - 8 * i)) & 0xFF;

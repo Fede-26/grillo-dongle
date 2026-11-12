@@ -3,21 +3,21 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-// Segreti di config.lua nascosti alla pagina web, che non è cifrata.
+// config.lua secrets hidden from the web page, which is not encrypted.
 //
-// Sono segreti i letterali stringa assegnati a una chiave `pass` o
-// `password` (reti WiFi, hotspot) e tutti quelli dentro la tabella
-// `secrets = { ... }`. Il testo è analizzato come Lua (commenti, stringhe
-// con escape e lunghe), non con ricerche testuali: una "pass" in un commento
-// non conta, e una stringa con "}" dentro non chiude la tabella.
+// Secrets are the string literals assigned to a `pass` or `password` key
+// (WiFi networks, hotspot) and all those inside the `secrets = { ... }`
+// table. The text is parsed as Lua (comments, strings with escapes and long
+// strings), not with text searches: a "pass" in a comment does not count,
+// and a string with a "}" inside does not close the table.
 
-// Copia di `src` con ogni segreto sostituito da "<secret:N>" (N da 1, in
-// ordine). Da liberare con free(); NULL senza memoria.
+// Copy of `src` with every secret replaced by "<secret:N>" (N from 1, in
+// order). Free with free(); NULL when out of memory.
 char *secrets_mask(const char *src);
 
-// Testo modificato dalla pagina con i segnaposto ancora dentro: ogni
-// letterale "<secret:N>" (in qualunque punto, non solo dove era) torna al
-// letterale N-esimo di `orig` così com'era scritto. Un N che `orig` non ha
-// è un errore: NULL con `*unknown` a true. Da liberare con free(); NULL
-// anche senza memoria.
+// Text edited by the page with the placeholders still inside: every
+// "<secret:N>" literal (anywhere, not only where it was) goes back to the
+// N-th literal of `orig` exactly as it was written. An N that `orig` does
+// not have is an error: NULL with `*unknown` set to true. Free with free();
+// NULL also when out of memory.
 char *secrets_unmask(const char *edited, const char *orig, bool *unknown);

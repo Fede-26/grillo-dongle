@@ -1,19 +1,19 @@
-// Scarica da macOS la mappa reale di un layout di tastiera (livelli normale,
-// Shift, Option, Option+Shift e tasti morti) con UCKeyTranslate.
+// Dumps from macOS the real map of a keyboard layout (normal, Shift, Option,
+// Option+Shift levels and dead keys) with UCKeyTranslate.
 //
 //   cc -o dump_mac_layout dump_mac_layout.c -framework Carbon -framework CoreFoundation
 //   ./dump_mac_layout com.apple.keylayout.Colemak > layouts/macos_colemak.tsv
 //
-// Una riga per tasto fisico: "hid<TAB>l0<TAB>l1<TAB>l2<TAB>l3". Un livello è il
-// carattere prodotto, "DEAD:<carattere combinante>" per un tasto morto, "-" se
-// nulla. I tasti hanno gli usage HID della posizione US (come gen_layouts.py).
-// Dopo la tabella, una riga "C<TAB>hid<TAB>livello<TAB>lettera<TAB>risultato" per
-// ogni composizione definita dal layout (tasto morto poi lettera a-zA-Z).
+// One line per physical key: "hid<TAB>l0<TAB>l1<TAB>l2<TAB>l3". A level is the
+// character produced, "DEAD:<combining character>" for a dead key, "-" if
+// nothing. Keys have the HID usages of the US position (like gen_layouts.py).
+// After the table, a line "C<TAB>hid<TAB>level<TAB>letter<TAB>result" for
+// each composition defined by the layout (dead key then letter a-zA-Z).
 #include <Carbon/Carbon.h>
 #include <stdio.h>
 #include <string.h>
 
-// keycode virtuale macOS (ANSI) -> usage HID
+// macOS virtual keycode (ANSI) -> HID usage
 static const struct { int mac, hid; } KEYS[] = {
     {50, 0x35}, {18, 0x1E}, {19, 0x1F}, {20, 0x20}, {21, 0x21}, {23, 0x22}, {22, 0x23}, {26, 0x24}, {28, 0x25},
     {25, 0x26}, {29, 0x27}, {27, 0x2D}, {24, 0x2E},
@@ -24,7 +24,7 @@ static const struct { int mac, hid; } KEYS[] = {
     {10, 0x64}, {6, 0x1D}, {7, 0x1B}, {8, 0x06}, {9, 0x19}, {11, 0x05}, {45, 0x11}, {46, 0x10}, {43, 0x36},
     {47, 0x37}, {44, 0x38},
 };
-static const int MODS[4] = {0, 2, 8, 10}; // (shift = 2, option = 8) >> 8 della maschera Carbon
+static const int MODS[4] = {0, 2, 8, 10}; // (shift = 2, option = 8) >> 8 of the Carbon mask
 
 static int translate(const UCKeyboardLayout *l, int key, int mod, UInt32 *dead, UniChar *out, int max)
 {
@@ -52,7 +52,7 @@ int main(int argc, char **argv)
                                            &kCFTypeDictionaryValueCallBacks);
     CFArrayRef list = TISCreateInputSourceList(f, true);
     if (!list || !CFArrayGetCount(list)) {
-        fprintf(stderr, "layout non trovato\n");
+        fprintf(stderr, "layout not found\n");
         return 1;
     }
     TISInputSourceRef src = (TISInputSourceRef)CFArrayGetValueAtIndex(list, 0);
@@ -67,8 +67,8 @@ int main(int argc, char **argv)
             int n = translate(l, KEYS[i].mac, MODS[m], &dead, out, 8);
             putchar('\t');
             if (n == 0 && dead) {
-                // Tasto morto: si prova a comporlo con delle lettere per scoprire
-                // il segno combinante (NFD del primo risultato a un solo carattere)
+                // Dead key: try composing it with some letters to discover the
+                // combining mark (NFD of the first single-character result)
                 const char *letters = "aeiouAEIOUcCnN";
                 int found = 0;
                 for (const char *c = letters; *c && !found; c++) {
@@ -80,7 +80,7 @@ int main(int argc, char **argv)
                         if (n2 == 1 && o2[0] == (UniChar)*c) lk = KEYS[j].mac;
                         (void)n2;
                     }
-                    // lettere maiuscole: servono con Shift
+                    // uppercase letters: they need Shift
                     int lmod = (*c >= 'A' && *c <= 'Z') ? 2 : 0;
                     if (lk < 0 && lmod) {
                         for (size_t j = 0; j < sizeof(KEYS) / sizeof(KEYS[0]); j++) {
@@ -117,7 +117,7 @@ int main(int argc, char **argv)
         putchar('\n');
     }
 
-    // Composizioni: per ogni tasto morto e ogni lettera, ciò che il layout produce
+    // Compositions: for every dead key and every letter, what the layout produces
     for (size_t i = 0; i < sizeof(KEYS) / sizeof(KEYS[0]); i++) {
         for (int m = 0; m < 4; m++) {
             UInt32 dead = 0;

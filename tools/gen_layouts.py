@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Genera components/hid/layouts_data.c dalle specifiche dei layout qui sotto.
+"""Generates components/hid/layouts_data.c from the layout specifications below.
 
-Ogni layout descrive, riga per riga della tastiera fisica, il carattere
-prodotto da ciascun tasto a quattro livelli: normale, Shift, AltGr,
-AltGr+Shift. I tasti fisici sono indicati con l'usage HID della posizione
-US (quella che il dongle invia); "·" indica nessun carattere.
+Each layout describes, row by row of the physical keyboard, the character
+produced by each key at four levels: normal, Shift, AltGr,
+AltGr+Shift. Physical keys are given by the HID usage of the US position
+(the one the dongle sends); "·" means no character.
 
-Aggiungere un layout = aggiungere una voce a LAYOUTS e rigenerare:
+Adding a layout = adding an entry to LAYOUTS and regenerating:
     python3 tools/gen_layouts.py
 """
 import unicodedata
@@ -15,7 +15,7 @@ from pathlib import Path
 OUT = Path(__file__).resolve().parent.parent / "components" / "hid" / "layouts_data.c"
 NONE = "·"
 
-# Tasti fisici per riga, in ordine da sinistra a destra (usage HID)
+# Physical keys per row, in left-to-right order (HID usage)
 ROWS = [
     [0x35, 0x1E, 0x1F, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x2D, 0x2E],  # ` 1..0 - =
     [0x14, 0x1A, 0x08, 0x15, 0x17, 0x1C, 0x18, 0x0C, 0x12, 0x13, 0x2F, 0x30],        # q..p [ ]
@@ -24,7 +24,7 @@ ROWS = [
 ]
 
 MOD_SHIFT = 0x02
-MOD_ALTGR = 0x40  # AltDestro: su Windows/Linux è AltGr, su macOS vale come Option
+MOD_ALTGR = 0x40  # Right Alt: on Windows/Linux it is AltGr, on macOS it acts as Option
 
 US = {
     "rows": [
@@ -35,7 +35,7 @@ US = {
     ],
 }
 
-# Italiano standard Windows/Linux (tastiera ISO)
+# Standard Italian Windows/Linux (ISO keyboard)
 IT = {
     "rows": [
         ("\\1234567890'ì", "|!\"£$%&/()=?^", "", ""),
@@ -43,16 +43,16 @@ IT = {
         ("asdfghjklòàù", "ASDFGHJKLç°§", "·········@#·", ""),
         ("<zxcvbnm,.-", ">ZXCVBNM;:_", "", ""),
     ],
-    # Solo Linux (xkb "it"): AltGr+' = `, AltGr+ì = ~ (non presenti su Windows)
+    # Linux only (xkb "it"): AltGr+' = `, AltGr+ì = ~ (not present on Windows)
     "linux_extra": {"`": (0x2D, MOD_ALTGR), "~": (0x2E, MOD_ALTGR)},
-    # macOS "Italian - Pro", letto con tools/dump_mac_layout.c. Il dump assume una
-    # tastiera ANSI (HID 0x35 -> `<`, 0x64 -> `\`); una tastiera ISO ha i due tasti
-    # scambiati, come la tabella Windows qui sopra, quindi si scambiano anche nel dump.
+    # macOS "Italian - Pro", read with tools/dump_mac_layout.c. The dump assumes an
+    # ANSI keyboard (HID 0x35 -> `<`, 0x64 -> `\`); an ISO keyboard has the two keys
+    # swapped, like the Windows table above, so they are swapped in the dump as well.
     "mac_dump": Path(__file__).resolve().parent / "layouts" / "macos_italian-pro.tsv",
     "mac_iso": True,
 }
 
-# Colemak: variante del layout US con le lettere spostate
+# Colemak: variant of the US layout with the letters moved
 COLEMAK = {
     "rows": [
         ("`1234567890-=", "~!@#$%^&*()_+", "", ""),
@@ -62,13 +62,13 @@ COLEMAK = {
     ],
 }
 
-# Livelli AltGr (3) e AltGr+Shift (4) del Colemak di xkb su Linux, "us(colemak)":
+# AltGr (3) and AltGr+Shift (4) levels of the xkb Colemak on Linux, "us(colemak)":
 # https://gitlab.freedesktop.org/xkeyboard-config/xkeyboard-config/-/blob/master/symbols/us
-# (sezione colemak_base). Stesse posizioni di ROWS; "·" = nessun carattere.
-# Un segno diacritico combinante (U+03xx) indica un tasto morto: AltGr+r è
-# dead_grave (U+0300), poi la lettera: "à" = AltGr+r, a.
-# Solo Linux: su Windows il Colemak ufficiale ha una mappa diversa e su macOS
-# i tasti morti non sono stati verificati, lì restano i ripieghi.
+# (colemak_base section). Same positions as ROWS; "·" = no character.
+# A combining diacritical mark (U+03xx) denotes a dead key: AltGr+r is
+# dead_grave (U+0300), then the letter: "à" = AltGr+r, a.
+# Linux only: on Windows the official Colemak has a different map and on macOS
+# the dead keys have not been verified, so the fallbacks remain there.
 COLEMAK["linux_altgr"] = [
     ("\u0303¡ºª¢€ħðþ‘’–×", "~¹²³£¥ĦÐÞ“”—÷"),
     ("äåãø\u0328đłúüö«»", "ÄÅÃØ~ĐŁÚÜÖ‹›"),
@@ -76,11 +76,11 @@ COLEMAK["linux_altgr"] = [
     ("·æ\u0302çœ\u0306\u030a\u0304\u0327\u0307¿", "·Æ~ÇŒ~~~~~~"),
 ]
 
-# macOS: livelli Option e composizioni letti dal layout di sistema con
-# tools/dump_mac_layout.c (UCKeyTranslate), non scritti a mano.
+# macOS: Option levels and compositions read from the system layout with
+# tools/dump_mac_layout.c (UCKeyTranslate), not written by hand.
 COLEMAK["mac_dump"] = Path(__file__).resolve().parent / "layouts" / "macos_colemak.tsv"
 
-# Windows: sorgente KLC del Colemak ufficiale (vedi tools/layouts/README.md)
+# Windows: KLC source of the official Colemak (see tools/layouts/README.md)
 COLEMAK["windows_klc"] = Path(__file__).resolve().parent / "layouts" / "colemak-windows.klc"
 
 LAYOUTS = [("us", US), ("it", IT), ("colemak", COLEMAK)]
@@ -97,20 +97,20 @@ def entries(spec):
             for key, ch in zip(keys, text):
                 if ch == NONE:
                     continue
-                # Il primo modo trovato vince (livello più semplice)
+                # The first way found wins (simplest level)
                 out.setdefault(ord(ch), (key, mods))
-    # Tasti comuni a tutti i layout
+    # Keys common to all layouts
     for ch, key in ((" ", 0x2C), ("\n", 0x28), ("\t", 0x2B)):
         out.setdefault(ord(ch), (key, 0))
     return out
 
 
 def linux_altgr(spec, base):
-    """Da `linux_altgr` ricava i caratteri diretti e le sequenze con tasto morto.
+    """Derives the direct characters and the dead-key sequences from `linux_altgr`.
 
-    Restituisce (extra, dead): extra = {char: (key, mods)}; dead = lista di
-    (char, (key1, mods1), (key2, mods2)), cioè tasto morto poi lettera base.
-    `base` = entries() del layout, per trovare i tasti delle lettere.
+    Returns (extra, dead): extra = {char: (key, mods)}; dead = list of
+    (char, (key1, mods1), (key2, mods2)), i.e. dead key then base letter.
+    `base` = the layout's entries(), to find the letter keys.
     """
     extra, marks = {}, {}
     for keys, (l3, l4) in zip(ROWS, spec["linux_altgr"]):
@@ -127,14 +127,14 @@ def linux_altgr(spec, base):
     for mark, first in marks.items():
         for letter in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ":
             composed = unicodedata.normalize("NFC", letter + mark)
-            # Solo se esiste un carattere precomposto e non è già diretto
+            # Only if a precomposed character exists and is not already direct
             if len(composed) != 1 or composed in extra or ord(composed) in base:
                 continue
             dead.append((composed, first, base[ord(letter)]))
     return extra, dead
 
 
-# Scancode set 1 (quelli del KLC, posizionali come l'HID US) -> usage HID
+# Scancode set 1 (the KLC ones, positional like the US HID) -> HID usage
 KLC_SCAN = {
     0x29: 0x35, **{0x02 + i: 0x1E + i for i in range(10)}, 0x0C: 0x2D, 0x0D: 0x2E,
     0x10: 0x14, 0x11: 0x1A, 0x12: 0x08, 0x13: 0x15, 0x14: 0x17, 0x15: 0x1C, 0x16: 0x18, 0x17: 0x0C, 0x18: 0x12,
@@ -147,11 +147,11 @@ KLC_SCAN = {
 
 
 def windows_klc(spec, base):
-    """Livelli AltGr e tasti morti dal sorgente KLC del Colemak per Windows.
+    """AltGr levels and dead keys from the KLC source of the Colemak for Windows.
 
-    Colonne del KLC: base, Shift, Ctrl, Ctrl+Alt (= AltGr), Ctrl+Alt+Shift.
-    Un carattere seguito da "@" è un tasto morto; le sue composizioni stanno
-    nei blocchi DEADKEY. Restituisce (extra, dead) come linux_altgr().
+    KLC columns: base, Shift, Ctrl, Ctrl+Alt (= AltGr), Ctrl+Alt+Shift.
+    A character followed by "@" is a dead key; its compositions are in the
+    DEADKEY blocks. Returns (extra, dead) like linux_altgr().
     """
     lines = spec["windows_klc"].read_bytes().decode("utf-16").splitlines()
     layout_at = next(i for i, l in enumerate(lines) if l.startswith("LAYOUT"))
@@ -176,7 +176,7 @@ def windows_klc(spec, base):
                 triggers.setdefault(ch, (key, mods))
             elif ord(ch) not in base:
                 extra.setdefault(ch, (key, mods))
-    # Blocchi DEADKEY: "DEADKEY <tasto morto>" poi righe "<base> <risultato>"
+    # DEADKEY blocks: "DEADKEY <dead key>" then lines "<base> <result>"
     compose, current = {}, None
     for line in lines[layout_at:]:
         if line.startswith("DEADKEY"):
@@ -197,13 +197,13 @@ def windows_klc(spec, base):
     return extra, dead
 
 
-MOD_OPTION = 0x04  # AltSinistro = Option su macOS
+MOD_OPTION = 0x04  # Left Alt = Option on macOS
 
 
 def mac_option(spec, base):
-    """Livelli Option e composizioni di macOS, dal dump di tools/dump_mac_layout.c.
+    """macOS Option levels and compositions, from the tools/dump_mac_layout.c dump.
 
-    Restituisce (extra, dead) come linux_altgr().
+    Returns (extra, dead) like linux_altgr().
     """
     extra, composed = {}, []
     swap = {0x35: 0x64, 0x64: 0x35} if spec.get("mac_iso") else {}
@@ -216,7 +216,7 @@ def mac_option(spec, base):
             composed.append((result, (swap.get(hid, hid), mods), base[ord(letter)]))
             continue
         hid = swap.get(int(cols[0], 16), int(cols[0], 16))
-        if hid == 0x64 and not swap:  # tasto ISO: non esiste sulle tastiere ANSI dei Mac
+        if hid == 0x64 and not swap:  # ISO key: it does not exist on Mac ANSI keyboards
             continue
         for ch, mods in ((cols[3], MOD_OPTION), (cols[4], MOD_OPTION | MOD_SHIFT)):
             if ch == "-" or ch.startswith("DEAD:") or ord(ch) in base:
@@ -227,7 +227,7 @@ def mac_option(spec, base):
 
 def main():
     with OUT.open("w") as f:
-        f.write("// File generato da tools/gen_layouts.py: non modificare a mano.\n")
+        f.write("// Generated by tools/gen_layouts.py: do not edit by hand.\n")
         f.write('#include "hid_layout.h"\n\n')
         for name, spec in LAYOUTS:
             e = entries(spec)
@@ -276,7 +276,7 @@ def main():
             f.write(f'    {{"{name}", s_{name}, sizeof(s_{name}) / sizeof(s_{name}[0]), s_{name}_linux, s_{name}_dead, s_{name}_mac, s_{name}_mac_dead, s_{name}_win, s_{name}_win_dead}},\n')
         f.write("};\n")
         f.write(f"const int hid_layout_count = {len(LAYOUTS)};\n")
-    print(f"scritto {OUT}")
+    print(f"wrote {OUT}")
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-# Test host della logica senza dipendenze ESP-IDF.
+# Host tests of the logic with no ESP-IDF dependencies.
 ROOT := ../..
 SRCS := test_main.c $(ROOT)/components/hid/hid_layout.c $(ROOT)/components/hid/layouts_data.c \
         $(ROOT)/components/input/gesture.c $(ROOT)/apps/netscan/netscan_util.c $(ROOT)/apps/webfiles/secrets.c

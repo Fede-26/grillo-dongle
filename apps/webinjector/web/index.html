@@ -39,7 +39,7 @@ nav{display:flex;gap:6px}nav button{flex:1}
 #run{display:none}
 #bar{height:10px;background:var(--hi);overflow:hidden;display:none}
 #bar div{height:100%;width:0;background:var(--acc)}
-/* Cronologia: una voce per riga, ora a sinistra */
+/* History: one entry per line, time on the left */
 #log{margin:0;padding:0;list-style:none;max-height:50vh;overflow:auto;font-size:15px;display:flex;flex-direction:column;gap:2px}
 #log li{display:flex;gap:8px;overflow-wrap:anywhere;min-width:0}
 #log .at{flex:none;color:var(--dim);font-family:var(--f-mono);font-size:13px;padding-top:2px}
@@ -55,7 +55,7 @@ nav{display:flex;gap:6px}nav button{flex:1}
 #ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);padding:16px;align-items:center;justify-content:center;z-index:5}
 #ov .panel{width:min(420px,100%);max-height:90vh;overflow:auto}
 #toast{position:fixed;left:8px;right:8px;bottom:8px;display:none;background:var(--err);color:#000;clip-path:var(--notch);padding:10px;z-index:60}
-/* Barra a blocchi in arcade */
+/* Block-style bar in arcade */
 html.arcade #bar div{background:repeating-linear-gradient(90deg,var(--acc) 0 8px,transparent 8px 10px)}
 </style>
 </head>
@@ -102,7 +102,7 @@ function tx(s) { if (ws && ws.readyState === 1 && authed) ws.send(s); }
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
 function toast(t) { const e = $("toast"); e.textContent = t; e.style.display = "block"; clearTimeout(toast.t); toast.t = setTimeout(() => e.style.display = "none", 4000); }
 
-// --- Connessione: come il Web HID (PIN, riconnessione automatica) ---
+// --- Connection: like Web HID (PIN, automatic reconnection) ---
 function connect() {
   ws = new WebSocket("ws://" + location.host + "/ws");
   setSt("connecting…");
@@ -129,13 +129,13 @@ function fail(t) { pin = ""; $("msg").textContent = t; $("login").style.display 
 fetch("/cfg").then(r => r.text()).then(t => { if (t === "nopin") { pin = "-"; connect(); } }).catch(() => {});
 $("login").onsubmit = e => { e.preventDefault(); pin = $("pin").value.trim(); $("msg").textContent = ""; if (pin) connect(); };
 
-// --- Messaggi del dongle ---
-// phase: "idle" | "run" | "done" (esito ancora sul display, resultId)
+// --- Messages from the dongle ---
+// phase: "idle" | "run" | "done" (outcome still on the display, resultId)
 let entries = [], dialogId = 0, phase = "idle", resultId = 0, lastPath = "", pendingRun = "";
 function handle(m) {
   switch (m.t) {
   case "hello":
-    // Dopo hello arrivano cronologia, stato, dialogo ed esito: si riparte da zero
+    // After hello come history, state, dialog and outcome: start over from scratch
     phase = m.phase; resultId = 0; clearRun();
     if (m.dropped) logItem("note", "", m.dropped + " earlier lines not kept");
     if (phase !== "idle") showRun(true);
@@ -151,7 +151,7 @@ function handle(m) {
     logItem(m.k, m.at, m.text);
     break;
   case "menu": case "confirm": case "button": showDialog(m); break;
-  // Esito: in pagina, non in una finestra. "done" è anche sul display (OK lo chiude)
+  // Outcome: in the page, not in a dialog box. "done" is also on the display (OK closes it)
   case "done": phase = "done"; resultId = m.id; showResult(m); break;
   case "result": showResult(m); break;
   case "close":
@@ -166,14 +166,14 @@ function handle(m) {
   }
 }
 
-// --- Elenco: cartelle vere, oppure viste per OS e per tag da tutti gli script ---
+// --- Listing: real folders, or by-OS and by-tag views from all scripts ---
 let view = 0, dir = "", group = null, loading = false, scan = [];
 for (const i of [0, 1, 2]) $("v" + i).onclick = () => { view = i; group = null; refresh(); };
 function refresh() {
   for (const i of [0, 1, 2]) $("v" + i).classList.toggle("on", view === i);
   if (loading) return;
   loading = true; entries = [];
-  // Le viste virtuali si costruiscono qui dalla scansione completa, come fa l'Injector sul display
+  // The virtual views are built here from the full scan, as the Injector does on the display
   tx(view === 0 ? "l" + dir : "s");
 }
 function listDone(m) {
@@ -213,7 +213,7 @@ function addItem(label, right, isDir, onclick) {
   $("list").appendChild(b);
 }
 
-// --- Scheda dello script ---
+// --- Script details card ---
 function showCard(m) {
   const box = $("box"); box.textContent = "";
   box.appendChild(el("h2", "", m.name || m.path));
@@ -236,11 +236,11 @@ function showCard(m) {
   $("ov").style.display = "flex";
 }
 
-// --- Esecuzione: resta in pagina anche a run finita, fino a Back ---
+// --- Execution: stays in the page even after the run ends, until Back ---
 function showRun(on) {
   $("run").style.display = on ? "flex" : "none";
   $("browse").style.display = on ? "none" : "flex";
-  // "block" e non "": il CSS lo nasconde finché non c'è una run da rivedere
+  // "block" and not "": the CSS hides it until there is a run to review
   $("vlast").style.display = !on && $("log").children.length ? "block" : "none";
 }
 const runShown = () => $("run").style.display === "flex";
@@ -262,12 +262,12 @@ function showResult(m) {
   $("rname").textContent = m.name; $("rstatus").textContent = ""; $("bar").style.display = "none";
   buttons();
 }
-// Chiude l'esito sul display, se c'è ancora
+// Closes the outcome on the display, if it is still there
 function dismiss() { if (resultId) tx("a" + resultId + ":0"); }
 $("rok").onclick = dismiss;
 $("rback").onclick = () => { dismiss(); showRun(false); };
 $("ragain").onclick = () => {
-  // Con l'esito ancora sul display il dongle non accetta una run nuova: prima si chiude
+  // With the outcome still on the display the dongle does not accept a new run: close it first
   if (resultId) { pendingRun = lastPath; dismiss(); } else tx("r" + lastPath);
 };
 $("vlast").onclick = () => showRun(true);
@@ -279,19 +279,19 @@ function runState(m) {
 }
 function logItem(k, at, text) {
   const log = $("log");
-  // In fondo segue le voci nuove; se si sta rileggendo più su, resta lì
+  // At the bottom it follows new entries; if you are reading further up, it stays there
   const atEnd = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
   const li = el("li", k + (k === "done" ? (text === "Done" ? " ok" : " bad") : ""));
   li.appendChild(el("span", "at", at)); li.appendChild(el("span", "x", text));
   log.appendChild(li);
-  // Ultime 300 voci: lo script può scrivere per ore
+  // Last 300 entries: the script can write for hours
   while (log.children.length > 300) log.firstChild.remove();
   if (atEnd) log.scrollTop = log.scrollHeight;
   if (!runShown()) $("vlast").style.display = "block";
 }
 $("abort").onclick = () => tx("x");
 
-// --- Dialoghi dello script: rispondere qui o col pulsante del dongle, vale il primo ---
+// --- Script dialogs: answer here or with the dongle button, the first one wins ---
 function showDialog(m) {
   const box = $("box"); box.textContent = "";
   dialogId = m.id;

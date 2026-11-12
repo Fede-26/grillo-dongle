@@ -1,6 +1,6 @@
 name: release
 
-# Una release si crea pushando un tag di versione, es.:
+# A release is created by pushing a version tag, e.g.:
 #   git tag v0.1.0 && git push origin v0.1.0
 on:
   push:
@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Serve la storia completa: la versione del firmware viene da `git describe`.
+          # Full history needed: the firmware version comes from `git describe`.
           fetch-depth: 0
 
       - name: Build
@@ -24,7 +24,7 @@ jobs:
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           . $IDF_PATH/export.sh
-          # sdkconfig.release in più: niente console di debug nelle release pubblicate.
+          # Extra sdkconfig.release: no debug console in published releases.
           export SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.release"
           idf.py set-target esp32s3
           idf.py build

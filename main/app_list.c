@@ -1,6 +1,6 @@
-// Tabella delle app mostrate nel launcher, nell'ordine del carosello.
-// Per aggiungere un'app: includi il suo header e aggiungila qui (e al
-// REQUIRES di main/CMakeLists.txt).
+// Table of the apps shown in the launcher, in carousel order.
+// To add an app: include its header and add it here (and to the
+// REQUIRES of main/CMakeLists.txt).
 
 #include "app_list.h"
 #include "injector.h"

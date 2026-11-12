@@ -17,9 +17,9 @@ static esp_lcd_panel_io_handle_t s_io;
 static uint16_t *s_fb;
 static SemaphoreHandle_t s_done;
 
-// Sequenza di init ST7735S presa dal driver dell'esempio ufficiale LilyGO
-// (examples/lcd/bsp_lcd/esp_lcd_st7735.c). Ritardi su SWRESET/SLPOUT
-// aggiunti come da datasheet (120 ms).
+// ST7735S init sequence taken from the driver of the official LilyGO example
+// (examples/lcd/bsp_lcd/esp_lcd_st7735.c). Delays on SWRESET/SLPOUT
+// added as per the datasheet (120 ms).
 typedef struct {
     uint8_t cmd;
     uint8_t len;
@@ -40,8 +40,8 @@ static const init_cmd_t s_init[] = {
     {0xC3, 2, {0x8D, 0x6A}, 0},                         // PWCTR4
     {0xC4, 2, {0x8D, 0xEE}, 0},                         // PWCTR5
     {0xC5, 1, {0x0E}, 0},                               // VMCTR1
-    {0x21, 0, {0}, 0},                                  // INVON: il pannello ha i colori invertiti
-    // MADCTL: MY (0x80) | MV (0x20, orizzontale) | BGR (0x08)
+    {0x21, 0, {0}, 0},                                  // INVON: the panel has inverted colors
+    // MADCTL: MY (0x80) | MV (0x20, landscape) | BGR (0x08)
     {0x36, 1, {0xA8}, 0},
     {0x3A, 1, {0x05}, 0},                               // COLMOD 16 bit
     {0xE0, 16, {0x10, 0x0E, 0x02, 0x03, 0x0E, 0x07, 0x02, 0x07, 0x0A, 0x12, 0x27, 0x37, 0x00, 0x0D, 0x0E, 0x10}, 0},
@@ -73,7 +73,7 @@ static void backlight_init(void)
         .channel = LEDC_CHANNEL_0,
         .timer_sel = LEDC_TIMER_0,
         .duty = 0,
-        // Backlight attivo basso: invertendo l'uscita, duty alto = più luce.
+        // Active-low backlight: with the output inverted, high duty = more light.
         .flags.output_invert = (BOARD_LCD_BL_ON_LEVEL == 0),
     };
     ledc_channel_config(&c);
@@ -81,9 +81,9 @@ static void backlight_init(void)
 
 void display_set_rotation(int degrees)
 {
-    // MADCTL (0x36), base: MV (0x20, orizzontale) | BGR (0x08). A 0° si
-    // aggiunge MY (0x80), a 180° MX (0x40). Gli offset della finestra (gap)
-    // restano uguali perché la RAM del controller è centrata sul pannello.
+    // MADCTL (0x36), base: MV (0x20, landscape) | BGR (0x08). At 0° MY (0x80)
+    // is added, at 180° MX (0x40). The window offsets (gap) stay the same
+    // because the controller RAM is centered on the panel.
     uint8_t madctl = degrees == 180 ? 0x68 : 0xA8;
     esp_lcd_panel_io_tx_param(s_io, 0x36, &madctl, 1);
 }
@@ -122,7 +122,7 @@ esp_err_t display_init(void)
     ESP_RETURN_ON_ERROR(esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)BOARD_LCD_SPI_HOST, &io_cfg, &s_io),
                         TAG, "panel io");
 
-    // Reset hardware prima della sequenza di init
+    // Hardware reset before the init sequence
     gpio_config_t rst = {.pin_bit_mask = 1ULL << BOARD_LCD_RST, .mode = GPIO_MODE_OUTPUT};
     gpio_config(&rst);
     gpio_set_level(BOARD_LCD_RST, 0);
@@ -136,8 +136,8 @@ esp_err_t display_init(void)
         if (s_init[i].delay_ms) vTaskDelay(pdMS_TO_TICKS(s_init[i].delay_ms));
     }
 
-    // La finestra di scrittura è sempre l'intero schermo: la impostiamo una
-    // volta sola, così ogni flush è solo RAMWR + dati.
+    // The write window is always the whole screen: we set it only once,
+    // so every flush is just RAMWR + data.
     uint16_t x0 = BOARD_LCD_X_GAP, x1 = BOARD_LCD_X_GAP + DISPLAY_W - 1;
     uint16_t y0 = BOARD_LCD_Y_GAP, y1 = BOARD_LCD_Y_GAP + DISPLAY_H - 1;
     esp_lcd_panel_io_tx_param(s_io, 0x2A, (uint8_t[]){x0 >> 8, x0 & 0xFF, x1 >> 8, x1 & 0xFF}, 4);
@@ -160,7 +160,7 @@ uint16_t *display_fb(void)
 void display_flush(void)
 {
     esp_lcd_panel_io_tx_color(s_io, 0x2C, s_fb, DISPLAY_W * DISPLAY_H * 2);
-    // Attendiamo la fine del DMA: chi chiama può subito ridisegnare nel
-    // framebuffer senza tearing.
+    // Wait for the DMA to finish: the caller can redraw into the
+    // framebuffer right away without tearing.
     xSemaphoreTake(s_done, portMAX_DELAY);
 }

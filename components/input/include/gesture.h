@@ -3,24 +3,24 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-// Riconoscitore di gesti per un singolo pulsante. Logica pura, senza
-// dipendenze da ESP-IDF, così è testabile sul PC (test/host).
+// Gesture recognizer for a single button. Pure logic, with no
+// ESP-IDF dependencies, so it is testable on the PC (test/host).
 
-#define GESTURE_LONG_MS        600  // da qui il rilascio è "lungo" (conferma)
-// Da qui compare la barra di uscita. Fino a qui il rilascio vale ancora come
-// "lungo": 1,5 s lasciano tempo a chi rilascia con calma dopo il segnale.
+#define GESTURE_LONG_MS        600  // from here the release is "long" (confirm)
+// From here the exit bar appears. Up to here the release still counts as
+// "long": 1.5 s leaves time for whoever releases calmly after the signal.
 #define GESTURE_HOLD_START_MS  1500
-#define GESTURE_HOLD_MS        3000 // tenuto fin qui = esci dall'app
-#define GESTURE_DOUBLE_MS      250  // finestra per il secondo click
+#define GESTURE_HOLD_MS        3000 // held up to here = exit the app
+#define GESTURE_DOUBLE_MS      250  // window for the second click
 
 typedef enum {
     GESTURE_NONE,
     GESTURE_CLICK,
     GESTURE_DOUBLE,
-    GESTURE_LONG,          // rilascio tra LONG_MS e HOLD_START_MS
-    GESTURE_LONG_ARMED,    // superata la soglia LONG mentre è ancora premuto (feedback)
-    GESTURE_HOLD_PROGRESS, // tra HOLD_START e HOLD: valore 0..100 in *progress
-    GESTURE_HOLD_CANCEL,   // rilasciato durante l'anello: nessuna azione
+    GESTURE_LONG,          // release between LONG_MS and HOLD_START_MS
+    GESTURE_LONG_ARMED,    // LONG threshold passed while still pressed (feedback)
+    GESTURE_HOLD_PROGRESS, // between HOLD_START and HOLD: value 0..100 in *progress
+    GESTURE_HOLD_CANCEL,   // released during the ring: no action
     GESTURE_HOLD_EXIT,
 } gesture_t;
 
@@ -33,5 +33,5 @@ typedef struct {
 } gesture_ctx_t;
 
 void gesture_init(gesture_ctx_t *g);
-// Da chiamare periodicamente (es. ogni 10 ms) con lo stato già "debounced".
+// To be called periodically (e.g. every 10 ms) with the already "debounced" state.
 gesture_t gesture_feed(gesture_ctx_t *g, bool pressed, uint32_t now_ms, uint8_t *progress);

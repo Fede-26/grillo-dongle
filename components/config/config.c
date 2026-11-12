@@ -28,8 +28,8 @@ static void put(const char *key, const char *val)
         s_cap = cap;
     }
     char *k = strdup(key), *v = strdup(val);
-    // Senza memoria la chiave si perde (vale il default), ma config_str non
-    // deve mai trovare un NULL da confrontare.
+    // Out of memory the key is lost (the default applies), but config_str must
+    // never find a NULL to compare.
     if (!k || !v) {
         free(k);
         free(v);
@@ -40,10 +40,10 @@ static void put(const char *key, const char *val)
     s_n++;
 }
 
-// Visita ricorsiva della tabella in cima allo stack, prefissando le chiavi.
+// Recursive walk of the table on top of the stack, prefixing the keys.
 static void flatten(lua_State *L, const char *prefix, int depth)
 {
-    if (depth > 8) return; // difesa da tabelle cicliche
+    if (depth > 8) return; // guard against cyclic tables
     lua_pushnil(L);
     while (lua_next(L, -2)) {
         char key[96];
@@ -60,8 +60,8 @@ static void flatten(lua_State *L, const char *prefix, int depth)
         case LUA_TBOOLEAN: put(key, lua_toboolean(L, -1) ? "true" : "false"); break;
         case LUA_TNUMBER:
         case LUA_TSTRING: {
-            // lua_tostring converte il numero sul posto: copiamo prima il
-            // valore per non alterare la chiave usata da lua_next.
+            // lua_tostring converts the number in place: copy the value first
+            // so as not to alter the key used by lua_next.
             lua_pushvalue(L, -1);
             put(key, lua_tostring(L, -1));
             lua_pop(L, 1);
@@ -84,12 +84,12 @@ static void clear(void)
 
 esp_err_t config_load(const char *path)
 {
-    // Ricaricabile: ogni chiamata sostituisce la configurazione precedente
+    // Reloadable: every call replaces the previous configuration
     clear();
     s_error[0] = 0;
     FILE *f = fopen(path, "r");
     if (!f) {
-        ESP_LOGW(TAG, "%s assente: uso i default", path);
+        ESP_LOGW(TAG, "%s missing: using defaults", path);
         return ESP_ERR_NOT_FOUND;
     }
     fclose(f);
@@ -104,7 +104,7 @@ esp_err_t config_load(const char *path)
         ret = ESP_FAIL;
     } else {
         flatten(L, "", 0);
-        ESP_LOGI(TAG, "%d chiavi caricate", s_n);
+        ESP_LOGI(TAG, "%d keys loaded", s_n);
     }
     if (ret != ESP_OK) ESP_LOGE(TAG, "%s", s_error);
     luart_close(L);
@@ -151,7 +151,7 @@ int config_count(const char *prefix)
         for (int i = 0; i < s_n && !found; i++) {
             found = strncmp(s_kv[i].key, probe, len) == 0;
         }
-        // Accetta anche array di scalari: prefix.N senza sottochiavi
+        // Also accepts arrays of scalars: prefix.N without subkeys
         if (!found) {
             probe[len - 1] = 0;
             found = config_str(probe, NULL) != NULL;

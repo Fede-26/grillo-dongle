@@ -14,7 +14,7 @@ static const char *TAG = "websrv";
 
 #define MAX_TRIES  5
 #define LOCKOUT_US (30 * 1000000LL)
-// Pagina dell'app più i file del tema (webtheme): css, js, due font, logo
+// App page plus the theme files (webtheme): css, js, two fonts, logo
 #define MAX_PAGES  8
 
 static httpd_handle_t s_server;
@@ -22,11 +22,11 @@ static websrv_config_t s_cfg;
 static char s_pin[8];
 static int s_client_fd = -1;
 static char s_client_ip[16];
-// Token delle rotte HTTP del client autenticato (vedi websrv_authorized):
-// nuovo a ogni accesso, vuoto senza sessione.
+// Token for the authenticated client's HTTP routes (see websrv_authorized):
+// new at every login, empty without a session.
 static char s_token[33];
-// true durante websrv_stop: interrompe un lavoro lungo in corso nel task
-// httpd, che altrimenti httpd_stop aspetterebbe fino alla fine.
+// true during websrv_stop: interrupts a long job running in the httpd task,
+// which httpd_stop would otherwise wait for until it ends.
 static volatile bool s_stopping;
 
 typedef struct {
@@ -38,8 +38,8 @@ typedef struct {
 static page_t s_pages[MAX_PAGES];
 static int s_npages;
 
-// Tentativi di PIN per indirizzo: con un contatore unico un altro host
-// sulla LAN poteva tenere bloccato il proprietario sbagliando apposta.
+// PIN attempts per address: with a single counter another host on the LAN
+// could keep the owner locked out by failing on purpose.
 #define MAX_PEERS 4
 typedef struct {
     char ip[16];
@@ -55,18 +55,18 @@ static peer_t *peer_of(const char *ip)
         if (strcmp(s_peers[i].ip, ip) == 0) return &s_peers[i];
         if (s_peers[i].last_us < oldest->last_us) oldest = &s_peers[i];
     }
-    // Si ricicla la voce usata meno di recente, ma non una ancora bloccata:
-    // ruotando gli indirizzi non si deve poter azzerare il blocco altrui.
+    // The least recently used entry is recycled, but not one still locked:
+    // rotating addresses must not make it possible to reset someone else's lock.
     if (oldest->locked_until > esp_timer_get_time()) return oldest;
     *oldest = (peer_t){0};
     strlcpy(oldest->ip, ip, sizeof(oldest->ip));
     return oldest;
 }
 
-// lwIP con IPv6 attivo restituisce un sockaddr_in6 anche per i client IPv4
-// (indirizzo "mapped": gli ultimi 4 byte sono l'IPv4). Leggerlo come
-// sockaddr_in dava 0.0.0.0. `local`: indirizzo del dongle su quel socket
-// invece di quello del client.
+// lwIP with IPv6 enabled returns a sockaddr_in6 even for IPv4 clients
+// ("mapped" address: the last 4 bytes are the IPv4). Reading it as
+// sockaddr_in gave 0.0.0.0. `local`: the dongle's address on that socket
+// instead of the client's.
 static void sock_ip(int fd, bool local, char *ip, size_t len)
 {
     ip[0] = 0;
@@ -105,8 +105,8 @@ bool websrv_is_client(httpd_req_t *req)
     return s_client_ip[0] && strcmp(ip, s_client_ip) == 0;
 }
 
-// Confronto a tempo costante: il PIN protegge da altri dispositivi sulla rete.
-// Con PIN vuoto qualunque client entra.
+// Constant-time comparison: the PIN protects against other devices on the network.
+// With an empty PIN any client gets in.
 static bool pin_ok(const char *given)
 {
     size_t n = strlen(s_pin);
@@ -129,7 +129,7 @@ static void client_gone(httpd_handle_t hd, int fd)
         s_client_fd = -1;
         s_client_ip[0] = 0;
         s_token[0] = 0;
-        ESP_LOGI(TAG, "client disconnesso");
+        ESP_LOGI(TAG, "client disconnected");
     }
     close(fd);
 }
@@ -139,13 +139,13 @@ static esp_err_t page_get(httpd_req_t *req)
     const page_t *p = req->user_ctx;
     httpd_resp_set_type(req, p->type);
     if (p->flags & WEBSRV_GZIP) httpd_resp_set_hdr(req, "Content-Encoding", "gzip");
-    // In cache solo ciò che non cambia tra un firmware e l'altro (font):
-    // pagine e tema devono arrivare nuovi dopo un aggiornamento.
+    // Cache only what does not change from one firmware to the next (fonts):
+    // pages and theme must arrive fresh after an update.
     httpd_resp_set_hdr(req, "Cache-Control", (p->flags & WEBSRV_CACHE) ? "max-age=604800" : "no-store");
     return httpd_resp_send(req, (const char *)p->data, p->len);
 }
 
-// Dice alla pagina se serve il PIN, senza consumare tentativi.
+// Tells the page whether the PIN is needed, without using up attempts.
 static esp_err_t cfg_get(httpd_req_t *req)
 {
     httpd_resp_set_type(req, "text/plain");
@@ -164,9 +164,9 @@ typedef struct {
     char text[];
 } outgoing_t;
 
-// Gira nel task httpd, dove s_client_fd è aggiornato: se nel frattempo il
-// client è cambiato, il messaggio non va a un socket che ora appartiene a
-// qualcun altro (il numero di un socket chiuso viene riusato).
+// Runs in the httpd task, where s_client_fd is up to date: if the client
+// changed in the meantime, the message does not go to a socket that now
+// belongs to someone else (the number of a closed socket gets reused).
 static void send_work(void *arg)
 {
     outgoing_t *o = arg;
@@ -182,7 +182,7 @@ esp_err_t websrv_send(const char *msg)
     int fd = s_client_fd;
     if (!s_server || fd < 0) return ESP_ERR_INVALID_STATE;
     size_t len = strlen(msg);
-    // Copia: il chiamante può riusare il buffer prima che il task httpd invii
+    // Copy: the caller may reuse the buffer before the httpd task sends
     outgoing_t *o = malloc(sizeof(*o) + len);
     if (!o) return ESP_ERR_NO_MEM;
     o->fd = fd;
@@ -204,18 +204,18 @@ static void authenticate(httpd_req_t *req, int fd, const char *given)
         websrv_reply(req, "locked");
         return;
     }
-    // Posto occupato da un altro dispositivo: si risponde prima di guardare
-    // il PIN, così durante una sessione non si possono provare PIN (prima
-    // "busy" arrivava solo con il PIN giusto e confermava di averlo trovato).
-    // Lo stesso indirizzo del client attivo è lo stesso dispositivo che si
-    // riconnette mentre la vecchia connessione è ancora aperta a metà: con il
-    // PIN giusto subentra alla sessione.
+    // Slot taken by another device: reply before looking at the PIN, so PINs
+    // cannot be tried during a session (before, "busy" came only with the
+    // right PIN and confirmed it had been found).
+    // The same address as the active client is the same device reconnecting
+    // while the old connection is still half open: with the right PIN it
+    // takes over the session.
     if (s_client_fd >= 0 && s_client_fd != fd && strcmp(ip, s_client_ip) != 0) {
         websrv_reply(req, "busy");
         return;
     }
     if (!pin_ok(given)) {
-        ESP_LOGW(TAG, "PIN errato da %s (%d/%d)", ip, peer->tries + 1, MAX_TRIES);
+        ESP_LOGW(TAG, "wrong PIN from %s (%d/%d)", ip, peer->tries + 1, MAX_TRIES);
         led_flash(0xF85149, 200);
         if (++peer->tries >= MAX_TRIES) {
             peer->tries = 0;
@@ -225,14 +225,14 @@ static void authenticate(httpd_req_t *req, int fd, const char *given)
         return;
     }
     if (s_client_fd >= 0 && s_client_fd != fd) {
-        ESP_LOGI(TAG, "%s si riconnette: chiudo la sessione precedente", ip);
+        ESP_LOGI(TAG, "%s reconnecting: closing the previous session", ip);
         session_end();
         httpd_sess_trigger_close(req->handle, s_client_fd);
     }
     peer->tries = 0;
     s_client_fd = fd;
     strlcpy(s_client_ip, ip, sizeof(s_client_ip));
-    ESP_LOGI(TAG, "client autenticato: %s", s_client_ip);
+    ESP_LOGI(TAG, "client authenticated: %s", s_client_ip);
     websrv_reply(req, "ok");
     uint8_t rnd[16];
     esp_fill_random(rnd, sizeof(rnd));
@@ -243,15 +243,15 @@ static void authenticate(httpd_req_t *req, int fd, const char *given)
     if (s_cfg.on_auth) s_cfg.on_auth(req);
 }
 
-// Prima dell'handshake WebSocket: l'header Origin deve essere una pagina
-// servita dal dongle. Un WebSocket non segue la same-origin policy, quindi
-// senza questo controllo qualunque sito aperto in un browser sulla stessa
-// rete potrebbe collegarsi e, con il PIN disattivato (rete sicura o
-// <app>.pin = false), agire. Si confronta con l'IP locale del socket e non
-// con l'header Host, che con un DNS rebinding è del sito ostile. Senza
-// Origin si accetta: lo mandano tutti i browser, mentre un client non
-// browser (gli script di prova in python) è già sulla rete e non ha bisogno
-// di un sito ponte.
+// Before the WebSocket handshake: the Origin header must be a page served by
+// the dongle. A WebSocket does not follow the same-origin policy, so without
+// this check any site open in a browser on the same network could connect
+// and, with the PIN disabled (trusted network or <app>.pin = false), act.
+// The comparison is with the socket's local IP and not with the Host header,
+// which with DNS rebinding belongs to the hostile site. Without Origin it is
+// accepted: all browsers send it, while a non-browser client (the python
+// test scripts) is already on the network and does not need a bridge
+// site.
 static esp_err_t ws_origin_check(httpd_req_t *req)
 {
     size_t n = httpd_req_get_hdr_value_len(req, "Origin");
@@ -260,15 +260,15 @@ static esp_err_t ws_origin_check(httpd_req_t *req)
     if (n < sizeof(origin)) httpd_req_get_hdr_value_str(req, "Origin", origin, sizeof(origin));
     sock_ip(httpd_req_to_sockfd(req), true, ip, sizeof(ip));
     int w = snprintf(want, sizeof(want), "http://%s", ip);
-    // La porta 80 è implicita, ma un browser può scriverla
+    // Port 80 is implicit, but a browser may write it
     if (*ip && strncmp(origin, want, w) == 0 && (origin[w] == 0 || strcmp(origin + w, ":80") == 0)) return ESP_OK;
-    ESP_LOGW(TAG, "WebSocket rifiutato: Origin \"%s\" (atteso %s)", origin, want);
+    ESP_LOGW(TAG, "WebSocket refused: Origin \"%s\" (expected %s)", origin, want);
     return ESP_FAIL;
 }
 
 static esp_err_t ws_handler(httpd_req_t *req)
 {
-    if (req->method == HTTP_GET) return ESP_OK; // handshake completato
+    if (req->method == HTTP_GET) return ESP_OK; // handshake completed
     int fd = httpd_req_to_sockfd(req);
 
     httpd_ws_frame_t f = {0};
@@ -282,7 +282,7 @@ static esp_err_t ws_handler(httpd_req_t *req)
         buf[f.len] = 0;
         if (buf[0] == 'p') authenticate(req, fd, buf + 1);
         else if (fd == s_client_fd) s_cfg.on_message(req, buf, f.len);
-        // Messaggi di un client non autenticato: ignorati
+        // Messages from an unauthenticated client: ignored
     }
     free(buf);
     return err;
@@ -302,13 +302,13 @@ esp_err_t websrv_start(const websrv_config_t *cfg)
     httpd_config_t hc = HTTPD_DEFAULT_CONFIG();
     hc.stack_size = cfg->stack_size;
     hc.max_open_sockets = 4;
-    // /ws, /cfg, i file statici (MAX_PAGES) e le rotte delle app: il default
-    // di 8 bastava appena per pagina e tema
+    // /ws, /cfg, the static files (MAX_PAGES) and the app routes: the default
+    // of 8 was barely enough for page and theme
     hc.max_uri_handlers = 2 + MAX_PAGES + 8;
     hc.lru_purge_enable = true;
     hc.close_fn = client_gone;
-    // Keep-alive TCP: un client sparito senza chiudere (WiFi perso) viene
-    // scoperto in circa 11 s invece di restare aperto a tempo indefinito.
+    // TCP keep-alive: a client that vanished without closing (WiFi lost) is
+    // detected in about 11 s instead of staying open indefinitely.
     hc.keep_alive_enable = true;
     hc.keep_alive_idle = 5;
     hc.keep_alive_interval = 2;
@@ -347,7 +347,7 @@ esp_err_t websrv_add_file(const char *uri, const char *type, const uint8_t *data
     return httpd_register_uri_handler(s_server, &u);
 }
 
-// Decodifica %XX e '+' sul posto
+// Decodes %XX and '+' in place
 static void url_decode(char *s)
 {
     char *o = s;
@@ -380,7 +380,7 @@ bool websrv_authorized(httpd_req_t *req)
     if (httpd_req_get_hdr_value_str(req, "X-Grillo-Token", given, sizeof(given)) != ESP_OK) {
         websrv_query(req, "t", given, sizeof(given));
     }
-    // Confronto a tempo costante, come per il PIN
+    // Constant-time comparison, as for the PIN
     size_t n = strlen(s_token);
     if (n == 0 || strlen(given) != n) return false;
     uint8_t diff = 0;

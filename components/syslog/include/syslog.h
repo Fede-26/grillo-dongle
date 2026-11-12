@@ -1,12 +1,12 @@
 #pragma once
 
-// Copia su SD (/sd/logs/grillo.log) i log di livello warning ed error, più
-// le righe info con tag "script" (sys.log degli script dell'injector), oltre
-// alla console normale. Serve quando la USB è occupata da HID/MSC e
-// la seriale non è disponibile. Rotazione semplice: oltre 256 KB il file
-// diventa grillo.1.log. Quando l'ora è nota (componente clock) ogni riga
-// inizia con data e ora locali.
+// Copies warning and error level logs to SD (/sd/logs/grillo.log), plus
+// the info lines with tag "script" (sys.log of the injector scripts), in
+// addition to the normal console. Useful when USB is taken by HID/MSC and
+// the serial port is not available. Simple rotation: above 256 KB the file
+// becomes grillo.1.log. When the time is known (clock component) every line
+// starts with the local date and time.
 void syslog_init(void);
 
-// Scrive subito su SD le righe in coda (es. prima di prestare la SD all'host).
+// Writes the queued lines to SD immediately (e.g. before lending the SD to the host).
 void syslog_flush(void);

@@ -1,4 +1,4 @@
-// Sequenza di boot di Grillo: hardware, SD, config, splash, poi app manager.
+// Grillo boot sequence: hardware, SD, config, splash, then the app manager.
 
 #include "app_list.h"
 #include "appmgr.h"
@@ -41,8 +41,8 @@ static void show_config_error(const char *err)
     gfx_text(&gfx_font_small, 4, 3, "config.lua error", UI_ERR);
     ui_end_full();
     led_set(LED_LAYER_SYSTEM, LED_FX_BLINK, UI_ERR, 400);
-    // Il pulsante non è ancora attivo: l'errore resta almeno 4 s e, se è
-    // lungo, finché non è scorso tutto una volta (al massimo 30 s).
+    // The button is not active yet: the error stays at least 4 s and, if it is
+    // long, until it has scrolled through completely once (at most 30 s).
     ui_scroll_t sc;
     ui_scroll_init(&sc, &gfx_font_small, 4, 15, UI_W - 10, 6, err);
     int64_t start = esp_timer_get_time();
@@ -74,11 +74,11 @@ void main_request_config_reload(void)
     app_config_changed();
 }
 
-// Chiamata a ogni uscita da un'app, quando nessun'altra app gira: è l'unico
-// momento in cui ricaricare è sicuro, perché config_load libera le stringhe
-// restituite da config_str che un'app potrebbe ancora usare. Si ricarica se
-// la SD è stata prestata al PC (USB Disk: config.lua può essere cambiato) o
-// su richiesta della console o di un'app (app_config_changed).
+// Called on every app exit, when no other app is running: it is the only
+// moment when reloading is safe, because config_load frees the strings
+// returned by config_str that an app might still be using. It reloads if
+// the SD was lent to the PC (USB Disk: config.lua may have changed) or
+// on request from the console or an app (app_config_changed).
 static void reload_config(void)
 {
     static uint32_t last_lend;
@@ -98,8 +98,8 @@ void app_main(void)
     led_set(LED_LAYER_SYSTEM, LED_FX_PULSE, UI_GRILLO, 1200);
     splash();
 
-    // La console va inizializzata prima di syslog: syslog si aggancia ai log
-    // a valle e inoltra a devcon, che li scrive sul trasporto USB attivo.
+    // The console must be initialized before syslog: syslog hooks into the logs
+    // downstream and forwards them to devcon, which writes them to the active USB transport.
     devcon_init();
     console_cmds_register();
     storage_init();
@@ -112,6 +112,6 @@ void app_main(void)
     vTaskDelay(pdMS_TO_TICKS(600));
     led_clear(LED_LAYER_SYSTEM);
     appmgr_add_cleanup(reload_config);
-    ESP_LOGI(TAG, "%u app registrate", (unsigned)g_app_count);
+    ESP_LOGI(TAG, "%u apps registered", (unsigned)g_app_count);
     appmgr_run(&launcher_app, g_apps, g_app_count);
 }

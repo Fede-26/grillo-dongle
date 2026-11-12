@@ -23,15 +23,15 @@ static bool has_lua_ext(const char *n)
     return l > 4 && strcasecmp(n + l - 4, ".lua") == 0;
 }
 
-// Riempie un elemento-script leggendo l'intestazione. Il titolo viene da
-// @name, altrimenti dal nome file senza ".lua".
+// Fills a script entry by reading the header. The title comes from
+// @name, otherwise from the file name without ".lua".
 static void fill_file(payload_entry_t *p, const char *dir, const char *name)
 {
     memset(p, 0, sizeof(*p));
     strlcpy(p->name, name, sizeof(p->name));
     strlcpy(p->title, name, sizeof(p->title));
     snprintf(p->path, sizeof(p->path), "%s/%s", dir, name);
-    payload_meta_t *m = malloc(sizeof(*m)); // 400 byte: meglio fuori dallo stack, la ricorsione li moltiplica
+    payload_meta_t *m = malloc(sizeof(*m)); // 400 bytes: better off the stack, recursion multiplies them
     bool named = false;
     if (m && payload_read_meta(p->path, m)) {
         named = m->name[0];
@@ -55,7 +55,7 @@ int payload_list(const char *dir, payload_entry_t *out, int max)
     bool at_root = strcmp(dir, PAYLOAD_DIR) == 0;
     struct dirent *e;
     while (n < max && (e = readdir(d))) {
-        if (e->d_name[0] == '.' || e->d_name[0] == '_') continue; // nascosti, "._*" di macOS
+        if (e->d_name[0] == '.' || e->d_name[0] == '_') continue; // hidden, macOS "._*"
         bool is_dir = e->d_type == DT_DIR;
         if (is_dir && at_root && strcmp(e->d_name, "lib") == 0) continue;
         if (!is_dir && !has_lua_ext(e->d_name)) continue;
@@ -139,7 +139,7 @@ static bool parse_int(char *v, int *out)
 typedef struct {
     const char *key;
     size_t offset;
-    int max; // i tempi finiscono in campi uint16_t: oltre 60000 ms si troncavano
+    int max; // timings end up in uint16_t fields: above 60000 ms they were truncated
 } int_key_t;
 
 static const int_key_t s_int_keys[] = {
@@ -148,7 +148,7 @@ static const int_key_t s_int_keys[] = {
     {"jitter", offsetof(payload_meta_t, jitter), 60000},
     {"line_delay", offsetof(payload_meta_t, line_delay), 60000},
     {"start_delay", offsetof(payload_meta_t, start_delay), 60000},
-    {"timeout", offsetof(payload_meta_t, timeout), 24 * 3600}, // secondi
+    {"timeout", offsetof(payload_meta_t, timeout), 24 * 3600}, // seconds
 };
 
 bool payload_read_meta(const char *path, payload_meta_t *m)
@@ -167,8 +167,8 @@ void payload_parse_meta(FILE *f, const char *path, payload_meta_t *m)
     m->key_delay = m->hold = m->jitter = m->line_delay = m->start_delay = m->timeout = -1;
     char line[200];
     int lineno = 0;
-    // L'intestazione è il blocco di commenti iniziale: ci si ferma alla
-    // prima riga che non è un commento.
+    // The header is the initial comment block: parsing stops at the
+    // first line that is not a comment.
     while (!m->error[0] && fgets(line, sizeof(line), f)) {
         lineno++;
         char *s = trim(line);
@@ -186,7 +186,7 @@ void payload_parse_meta(FILE *f, const char *path, payload_meta_t *m)
             strlcpy(m->layout, val, sizeof(m->layout));
             if (!hid_layout_find(val)) snprintf(m->error, sizeof(m->error), "line %d: unknown @layout %s", lineno, val);
         } else if (!strcmp(key, "os")) {
-            // Prima un @os sbagliato (es. "wndows") veniva ignorato in silenzio
+            // Previously a wrong @os (e.g. "wndows") was silently ignored
             hid_os_t os;
             strlcpy(m->os, val, sizeof(m->os));
             if (!hid_os_parse(val, &os)) snprintf(m->error, sizeof(m->error), "line %d: unknown @os %s", lineno, val);
@@ -216,8 +216,8 @@ const char *payload_layout(const payload_entry_t *e)
 
 int payload_os(const payload_entry_t *e)
 {
-    // Stessi nomi accettati dall'esecuzione (win, macos...): prima "macos"
-    // finiva nel gruppo windows del browser.
+    // Same names accepted by execution (win, macos...): previously "macos"
+    // ended up in the browser's windows group.
     hid_os_t os;
     if (hid_os_parse(e->os[0] ? e->os : config_str("keyboard.os", "windows"), &os)) return os;
     return HID_OS_WINDOWS;
@@ -242,7 +242,7 @@ int payload_collect_tags(const payload_entry_t *e, int n, char tags[][PAYLOAD_TA
             p = q;
         }
     }
-    for (int i = 1; i < count; i++) { // insertion sort: max 16 elementi
+    for (int i = 1; i < count; i++) { // insertion sort: max 16 elements
         char t[PAYLOAD_TAG_LEN];
         strlcpy(t, tags[i], sizeof(t));
         int j = i - 1;

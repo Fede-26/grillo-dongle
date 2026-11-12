@@ -1,12 +1,12 @@
 "use strict";
-// Tema comune delle pagine del dongle. Imposta la modalità (plain, arcade,
-// retro) prima che la pagina si disegni, la ricorda nel browser e gestisce il
-// pulsante #theme, che passa alla successiva. grilloLive(true) anima il logo
-// quando la pagina è collegata.
+// Shared theme for the dongle's pages. Sets the mode (plain, arcade, retro)
+// before the page is drawn, remembers it in the browser and handles the
+// #theme button, which switches to the next one. grilloLive(true) animates the
+// logo while the page is connected.
 (function () {
   const KEY = "grillo.theme", MODES = ["plain", "arcade", "retro"], root = document.documentElement;
   let mode = "plain";
-  // localStorage può mancare (navigazione privata, dati bloccati): resta plain
+  // localStorage may be missing (private browsing, blocked data): stay plain
   try { mode = localStorage.getItem(KEY) || "plain"; } catch (e) {}
   if (!MODES.includes(mode)) mode = "plain";
   const apply = () => { for (const m of MODES) root.classList.toggle(m, m === mode); };

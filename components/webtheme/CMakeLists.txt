@@ -2,8 +2,8 @@ idf_component_register(SRCS "webtheme.c"
                        INCLUDE_DIRS "include"
                        PRIV_REQUIRES websrv)
 
-# css, js e svg compressi in fase di build come le pagine delle app; i font
-# woff2 sono già compressi e si incorporano così come sono.
+# css, js and svg are compressed at build time like the app pages; the woff2
+# fonts are already compressed and are embedded as they are.
 set(WEB ${CMAKE_CURRENT_SOURCE_DIR}/web)
 set(GZ_FILES "")
 foreach(f theme.css theme.js grillo.svg)

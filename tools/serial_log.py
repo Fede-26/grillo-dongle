@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Resetta il dongle e stampa i log USB-Serial-JTAG per N secondi.
+"""Resets the dongle and prints the USB-Serial-JTAG logs for N seconds.
 
-Alternativa non interattiva a `idf.py monitor`. Uso:
-    python3 tools/serial_log.py /dev/cu.usbmodemXXXX [secondi]
+Non-interactive alternative to `idf.py monitor`. Usage:
+    python3 tools/serial_log.py /dev/cu.usbmodemXXXX [seconds]
 """
 import sys
 import time
@@ -16,8 +16,8 @@ s = serial.Serial()
 s.port = port
 s.baudrate = 115200
 s.timeout = 0.2
-# DTR deve restare basso: su USB-Serial-JTAG DTR alto tira giù GPIO0 e al
-# reset il chip entrerebbe in download mode.
+# DTR must stay low: on USB-Serial-JTAG a high DTR pulls GPIO0 down and on
+# reset the chip would enter download mode.
 s.dtr = False
 s.rts = False
 s.open()
@@ -25,7 +25,7 @@ s.rts = True
 time.sleep(0.1)
 s.rts = False
 s.close()
-# Dopo il reset la porta USB scompare e riappare: riapriamo.
+# After the reset the USB port disappears and reappears: reopen it.
 end = time.time() + secs
 while time.time() < end:
     try:

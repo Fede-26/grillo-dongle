@@ -8,12 +8,12 @@
 
 static const char *TAG = "clock";
 
-// Novembre 2023: un'ora precedente vuol dire che nessuno l'ha impostata
-// (all'accensione l'orologio parte dal 1970).
+// November 2023: an earlier time means nobody has set it
+// (at power-on the clock starts from 1970).
 #define VALID_TIME 1700000000
 
-// lwIP conserva il puntatore al nome del server, non una copia: la stringa
-// di config.lua viene liberata al ricaricamento della configurazione.
+// lwIP keeps the pointer to the server name, not a copy: the config.lua
+// string is freed when the configuration is reloaded.
 static char s_server[64];
 
 void clock_set_timezone(const char *tz)
@@ -32,7 +32,7 @@ bool clock_set(time_t utc)
     if (utc <= VALID_TIME) return false;
     struct timeval tv = {.tv_sec = utc};
     settimeofday(&tv, NULL);
-    ESP_LOGI(TAG, "ora impostata: %lld", (long long)utc);
+    ESP_LOGI(TAG, "time set: %lld", (long long)utc);
     return true;
 }
 

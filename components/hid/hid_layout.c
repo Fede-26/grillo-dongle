@@ -23,7 +23,7 @@ bool hid_os_parse(const char *name, hid_os_t *os)
     return true;
 }
 
-// Tabelle specifiche dell'OS (livelli AltGr/Option e tasti morti), NULL se il layout non ne ha
+// OS-specific tables (AltGr/Option levels and dead keys), NULL if the layout has none
 static const hid_map_t *os_extra(const hid_layout_t *l, hid_os_t os)
 {
     return os == HID_OS_LINUX ? l->linux_extra : (os == HID_OS_MAC ? l->mac_extra : l->win_extra);
@@ -52,7 +52,7 @@ static const hid_map_t *lookup(const hid_layout_t *l, hid_os_t os, uint32_t cp)
     return NULL;
 }
 
-// Byte del codepage Windows-1252 per un codepoint, 0 se non rappresentabile
+// Windows-1252 codepage byte for a codepoint, 0 if not representable
 static int cp1252(uint32_t cp)
 {
     if ((cp >= 0x20 && cp < 0x7F) || (cp >= 0xA0 && cp <= 0xFF)) return cp;
@@ -85,9 +85,9 @@ int hid_translate(const hid_layout_t *l, hid_os_t os, uint32_t cp, hid_stroke_t 
         }
     }
     if (os == HID_OS_WINDOWS) {
-        // Alt tenuto premuto + "0" + codice decimale sul tastierino:
-        // il tasto Alt resta nei modificatori di ogni stroke e viene
-        // rilasciato solo alla fine dal motore di digitazione.
+        // Alt held down + "0" + decimal code on the keypad:
+        // the Alt key stays in the modifiers of every stroke and is
+        // released only at the end by the typing engine.
         int code = cp1252(cp);
         if (!code || max < 4) return 0;
         char digits[5];
@@ -98,14 +98,14 @@ int hid_translate(const hid_layout_t *l, hid_os_t os, uint32_t cp, hid_stroke_t 
         return 4;
     }
     if (os == HID_OS_LINUX) {
-        // Ctrl+Shift+U, cifre esadecimali, spazio (input method GTK/IBus)
+        // Ctrl+Shift+U, hex digits, space (GTK/IBus input method)
         char hex[8];
         int n = snprintf(hex, sizeof(hex), "%x", (unsigned)cp);
         if (max < n + 2) return 0;
         int k = 0;
-        // La 'u' va cercata nel layout come le cifre: con keycode fisso (0x18,
-        // la U della US) sul Colemak partiva Ctrl+Shift+L. HID_OS_MAC evita
-        // di ricadere di nuovo in questo ripiego.
+        // The 'u' must be looked up in the layout like the digits: with a fixed
+        // keycode (0x18, the US U) Colemak sent Ctrl+Shift+L. HID_OS_MAC avoids
+        // falling back into this fallback again.
         bool dummy;
         hid_stroke_t u;
         if (hid_translate(l, HID_OS_MAC, 'u', &u, 1, &dummy) != 1) return 0;

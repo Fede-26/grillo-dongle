@@ -9,7 +9,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    # Stessa versione di ESP-IDF usata in locale (~/esp/esp-idf, tag v6.1).
+    # Same ESP-IDF version used locally (~/esp/esp-idf, tag v6.1).
     container: espressif/idf:v6.1
     steps:
       - uses: actions/checkout@v4
@@ -19,7 +19,7 @@ jobs:
       - name: Build
         shell: bash
         run: |
-          # Il container gira come root su una checkout di un altro utente
+          # The container runs as root on a checkout owned by another user
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           . $IDF_PATH/export.sh
           idf.py set-target esp32s3
@@ -30,7 +30,7 @@ jobs:
         run: |
           . $IDF_PATH/export.sh
           cd build
-          # Un'unica immagine da flashare a 0x0 (bootloader + partizioni + app)
+          # A single image to flash at 0x0 (bootloader + partitions + app)
           esptool --chip esp32s3 merge-bin -o grillo-merged.bin @flash_args
 
       - uses: actions/upload-artifact@v4

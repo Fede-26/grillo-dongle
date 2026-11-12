@@ -2,8 +2,8 @@
 
 #include "esp_err.h"
 
-// Tema comune delle pagine web: registra sul server avviato /theme.css,
-// /theme.js, /grillo.svg e i font in /fonts/. Da chiamare dopo websrv_start.
-// La pagina li include con:
+// Shared theme for the web pages: registers /theme.css, /theme.js,
+// /grillo.svg and the fonts in /fonts/ on the running server. Call after
+// websrv_start. The page includes them with:
 //   <link rel="stylesheet" href="/theme.css"> <script src="/theme.js"></script>
 esp_err_t webtheme_register(void);

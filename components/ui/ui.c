@@ -47,11 +47,11 @@ void ui_unlock(void)
 
 static void draw_wifi(int x, int y, uint8_t v)
 {
-    if (v == 6) { // hotspot attivo
+    if (v == 6) { // hotspot active
         gfx_text(&gfx_font_small, x, y, "AP", UI_TEXT);
         return;
     }
-    int bars = v >= 2 ? v - 1 : 0; // 2..5 -> 1..4 barre
+    int bars = v >= 2 ? v - 1 : 0; // 2..5 -> 1..4 bars
     for (int i = 0; i < 4; i++) {
         int h = 2 + i * 2;
         uint32_t c = v == 1 ? ((esp_timer_get_time() / 300000) % 4 == i ? UI_TEXT : UI_FAINT)
@@ -60,7 +60,7 @@ static void draw_wifi(int x, int y, uint8_t v)
     }
 }
 
-// Disegna la status bar nel framebuffer (lock già preso).
+// Draws the status bar in the framebuffer (lock already held).
 static void draw_bar(void)
 {
     if (!s_bar_visible) return;
@@ -68,12 +68,12 @@ static void draw_bar(void)
     int64_t now = esp_timer_get_time();
     bool toast = s_toast_until > now;
     uint32_t bg = toast ? gfx_mix(UI_PANEL, s_toast_color, 70) : UI_PANEL;
-    // Il lampo schiarisce lo sfondo senza coprire il testo, che resta leggibile
+    // The flash lightens the background without covering the text, which stays readable
     if (s_flash_until > now) bg = gfx_mix(UI_PANEL, UI_TEXT, 110);
     gfx_fill_rect(0, 0, UI_W, UI_BAR_H, bg);
 
     int x = UI_W - 3;
-    // Indicatori da destra verso sinistra
+    // Indicators from right to left
     uint8_t sd = s_ind[UI_IND_SD];
     if (sd) {
         uint32_t c = sd == 1 ? UI_TEXT : (sd == 2 ? UI_ERR : UI_WARN);
@@ -102,8 +102,8 @@ static void draw_bar(void)
         gfx_text_fit(&gfx_font_small, 3, 2, x - 5, s_title, s_accent);
     }
 
-    // Linea d'accento sotto la barra; durante l'hold diventa la barra di
-    // avanzamento dell'uscita.
+    // Accent line below the bar; during the hold it becomes the exit
+    // progress bar.
     gfx_fill_rect(0, UI_BAR_H, UI_W, 2, UI_BG);
     if (s_hold) {
         int w = UI_W * s_hold / 100;
@@ -134,7 +134,7 @@ void ui_init(void)
     s_lock = xSemaphoreCreateRecursiveMutex();
     esp_timer_create_args_t t = {.callback = toast_expired, .name = "toast"};
     esp_timer_create(&t, &s_toast_timer);
-    // Callback uguale al toast: a lampo scaduto basta ridisegnare la barra
+    // Same callback as the toast: once the flash expires, redrawing the bar is enough
     esp_timer_create_args_t f = {.callback = toast_expired, .name = "barflash"};
     esp_timer_create(&f, &s_flash_timer);
 }
@@ -254,8 +254,8 @@ int ui_list_scroll(int top, int sel, int count)
     return top < 0 ? 0 : top;
 }
 
-// Scorrimento orizzontale della riga selezionata che non entra: pausa sul
-// principio, scorrimento fino alla fine, pausa, poi da capo.
+// Horizontal scrolling of a selected row that does not fit: pause at the
+// start, scroll to the end, pause, then from the top.
 #define MARQUEE_PAUSE_MS 1000
 #define MARQUEE_PX_S     30
 static const char *s_mq_text;
@@ -272,8 +272,8 @@ bool ui_marquee_active(void)
     return s_mq_active;
 }
 
-// Spostamento in pixel per un testo che supera lo spazio di `over` pixel. Il
-// ciclo riparte quando cambia la riga selezionata (cambia il puntatore).
+// Pixel offset for a text that exceeds the space by `over` pixels. The cycle
+// restarts when the selected row changes (the pointer changes).
 static int marquee_offset(const char *text, int over)
 {
     int64_t now = esp_timer_get_time() / 1000;
@@ -310,14 +310,14 @@ void ui_draw_row(int y, const char *text, const char *right, bool selected, bool
     }
     gfx_set_clip(8, y, avail, UI_ROW_H);
     gfx_text(&gfx_font_small, 8 - marquee_offset(text, over), y + 2, text, c);
-    // Di nuovo il clipping di ui_begin
+    // Back to ui_begin's clipping
     int cy = s_bar_visible ? UI_CONTENT_Y : 0;
     gfx_set_clip(0, cy, UI_W, UI_H - cy);
 }
 
 void ui_draw_list(int top, int sel, int count, ui_label_fn label, void *arg)
 {
-    s_mq_active = false; // lo riaccende ui_draw_row se la riga selezionata scorre
+    s_mq_active = false; // ui_draw_row turns it back on if the selected row scrolls
     int vis = ui_list_visible_rows();
     int y0 = UI_CONTENT_Y + (UI_CONTENT_H - vis * UI_ROW_H) / 2;
     for (int i = 0; i < vis && top + i < count; i++) {
@@ -327,7 +327,7 @@ void ui_draw_list(int top, int sel, int count, ui_label_fn label, void *arg)
         ui_draw_row(y0 + i * UI_ROW_H, t, right, top + i == sel, enabled);
     }
     if (count > vis) {
-        // Scrollbar sottile a destra
+        // Thin scrollbar on the right
         int h = vis * UI_ROW_H;
         int th = h * vis / count;
         if (th < 4) th = 4;
@@ -362,7 +362,7 @@ int ui_draw_wrapped(const gfx_font_t *f, int x, int y, int w, int max_lines, con
     int lines = 0;
     const char *p = text;
     while (*p && lines < max_lines) {
-        // Prende parole finché la riga entra in `w`
+        // Takes words while the line fits in `w`
         int len = 0, last_space = -1;
         while (p[len] && p[len] != '\n' && len < (int)sizeof(line) - 1) {
             memcpy(line, p, len + 1);
@@ -374,7 +374,7 @@ int ui_draw_wrapped(const gfx_font_t *f, int x, int y, int w, int max_lines, con
         int take = len;
         bool at_end = !p[len] || p[len] == '\n';
         if (!at_end && last_space > 0) take = last_space;
-        if (take == 0) take = 1; // parola più lunga della riga: spezza
+        if (take == 0) take = 1; // word longer than the line: break it
         memcpy(line, p, take);
         line[take] = 0;
         if (lines == max_lines - 1 && !at_end) gfx_text_fit(f, x, y, w, p, rgb);
@@ -395,7 +395,7 @@ int ui_draw_wrapped_scroll(const gfx_font_t *f, int x, int y, int w, int max_lin
     int lines = 0;
     const char *p = text;
     while (*p) {
-        // Stessa spezzatura di ui_draw_wrapped
+        // Same line breaking as ui_draw_wrapped
         int len = 0, last_space = -1;
         while (p[len] && p[len] != '\n' && len < (int)sizeof(line) - 1) {
             memcpy(line, p, len + 1);
@@ -428,16 +428,16 @@ void ui_draw_hint(const char *hint)
 }
 
 // ---------------------------------------------------------------------------
-// Testo a scorrimento
+// Scrolling text
 
-#define SCROLL_FIRST_MS 2000 // tempo per leggere le prime righe
-#define SCROLL_STEP_MS  1100 // una riga in più
-#define SCROLL_LAST_MS  2500 // sosta sulle ultime righe prima di ricominciare
+#define SCROLL_FIRST_MS 2000 // time to read the first lines
+#define SCROLL_STEP_MS  1100 // one more line
+#define SCROLL_LAST_MS  2500 // pause on the last lines before starting over
 
 void ui_scroll_init(ui_scroll_t *s, const gfx_font_t *f, int x, int y, int w, int lines, const char *text)
 {
     *s = (ui_scroll_t){.font = f, .text = text ? text : "", .x = x, .y = y, .w = w, .lines = lines};
-    // Con max_lines = 0 la funzione conta soltanto
+    // With max_lines = 0 the function only counts
     s->total = ui_draw_wrapped_scroll(f, 0, 0, w, 0, 0, s->text, 0);
     s->next_us = esp_timer_get_time() + SCROLL_FIRST_MS * 1000LL;
 }
@@ -471,7 +471,7 @@ void ui_scroll_step(ui_scroll_t *s)
 {
     if (!ui_scroll_active(s)) return;
     scroll_advance(s);
-    // Chi scorre a mano sta leggendo: gli si lascia più tempo
+    // Whoever scrolls by hand is reading: give them more time
     if (s->top) s->next_us = esp_timer_get_time() + SCROLL_LAST_MS * 1000LL;
 }
 

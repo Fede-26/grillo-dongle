@@ -24,22 +24,22 @@
 
 static const char *TAG = "lan";
 
-// Quante richieste ARP partono prima di leggere la tabella. La tabella di lwip
-// ha 10 voci (ARP_TABLE_SIZE): un lotto più grande ne farebbe perdere le risposte.
+// How many ARP requests go out before reading the table. lwip's table
+// has 10 entries (ARP_TABLE_SIZE): a larger batch would lose some of the replies.
 #define BATCH      6
-#define BATCH_WAIT 150 // ms: tempo per le risposte di un lotto
-#define NAME_WAIT  1500 // ms: tempo per le risposte NBNS/mDNS
+#define BATCH_WAIT 150 // ms: time for a batch's replies
+#define NAME_WAIT  1500 // ms: time for NBNS/mDNS replies
 
 #define OUI_PATH STORAGE_ROOT "/oui.bin"
 
-// lwip non è thread-safe verso gli altri task (CONFIG_LWIP_TCPIP_CORE_LOCKING è
-// spento): le funzioni di etharp si eseguono nel task tcpip_thread.
+// lwip is not thread-safe towards other tasks (CONFIG_LWIP_TCPIP_CORE_LOCKING is
+// off): etharp functions run in the tcpip_thread task.
 typedef struct {
     struct netif *nif;
-    uint32_t first; // ordine host
+    uint32_t first; // host order
     int count;
     struct {
-        uint32_t ip; // ordine host
+        uint32_t ip; // host order
         uint8_t mac[6];
     } table[ARP_TABLE_SIZE];
     int table_n;
@@ -77,9 +77,9 @@ static bool run_in_tcpip(arp_job_t *j, tcpip_callback_fn fn)
 {
     if (tcpip_callback(fn, j) != ERR_OK) return false;
     if (xSemaphoreTake(j->done, pdMS_TO_TICKS(2000)) == pdTRUE) return true;
-    // La callback è ancora in coda e userà `j`: il chiamante interrompe lo
-    // sweep e libera `j`, quindi prima va attesa (altrimenti use-after-free,
-    // o un Give tardivo che sblocca la Take successiva a vuoto).
+    // The callback is still queued and will use `j`: the caller aborts the
+    // sweep and frees `j`, so it must be awaited first (otherwise use-after-free,
+    // or a late Give that spuriously unblocks the next Take).
     xSemaphoreTake(j->done, portMAX_DELAY);
     return false;
 }
@@ -105,7 +105,7 @@ static int cmp_ip(const void *a, const void *b)
     return memcmp(((const lan_host_t *)a)->ip, ((const lan_host_t *)b)->ip, 4);
 }
 
-// Un socket UDP non bloccante già legato a una porta locale qualunque
+// A non-blocking UDP socket already bound to an arbitrary local port
 static int udp_socket(void)
 {
     int s = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
@@ -121,7 +121,7 @@ static void send_udp(int s, const uint8_t ip[4], int port, const uint8_t *buf, i
     sendto(s, buf, len, 0, (struct sockaddr *)&to, sizeof(to));
 }
 
-// Legge le risposte arrivate su `s` e assegna i nomi agli host che ne sono privi
+// Reads the replies received on `s` and assigns names to the hosts that lack one
 static void collect_names(int s, lan_host_t *h, int n, bool (*parse)(const uint8_t *, int, char *, size_t))
 {
     uint8_t buf[512];
@@ -153,7 +153,7 @@ static void resolve_names(lan_host_t *h, int n, lan_progress_fn cb, void *arg)
         send_udp(nb, h[i].ip, 137, q_nb, sizeof(q_nb));
         int l = ns_mdns_ptr_query(q_md, sizeof(q_md), h[i].ip);
         send_udp(md, h[i].ip, 5353, q_md, l);
-        if (++sent % 8 == 0) vTaskDelay(pdMS_TO_TICKS(5)); // non esaurire i pbuf
+        if (++sent % 8 == 0) vTaskDelay(pdMS_TO_TICKS(5)); // do not exhaust the pbufs
     }
     int64_t end = esp_timer_get_time() + NAME_WAIT * 1000LL;
     for (int64_t now; (now = esp_timer_get_time()) < end;) {
@@ -168,7 +168,7 @@ static void resolve_names(lan_host_t *h, int n, lan_progress_fn cb, void *arg)
 
 static void fill_vendors(lan_host_t *h, int n)
 {
-    FILE *f = fopen(OUI_PATH, "rb"); // facoltativo: senza file resta solo il MAC
+    FILE *f = fopen(OUI_PATH, "rb"); // optional: without the file only the MAC remains
     for (int i = 0; i < n; i++) {
         if (ns_mac_is_private(h[i].mac)) {
             strlcpy(h[i].vendor, "(private MAC)", sizeof(h[i].vendor));
@@ -199,7 +199,7 @@ int lan_sweep(lan_host_t *out, int max, lan_progress_fn cb, void *arg)
     }
 
     int n = 0, total = last - first + 1;
-    // Il dongle non si risponde da solo via ARP: lo aggiungiamo a mano
+    // The dongle does not answer itself via ARP: add it by hand
     put_ip(out[n].ip, self);
     esp_netif_get_mac(en, out[n].mac);
     out[n].flags = LAN_SELF;
@@ -212,7 +212,7 @@ int lan_sweep(lan_host_t *out, int max, lan_progress_fn cb, void *arg)
         j->first = first + done;
         j->count = total - done < BATCH ? total - done : BATCH;
         if (!run_in_tcpip(j, arp_send_cb)) {
-            ESP_LOGW(TAG, "tcpip_thread non risponde");
+            ESP_LOGW(TAG, "tcpip_thread not responding");
             break;
         }
         vTaskDelay(pdMS_TO_TICKS(BATCH_WAIT));
@@ -242,12 +242,12 @@ int lan_sweep(lan_host_t *out, int max, lan_progress_fn cb, void *arg)
     return n;
 }
 
-// --- Server DHCP ---
+// --- DHCP servers ---
 
-#define DHCP_RX_MAX 1500 // un'OFFER sta in un frame Ethernet
+#define DHCP_RX_MAX 1500 // an OFFER fits in an Ethernet frame
 #define DHCP_SENDS  3
 
-// MAC di un host della rete via ARP (richiesta, breve attesa, lettura della tabella)
+// MAC of a network host via ARP (request, short wait, table read)
 static bool arp_lookup(struct netif *nif, uint32_t ip_be, uint8_t mac[6])
 {
     arp_job_t *j = calloc(1, sizeof(*j));
@@ -280,10 +280,10 @@ int lan_dhcp_probe(lan_dhcp_server_t *out, int max, int listen_ms, lan_dhcp_prog
     if (!en || esp_netif_get_ip_info(en, &ipi) != ESP_OK || ipi.ip.addr == 0 || esp_netif_get_mac(en, mac) != ESP_OK) {
         return -1;
     }
-    // La porta 68 è del client DHCP di lwIP, che non la condivide (il suo pcb
-    // non ha SO_REUSEADDR). Un socket raw UDP vede invece ogni datagramma
-    // prima del demultiplexing e non lo consuma: le OFFER arrivano anche al
-    // client di lwIP, che le scarta perché lo xid non è il suo.
+    // Port 68 belongs to lwIP's DHCP client, which does not share it (its pcb
+    // has no SO_REUSEADDR). A raw UDP socket instead sees every datagram
+    // before demultiplexing and does not consume it: the OFFERs also reach
+    // lwIP's client, which discards them because the xid is not its own.
     int s = socket(AF_INET, SOCK_RAW, IPPROTO_UDP);
     uint8_t *buf = malloc(DHCP_RX_MAX);
     if (s < 0 || !buf) {
@@ -301,14 +301,14 @@ int lan_dhcp_probe(lan_dhcp_server_t *out, int max, int listen_ms, lan_dhcp_prog
     struct sockaddr_in to = {.sin_family = AF_INET, .sin_addr.s_addr = htonl(INADDR_BROADCAST)};
     int n = 0;
     bool aborted = sendto(s, disc, dl, 0, (struct sockaddr *)&to, sizeof(to)) != dl;
-    if (aborted) ESP_LOGW(TAG, "DISCOVER non inviato: errno %d", errno);
+    if (aborted) ESP_LOGW(TAG, "DISCOVER not sent: errno %d", errno);
     int sent = 1;
     int64_t t0 = esp_timer_get_time();
     while (!aborted) {
         int elapsed = (esp_timer_get_time() - t0) / 1000;
         if (elapsed >= listen_ms) break;
-        // Altri due invii a 1/3 e 2/3, con lo stesso xid: il broadcast WiFi
-        // non ha ritrasmissioni, e un DISCOVER o un'OFFER si perdono
+        // Two more sends at 1/3 and 2/3, with the same xid: WiFi broadcast
+        // has no retransmissions, and a DISCOVER or an OFFER gets lost
         if (sent < DHCP_SENDS && elapsed >= listen_ms * sent / DHCP_SENDS) {
             sendto(s, disc, dl, 0, (struct sockaddr *)&to, sizeof(to));
             sent++;
@@ -319,7 +319,7 @@ int lan_dhcp_probe(lan_dhcp_server_t *out, int max, int listen_ms, lan_dhcp_prog
             if (!ns_dhcp_parse_offer(buf, r, xid, &o)) continue;
             int i = 0;
             while (i < n && memcmp(out[i].offer.server, o.server, 4) != 0) i++;
-            if (i < n || n >= max) continue; // stesso server due volte (risponde a entrambi gli invii)
+            if (i < n || n >= max) continue; // same server twice (it answers both sends)
             memset(&out[n], 0, sizeof(out[n]));
             out[n++].offer = o;
         }
@@ -330,14 +330,14 @@ int lan_dhcp_probe(lan_dhcp_server_t *out, int max, int listen_ms, lan_dhcp_prog
     free(buf);
     if (aborted) return -1;
 
-    // Il MAC dice che apparecchio è il server: un router o un PC con un
-    // servizio DHCP acceso per sbaglio
+    // The MAC tells what device the server is: a router or a PC with a
+    // DHCP service turned on by mistake
     struct netif *nif = esp_netif_get_netif_impl(en);
     FILE *f = fopen(OUI_PATH, "rb");
     for (int i = 0; i < n; i++) {
         uint32_t ip;
         memcpy(&ip, out[i].offer.server, 4);
-        if ((ip & ipi.netmask.addr) != (ipi.ip.addr & ipi.netmask.addr)) continue; // dietro un relay
+        if ((ip & ipi.netmask.addr) != (ipi.ip.addr & ipi.netmask.addr)) continue; // behind a relay
         if (cb && !cb(listen_ms, n, arg)) break;
         if (!nif || !arp_lookup(nif, ip, out[i].mac)) continue;
         if (ns_mac_is_private(out[i].mac)) {
@@ -351,7 +351,7 @@ int lan_dhcp_probe(lan_dhcp_server_t *out, int max, int listen_ms, lan_dhcp_prog
     return n;
 }
 
-// --- Sonde ---
+// --- Probes ---
 
 static uint16_t inet_sum(const uint8_t *p, int len)
 {
@@ -379,7 +379,7 @@ int probe_ping(uint32_t ip_be, int timeout_ms)
     int ms = -1;
     if (sendto(s, pkt, sizeof(pkt), 0, (struct sockaddr *)&to, sizeof(to)) == sizeof(pkt)) {
         uint8_t rx[128];
-        // Su un socket raw arrivano anche le risposte destinate ad altri: si cerca la nostra
+        // A raw socket also receives replies meant for others: look for ours
         while (esp_timer_get_time() < end) {
             int r = recv(s, rx, sizeof(rx), 0);
             if (r < 0) break;
@@ -404,9 +404,9 @@ int probe_dns(const char *host, uint32_t *ip_be)
     return (esp_timer_get_time() - t0) / 1000;
 }
 
-// connect() con scadenza: SO_SNDTIMEO non vale per connect in lwIP, e con
-// un captive portal che scarta i SYN l'attesa durava decine di secondi
-// (ritrasmissioni del SYN), con l'app sorda all'hold di uscita.
+// connect() with a deadline: SO_SNDTIMEO does not apply to connect in lwIP, and with
+// a captive portal that drops SYNs the wait lasted tens of seconds
+// (SYN retransmissions), with the app deaf to the exit hold.
 static bool connect_timeout(int s, const struct sockaddr *to, socklen_t len, int ms)
 {
     int fl = fcntl(s, F_GETFL, 0);

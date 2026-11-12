@@ -1,13 +1,13 @@
-// Web Injector: gli script dell'injector scelti e seguiti da un telefono.
+// Web Injector: injector scripts picked and followed from a phone.
 //
-// Come il Web HID: lease di rete (rete nota o hotspot), server con PIN, QR
-// code e PIN sul display. Dalla pagina si sfogliano gli script di
-// /sd/payloads (cartelle, per OS, per tag), si legge la scheda e si avvia.
-// Lo script gira nel task dell'app con lo stesso nucleo dell'Injector
-// (injector_core): display e pulsante restano attivi, e nei dialoghi vince
-// la prima risposta, dal pulsante o dalla pagina (APP_EV_ANSWER). Se la
-// pagina si chiude lo script continua; alla riconnessione la pagina riceve
-// la cronologia della run, lo stato, l'eventuale dialogo aperto e l'esito.
+// Like Web HID: network lease (known network or hotspot), server with PIN, QR
+// code and PIN on the display. From the page you browse the scripts in
+// /sd/payloads (folders, by OS, by tag), read the details card and launch.
+// The script runs in the app task with the same core as the Injector
+// (injector_core): display and button stay active, and in dialogs the first
+// answer wins, from the button or from the page (APP_EV_ANSWER). If the
+// page closes the script keeps going; on reconnection the page receives
+// the run history, the state, any open dialog and the outcome.
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,10 +33,10 @@
 
 #define ACCENT      0xB060FF
 #define MAX_ENTRIES 48
-// Il messaggio più lungo dalla pagina è un comando con un percorso
+// The longest message from the page is a command with a path
 #define MAX_FRAME   (PAYLOAD_PATH_MAX + 16)
-// Cronologia: ultime HIST_MAX voci, testo tagliato a HIST_TEXT byte (uno
-// script può scrivere per ore): al massimo una trentina di KB
+// History: last HIST_MAX entries, text cut at HIST_TEXT bytes (a script
+// can write for hours): about thirty KB at most
 #define HIST_MAX    100
 #define HIST_TEXT   200
 
@@ -46,34 +46,34 @@ extern const uint8_t page_gz_end[] asm("_binary_webinjector_html_gz_end");
 static const char *const OS_NAMES[] = {"windows", "linux", "mac"};
 
 typedef enum { PHASE_IDLE, PHASE_RUNNING, PHASE_DONE } phase_t;
-// CHOICE: menu, conferma ed esito, a cui si risponde con APP_EV_ANSWER.
-// BUTTON: ui.wait_button, a cui la pagina risponde con un gesto.
+// CHOICE: menu, confirmation and outcome, answered with APP_EV_ANSWER.
+// BUTTON: ui.wait_button, which the page answers with a gesture.
 typedef enum { DLG_NONE, DLG_CHOICE, DLG_BUTTON } dlg_kind_t;
 
-// Condiviso tra il task dell'app (agganci dello script) e il task httpd
-// (comandi della pagina, riconnessione): sempre sotto s_lock.
+// Shared between the app task (script hooks) and the httpd task
+// (page commands, reconnection): always under s_lock.
 static SemaphoreHandle_t s_lock;
 static app_ctx_t *s_ctx;
 static phase_t s_phase;
-static char s_pending[PAYLOAD_PATH_MAX]; // script chiesto dalla pagina
-static int s_dialog_id, s_next_id;       // id del dialogo aperto, 0 se nessuno
+static char s_pending[PAYLOAD_PATH_MAX]; // script requested by the page
+static int s_dialog_id, s_next_id;       // id of the open dialog, 0 if none
 static dlg_kind_t s_dialog_kind;
-// Ultimi stato e dialogo, rimandati a ogni riconnessione della pagina
+// Latest state and dialog, resent on every page reconnection
 static char *s_state_msg, *s_dialog_msg;
-// Esito dell'ultima run, rimandato alla riconnessione finché non ne parte
-// un'altra: la pagina resta sull'esecuzione anche a run finita
+// Outcome of the last run, resent on reconnection until another one
+// starts: the page stays on the execution view even after the run ends
 static char *s_result_msg;
-static bool s_page_answered; // la risposta al dialogo aperto è arrivata dalla pagina
+static bool s_page_answered; // the answer to the open dialog came from the page
 
-// Cronologia della run in corso o dell'ultima (avvio, sys.log, cambi di
-// stato, dialoghi con la risposta, esito), rimandata a ogni riconnessione:
-// così si vede anche ciò che è successo a pagina chiusa (telefono in
-// standby). Coda circolare di messaggi JSON già pronti, sotto s_lock.
+// History of the current or last run (start, sys.log, status changes,
+// dialogs with their answer, outcome), resent on every reconnection:
+// this way you also see what happened while the page was closed (phone
+// in standby). Circular queue of ready-made JSON messages, under s_lock.
 static char *s_hist[HIST_MAX];
 static int s_hist_first, s_hist_n, s_hist_dropped;
-// Solo nel task dell'app (agganci e run_pending)
+// Only in the app task (hooks and run_pending)
 static int64_t s_run_start_us;
-static char s_last_status[48]; // stato già in cronologia: i soli avanzamenti non entrano
+static char s_last_status[48]; // status already in history: progress updates alone are not added
 
 static void lock(void)
 {
@@ -86,20 +86,20 @@ static void unlock(void)
 }
 
 // ---------------------------------------------------------------------------
-// Agganci dello script (task dell'app)
+// Script hooks (app task)
 
-// Sotto s_lock
+// Under s_lock
 static void hist_clear(void)
 {
     for (int i = 0; i < s_hist_n; i++) free(s_hist[(s_hist_first + i) % HIST_MAX]);
     s_hist_first = s_hist_n = s_hist_dropped = 0;
 }
 
-// Aggiunge una voce alla cronologia e la manda alla pagina. kind: start,
-// log, status, ask, answer, done. Da chiamare senza s_lock.
+// Adds an entry to the history and sends it to the page. kind: start,
+// log, status, ask, answer, done. Call without s_lock.
 static void add_event(const char *kind, const char *text)
 {
-    // Ora del dongle se nota, altrimenti tempo dall'avvio della run
+    // Dongle time if known, otherwise time since the run started
     char at[16];
     if (clock_valid()) {
         time_t now = time(NULL);
@@ -112,7 +112,7 @@ static void add_event(const char *kind, const char *text)
     char cut[HIST_TEXT + 4];
     size_t n = strlen(text);
     if (n > HIST_TEXT) {
-        // Taglio su un confine di carattere UTF-8, poi "…"
+        // Cut on a UTF-8 character boundary, then "…"
         n = HIST_TEXT;
         while (n > 0 && ((unsigned char)text[n] & 0xC0) == 0x80) n--;
         memcpy(cut, text, n);
@@ -138,13 +138,13 @@ static void add_event(const char *kind, const char *text)
     unlock();
 }
 
-// NULL (memoria finita) non si manda
+// NULL (out of memory) is not sent
 static void send_msg(const char *msg)
 {
     if (msg) websrv_send(msg);
 }
 
-// Sostituisce il messaggio da rimandare alla riconnessione e lo invia
+// Replaces the message to resend on reconnection and sends it
 static void keep_and_send(char **slot, char *msg)
 {
     lock();
@@ -173,7 +173,7 @@ static void hook_log(void *arg, const char *text)
     add_event("log", text);
 }
 
-// Apre un dialogo: nuovo id, messaggio conservato per la riconnessione
+// Opens a dialog: new id, message kept for reconnection
 static void open_dialog(dlg_kind_t kind, jbuf_t *b)
 {
     lock();
@@ -223,9 +223,9 @@ static void hook_wait_button(void *arg)
     add_event("ask", "Waiting for the button");
 }
 
-// Esito per la pagina: "done" è il dialogo aperto sul display, "result"
-// ciò che resta dopo, fino alla run successiva. Il percorso (relativo a
-// /payloads) serve a "Run again" anche dopo una riconnessione.
+// Outcome for the page: "done" is the dialog open on the display, "result"
+// what remains afterwards, until the next run. The path (relative to
+// /payloads) lets "Run again" work even after a reconnection.
 static void outcome(jbuf_t *b, const char *type, const inj_run_t *r)
 {
     jb_begin(b, type);
@@ -237,8 +237,8 @@ static void outcome(jbuf_t *b, const char *type, const inj_run_t *r)
     jb_kstr(b, "error", r->error);
 }
 
-// L'esito resta sul display finché qualcuno risponde: per la pagina è un
-// dialogo con un solo pulsante.
+// The outcome stays on the display until someone answers: for the page it
+// is a dialog with a single button.
 static void hook_done(void *arg, const inj_run_t *r)
 {
     char t[HIST_TEXT];
@@ -251,11 +251,11 @@ static void hook_done(void *arg, const inj_run_t *r)
     outcome(&b, "result", r);
     char *result = jb_end(&b);
     lock();
-    s_phase = PHASE_DONE; // da qui la pagina non può più chiedere l'abort
+    s_phase = PHASE_DONE; // from here on the page can no longer request an abort
     free(s_result_msg);
     s_result_msg = result;
     unlock();
-    b = (jbuf_t){0}; // jb_end ha ceduto il buffer a s_result_msg
+    b = (jbuf_t){0}; // jb_end handed the buffer over to s_result_msg
     outcome(&b, "done", r);
     open_dialog(DLG_CHOICE, &b);
 }
@@ -264,8 +264,8 @@ static void hook_dialog_end(void *arg, const char *answer)
 {
     jbuf_t b = {0};
     lock();
-    // Approssimato: se pagina e pulsante rispondono insieme, vale il primo
-    // arrivato ma il flag dice pagina
+    // Approximate: if page and button answer together, the first to arrive
+    // wins but the flag says page
     bool page = s_page_answered;
     jb_begin(&b, "close");
     jb_kint(&b, "id", s_dialog_id);
@@ -273,7 +273,7 @@ static void hook_dialog_end(void *arg, const char *answer)
     s_dialog_kind = DLG_NONE;
     free(s_dialog_msg);
     s_dialog_msg = NULL;
-    // Chiuso l'esito, lo script è finito del tutto
+    // Once the outcome is closed, the script is completely finished
     bool finished = s_phase == PHASE_DONE;
     if (finished) {
         s_phase = PHASE_IDLE;
@@ -303,7 +303,7 @@ static const inj_hooks_t s_hooks = {
 };
 
 // ---------------------------------------------------------------------------
-// Comandi della pagina (task httpd)
+// Page commands (httpd task)
 
 static void reply_owned(httpd_req_t *req, char *msg)
 {
@@ -319,8 +319,8 @@ static void reply_error(httpd_req_t *req, const char *text)
     reply_owned(req, jb_end(&b));
 }
 
-// Percorso relativo a /sd/payloads mandato dalla pagina: niente percorsi
-// assoluti né "..", così la pagina non legge fuori dalla cartella.
+// Path relative to /sd/payloads sent by the page: no absolute paths
+// and no "..", so the page cannot read outside the folder.
 static bool full_path(const char *rel, char *out, size_t len)
 {
     if (rel[0] == '/') return false;
@@ -335,9 +335,9 @@ static bool full_path(const char *rel, char *out, size_t len)
     return w < (int)len;
 }
 
-// Una voce per messaggio, poi "end": niente buffer grandi per cartelle piene.
-// Per gli script layout e OS sono quelli effettivi (intestazione o
-// config.lua), e con la scansione c'è anche il percorso relativo.
+// One entry per message, then "end": no large buffers for full folders.
+// For scripts, layout and OS are the effective ones (header or
+// config.lua), and with the scan the relative path is included too.
 static void send_entries(httpd_req_t *req, const char *dir, bool scan)
 {
     payload_entry_t *e = malloc(MAX_ENTRIES * sizeof(*e));
@@ -395,14 +395,14 @@ static void send_meta(httpd_req_t *req, const char *path, const char *rel)
     free(m);
 }
 
-// Comandi:
-//   l<cartella>  elenco di una cartella ("" = /payloads)
-//   s            tutti gli script, per le viste per OS e per tag
-//   m<script>    scheda (intestazione)
-//   r<script>    esegui
-//   a<id>:<n>    risposta al dialogo <id>: indice, 0/1 per no/sì, 0 per
-//                l'esito; per ui.wait_button 0 click, 1 doppio, 2 lungo
-//   x            interrompi lo script
+// Commands:
+//   l<folder>    listing of a folder ("" = /payloads)
+//   s            all scripts, for the by-OS and by-tag views
+//   m<script>    details card (header)
+//   r<script>    run
+//   a<id>:<n>    answer to dialog <id>: index, 0/1 for no/yes, 0 for
+//                the outcome; for ui.wait_button 0 click, 1 double, 2 long
+//   x            abort the script
 static void on_message(httpd_req_t *req, char *msg, size_t len)
 {
     char path[PAYLOAD_PATH_MAX];
@@ -440,7 +440,7 @@ static void on_message(httpd_req_t *req, char *msg, size_t len)
         int id, v;
         if (sscanf(msg + 1, "%d:%d", &id, &v) != 2) return;
         lock();
-        // Un id vecchio è una risposta a un dialogo già chiuso dal pulsante
+        // An old id is an answer to a dialog already closed by the button
         if (id == s_dialog_id && s_dialog_kind == DLG_CHOICE) {
             app_post(s_ctx, APP_EV_ANSWER, v);
             s_page_answered = true;
@@ -454,7 +454,7 @@ static void on_message(httpd_req_t *req, char *msg, size_t len)
     }
     case 'x':
         lock();
-        // Solo durante l'esecuzione: dopo l'esito un EXIT farebbe uscire dall'app
+        // Only while running: after the outcome an EXIT would quit the app
         if (s_phase == PHASE_RUNNING) app_post(s_ctx, APP_EV_EXIT, 0);
         unlock();
         return;
@@ -462,9 +462,9 @@ static void on_message(httpd_req_t *req, char *msg, size_t len)
     }
 }
 
-// Alla (ri)connessione: fase, cronologia, stato dello script, dialogo
-// aperto ed esito dell'ultima run. Sotto s_lock: una voce nuova arriva solo
-// dopo, quindi niente doppioni né buchi.
+// On (re)connection: phase, history, script state, open dialog and
+// outcome of the last run. Under s_lock: a new entry can only arrive
+// afterwards, so no duplicates and no gaps.
 static void on_auth(httpd_req_t *req)
 {
     static const char *const phases[] = {"idle", "run", "done"};
@@ -483,7 +483,7 @@ static void on_auth(httpd_req_t *req)
 // ---------------------------------------------------------------------------
 // App
 
-// Esegue lo script chiesto dalla pagina
+// Runs the script requested by the page
 static void run_pending(app_ctx_t *ctx, payload_meta_t *m)
 {
     char path[PAYLOAD_PATH_MAX];
@@ -494,7 +494,7 @@ static void run_pending(app_ctx_t *ctx, payload_meta_t *m)
     if (!payload_read_meta(path, m)) err = "Cannot read the script";
     else if (m->error[0]) err = m->error;
     if (!err) {
-        // Run nuova: si perdono cronologia ed esito di quella prima
+        // New run: the history and outcome of the previous one are discarded
         lock();
         hist_clear();
         free(s_result_msg);
@@ -521,7 +521,7 @@ static void webinjector_run(app_ctx_t *ctx)
 {
     webui_draw_connecting(&icon_keyboard, ACCENT);
     esp_err_t err = app_net_acquire(ctx, NET_AUTO, 15000);
-    if (err == ESP_ERR_NOT_FINISHED) return; // uscita durante la scelta della rete
+    if (err == ESP_ERR_NOT_FINISHED) return; // exit during network selection
     if (err != ESP_OK) {
         char msg[40];
         snprintf(msg, sizeof(msg), "WiFi failed: %s", esp_err_to_name(err));
@@ -540,13 +540,13 @@ static void webinjector_run(app_ctx_t *ctx)
     s_dialog_id = 0;
     s_dialog_kind = DLG_NONE;
 
-    // webinjector.pin = false o rete sicura: nessun PIN, chiunque sulla rete del dongle
-    // può avviare gli script della SD
+    // webinjector.pin = false or secure network: no PIN, anyone on the dongle's network
+    // can launch the scripts on the SD
     char pin[8];
     webui_make_pin("webinjector.pin", pin, sizeof(pin));
     websrv_config_t cfg = {
         .pin = pin,
-        .stack_size = 6144, // payload_read_meta e il JSON delle voci
+        .stack_size = 6144, // payload_read_meta and the entries' JSON
         .max_frame = MAX_FRAME,
         .on_message = on_message,
         .on_auth = on_auth,
@@ -564,7 +564,7 @@ static void webinjector_run(app_ctx_t *ctx)
         goto out;
     }
 
-    // Pagina del QR: credenziali o indirizzo, vedi webui.h
+    // QR page: credentials or address, see webui.h
     webui_qr_t qr = WEBUI_QR_INIT;
     char last_client[16] = "";
     bool led_stale = true;
@@ -587,7 +587,7 @@ static void webinjector_run(app_ctx_t *ctx)
         if (ev.type == APP_EV_CLICK) webui_qr_toggle(&qr, &ni);
         if (ev.type == APP_EV_USER) {
             run_pending(ctx, m);
-            led_stale = true; // l'esecuzione ha usato il LED
+            led_stale = true; // the run used the LED
             if (ctx->exit_requested) break;
         }
     }
@@ -617,7 +617,7 @@ const app_desc_t webinjector_app = {
     .accent = ACCENT,
     .requires = APP_REQ_SD | APP_REQ_NET,
     .usb = USB_PROFILE_HID,
-    // Come l'Injector: lo script gira in questo task (vedi injector.c)
+    // Like the Injector: the script runs in this task (see injector.c)
     .stack = 16384,
     .run = webinjector_run,
     .subtitle = webinjector_subtitle,

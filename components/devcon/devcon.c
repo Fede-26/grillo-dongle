@@ -12,10 +12,10 @@
 #include "sdkconfig.h"
 #include "usbdev.h"
 
-// In release la CDC appartiene solo al canale con l'host: niente log né
-// comandi di debug, che finirebbero mescolati alle risposte di host.ask.
-// Un'opzione Kconfig bool disattivata non è definita affatto: usarla come
-// valore non compilava con sdkconfig.release.
+// In release the CDC belongs to the host channel only: no logs and no
+// debug commands, which would end up mixed with the host.ask replies.
+// A disabled Kconfig bool option is not defined at all: using it as a
+// value did not compile with sdkconfig.release.
 #ifdef CONFIG_GRILLO_USB_DEBUG_CDC
 #define CDC_CONSOLE 1
 #else
@@ -23,7 +23,7 @@
 #endif
 
 #define MAX_CMDS 32
-// Anche le righe "@G<nonce>:<valore>" del canale host (valore fino a 256 caratteri)
+// Also the "@G<nonce>:<value>" lines of the host channel (value up to 256 characters)
 #define LINE_LEN 320
 #define MAX_ARGS 8
 
@@ -51,8 +51,8 @@ void devcon_cdc_write(const char *buf, int len)
 void devcon_write(const char *buf, int len)
 {
     if (len <= 0) return;
-    // Un solo scrittore alla volta: altrimenti log e output dei comandi si
-    // mescolerebbero a metà riga.
+    // One writer at a time: otherwise logs and command output would get
+    // mixed mid-line.
     if (s_wlock && xSemaphoreTake(s_wlock, pdMS_TO_TICKS(50)) != pdTRUE) return;
     if (usbdev_cdc_active()) {
         if (CDC_CONSOLE) usbdev_cdc_write((const uint8_t *)buf, len);
@@ -74,8 +74,8 @@ int devcon_printf(const char *fmt, ...)
     return n;
 }
 
-// Sostituisce l'output dei log di ESP-IDF: scrive sul trasporto attivo
-// invece che sullo stdout fisso della console di boot.
+// Replaces the ESP-IDF log output: writes to the active transport
+// instead of the fixed stdout of the boot console.
 static int log_vprintf(const char *fmt, va_list ap)
 {
     char buf[256];
@@ -100,7 +100,7 @@ static void execute(char *line)
 {
     char *argv[MAX_ARGS];
     int argc = 0;
-    // Divide per spazi; le virgolette doppie raggruppano un argomento
+    // Split on spaces; double quotes group an argument
     char *p = line;
     while (*p && argc < MAX_ARGS) {
         while (*p == ' ') p++;
@@ -150,11 +150,11 @@ static void devcon_task(void *arg)
             char c = buf[i];
             if (c == '\r' || c == '\n') {
                 line[len] = 0;
-                // Letto una volta: set_line_filter(NULL) da un altro task tra
-                // il controllo e la chiamata faceva saltare a NULL.
+                // Read once: set_line_filter(NULL) from another task between
+                // the check and the call made it jump to NULL.
                 devcon_line_filter_t filter = s_filter;
                 if (len && !(filter && filter(line))) {
-                    // Sulla CDC in release si accettano solo le righe del filtro
+                    // On the CDC in release only the filter's lines are accepted
                     if (CDC_CONSOLE || !usbdev_cdc_active()) execute(line);
                 }
                 len = 0;
@@ -170,8 +170,8 @@ void devcon_init(void)
     s_wlock = xSemaphoreCreateMutex();
     usb_serial_jtag_driver_config_t cfg = USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
     usb_serial_jtag_driver_install(&cfg);
-    // Anche printf/stdout passa dal driver: senza, driver e VFS scriverebbero
-    // in parallelo nella stessa FIFO.
+    // printf/stdout goes through the driver too: otherwise driver and VFS would
+    // write to the same FIFO in parallel.
     usb_serial_jtag_vfs_use_driver();
     esp_log_set_vprintf(log_vprintf);
     devcon_register("help", "list commands", cmd_help);

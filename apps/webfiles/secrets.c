@@ -6,17 +6,17 @@
 #include <string.h>
 #include <strings.h>
 
-// Oltre questo numero i segreti restano visibili invece che mascherati: un
-// segnaposto che non si sa più ricondurre al valore lo cancellerebbe al
-// salvataggio.
+// Beyond this number secrets stay visible instead of masked: a placeholder
+// that can no longer be traced back to its value would erase it on
+// save.
 #define MAX_SECRETS 64
 
-// Callback per ogni letterale stringa trovato: inizio e lunghezza nel testo,
-// virgolette o parentesi comprese.
+// Callback for every string literal found: start and length in the text,
+// quotes or brackets included.
 typedef void (*string_fn)(void *arg, const char *start, size_t len, bool secret);
 
-// Fine di una parentesi lunga [==[ ... ]==] che inizia in p (su '['), o NULL
-// se p non apre una parentesi lunga. Senza chiusura: fine del testo.
+// End of a long bracket [==[ ... ]==] starting at p (on '['), or NULL
+// if p does not open a long bracket. Without a closing one: end of text.
 static const char *long_bracket_end(const char *p)
 {
     const char *q = p + 1;
@@ -42,7 +42,7 @@ static void scan(const char *s, string_fn fn, void *arg)
 {
     const char *p = s;
     int depth = 0, secrets_depth = 0;
-    // Chiave segreta vista: 1 dopo il nome, 2 dopo "=". Per "secrets": 1, 2, poi "{".
+    // Secret key seen: 1 after the name, 2 after "=". For "secrets": 1, 2, then "{".
     int key_state = 0, table_state = 0;
     while (*p) {
         unsigned char c = *p;
@@ -94,7 +94,7 @@ static void scan(const char *s, string_fn fn, void *arg)
             if (depth > 0) depth--;
             key_state = table_state = 0;
         } else {
-            if (c == '=') p++; // "==": non è un'assegnazione
+            if (c == '=') p++; // "==": not an assignment
             key_state = table_state = 0;
         }
         p++;
@@ -132,13 +132,13 @@ static char *finish(buf_t *b)
         free(b->out);
         return NULL;
     }
-    if (!b->out) put(b, "", 0); // testo vuoto: stringa vuota, non NULL
+    if (!b->out) put(b, "", 0); // empty text: empty string, not NULL
     return b->fail ? NULL : b->out;
 }
 
 typedef struct {
     buf_t b;
-    const char *src; // fin dove è già stato copiato
+    const char *src; // how far it has already been copied
     int n;
 } mask_t;
 
@@ -161,7 +161,7 @@ char *secrets_mask(const char *src)
     return finish(&m.b);
 }
 
-// Segreti di orig, in ordine
+// Secrets of orig, in order
 typedef struct {
     const char *start[MAX_SECRETS];
     size_t len[MAX_SECRETS];
@@ -186,17 +186,17 @@ typedef struct {
 
 static void unmask_string(void *arg, const char *start, size_t len, bool secret)
 {
-    (void)secret; // il segnaposto vale ovunque: la pagina può averlo spostato
+    (void)secret; // the placeholder is valid anywhere: the page may have moved it
     unmask_t *u = arg;
     int idx;
     char tail;
-    // Solo il segnaposto intero, tra virgolette doppie o semplici
+    // Only the whole placeholder, in double or single quotes
     if (len < 4 || (start[0] != '"' && start[0] != '\'') || start[len - 1] != start[0]) return;
     if (sscanf(start + 1, "<secret:%d>%c", &idx, &tail) != 2 || tail != start[0]) return;
     char ph[24];
     int phl = snprintf(ph, sizeof(ph), "%c<secret:%d>%c", start[0], idx, start[0]);
     if ((size_t)phl != len || memcmp(ph, start, len) != 0) return;
-    // Senza valore il segnaposto finirebbe nel file come password
+    // Without a value the placeholder would end up in the file as the password
     if (idx < 1 || idx > u->orig->n) {
         u->unknown = true;
         return;

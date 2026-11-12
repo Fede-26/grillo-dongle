@@ -1,5 +1,5 @@
-// Launcher: carosello delle app. Click = successiva, doppio = precedente,
-// lungo = avvia. Al primo avvio gestisce anche l'autorun da config.lua.
+// Launcher: app carousel. Click = next, double = previous,
+// long = launch. On first start it also handles autorun from config.lua.
 
 #include <stdio.h>
 #include <string.h>
@@ -15,9 +15,9 @@
 static int s_sel;
 static bool s_autorun_done;
 
-// Sottotitoli calcolati una volta per ciclo di aggiornamento (2 s) e non a
-// ogni fotogramma: alcuni leggono la SD (spazio libero, elenco dei payload)
-// e l'animazione del carosello ne disegnava 14 per ogni click.
+// Subtitles computed once per refresh cycle (2 s) and not on every
+// frame: some read the SD (free space, payload list) and the carousel
+// animation drew 14 of them per click.
 #define MAX_CARDS 16
 static char s_sub[MAX_CARDS][40];
 
@@ -54,7 +54,7 @@ static void draw(int sel, int prev, int dir, int frame)
     int n = appmgr_count();
     ui_begin();
     if (frame < ANIM_FRAMES && prev >= 0) {
-        // Ease-out: il movimento rallenta verso la fine
+        // Ease-out: the motion slows down towards the end
         int t = (frame + 1) * 256 / ANIM_FRAMES;
         int k = 256 - (256 - t) * (256 - t) / 256;
         int shift = UI_W * k / 256;
@@ -73,8 +73,8 @@ static void draw(int sel, int prev, int dir, int frame)
 
 static void set_ambient(const app_desc_t *app)
 {
-    // Stessa intensità dell'ambient di un'app in esecuzione (appmgr.c): più
-    // bassa, il colore dell'app selezionata si riconosceva a fatica.
+    // Same intensity as the ambient of a running app (appmgr.c): any lower
+    // and the color of the selected app was hard to recognize.
     led_set(LED_LAYER_AMBIENT, LED_FX_SOLID, gfx_mix(0, app->accent, 90), 0);
 }
 
@@ -83,7 +83,7 @@ static void animate(int from, int to, int dir)
     for (int f = 0; f < ANIM_FRAMES; f++) draw(to, from, dir, f);
 }
 
-// Countdown dell'autorun: un click annulla. true se l'app va avviata.
+// Autorun countdown: a click cancels. true if the app should be launched.
 static bool autorun_countdown(app_ctx_t *ctx, const app_desc_t *app, const char *arg, int secs)
 {
     int64_t end = esp_timer_get_time() + secs * 1000000LL;
@@ -101,7 +101,7 @@ static bool autorun_countdown(app_ctx_t *ctx, const app_desc_t *app, const char 
         app_event_t ev;
         if (app_next_event(ctx, &ev, 50) && (ev.type == APP_EV_CLICK || ev.type == APP_EV_DOUBLE)) {
             led_clear(LED_LAYER_APP);
-            ui_toast("Autorun cancelled", UI_WARN, 1500);
+            ui_toast("Autorun canceled", UI_WARN, 1500);
             return false;
         }
     }
@@ -123,7 +123,7 @@ static void launcher_run(app_ctx_t *ctx)
         const char *id = config_str("autorun.app", NULL);
         const app_desc_t *app = id ? appmgr_find(id) : NULL;
         if (id && !app) ui_toast("autorun: unknown app", UI_ERR, 2500);
-        // Prima un'app non disponibile (es. SD assente) saltava l'autorun in silenzio
+        // Previously an unavailable app (e.g. missing SD) silently skipped autorun
         const char *why = app ? appmgr_unavailable(app) : NULL;
         if (why) {
             char msg[40];
@@ -145,7 +145,7 @@ static void launcher_run(app_ctx_t *ctx)
     draw(s_sel, -1, 0, ANIM_FRAMES);
     for (;;) {
         app_event_t ev;
-        // Timeout: i sottotitoli (es. spazio SD) vengono aggiornati ogni 2 s
+        // Timeout: the subtitles (e.g. SD space) are refreshed every 2 s
         if (!app_next_event(ctx, &ev, 2000)) {
             refresh_subtitles();
             draw(s_sel, -1, 0, ANIM_FRAMES);
@@ -154,7 +154,7 @@ static void launcher_run(app_ctx_t *ctx)
         int prev = s_sel;
         switch (ev.type) {
         case APP_EV_EXIT:
-            // Solo dalla console (comando launch): l'app da avviare è già impostata
+            // Only from the console (launch command): the app to launch is already set
             return;
         case APP_EV_CLICK:
             s_sel = (s_sel + 1) % n;
