@@ -698,32 +698,59 @@ static void disposition(const char *name, char *out, size_t len)
     out[w] = 0;
 }
 
+// httpd_send può scrivere meno byte di quelli chiesti
+static bool send_all(httpd_req_t *req, const char *buf, size_t len)
+{
+    while (len > 0) {
+        int n = httpd_send(req, buf, len);
+        if (n <= 0) return false;
+        buf += n;
+        len -= n;
+    }
+    return true;
+}
+
 static esp_err_t download_get(httpd_req_t *req)
 {
     char path[PATH_LEN];
     if (!request_path(req, path)) return ESP_OK;
     FILE *f = is_dir(path) ? NULL : fopen(path, "rb");
     if (!f) return send_status(req, "404 Not Found", "Not found");
+    struct stat st;
     char *buf = malloc(CHUNK);
-    if (!buf) {
+    if (!buf || fstat(fileno(f), &st) != 0) {
+        const char *why = buf ? "Cannot read file" : "Out of memory";
         fclose(f);
-        return send_status(req, "500 Internal Server Error", "Out of memory");
+        free(buf);
+        return send_status(req, "500 Internal Server Error", why);
     }
     // 255 caratteri di nome, fino a 3 byte "%XX" ciascuno nel filename*
     char disp[1100];
     disposition(base_name(path), disp, sizeof(disp));
-    httpd_resp_set_type(req, "application/octet-stream");
-    httpd_resp_set_hdr(req, "Content-Disposition", disp);
-    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
-    esp_err_t err = ESP_OK;
-    size_t n;
-    while (err == ESP_OK && !websrv_stopping() && (n = fread(buf, 1, CHUNK, f)) > 0) {
-        err = httpd_resp_send_chunk(req, buf, n);
+    // Risposta scritta a mano: httpd_resp_send_chunk manda sempre
+    // Transfer-Encoding: chunked, senza lunghezza, e il browser non mostra
+    // né il totale né il tempo rimanente. Con Content-Length i byte devono
+    // essere esattamente quelli annunciati: se la lettura si ferma prima
+    // (errore, file accorciato, websrv_stop) si restituisce ESP_FAIL e httpd
+    // chiude la connessione, così il browser segna il download come fallito
+    // invece di salvare un file troncato.
+    long long left = st.st_size;
+    int hl = snprintf(buf, CHUNK,
+                      "HTTP/1.1 200 OK\r\n"
+                      "Content-Type: application/octet-stream\r\n"
+                      "Content-Length: %lld\r\n"
+                      "Content-Disposition: %s\r\n"
+                      "Cache-Control: no-store\r\n\r\n",
+                      left, disp);
+    bool ok = hl < CHUNK && send_all(req, buf, hl);
+    while (ok && left > 0 && !websrv_stopping()) {
+        size_t n = fread(buf, 1, left < CHUNK ? (size_t)left : CHUNK, f);
+        ok = n > 0 && send_all(req, buf, n);
+        left -= n;
     }
     fclose(f);
     free(buf);
-    if (err == ESP_OK) err = httpd_resp_send_chunk(req, NULL, 0);
-    return err;
+    return ok && left == 0 ? ESP_OK : ESP_FAIL;
 }
 
 // Controllo di uno script dall'editor: lo compila senza eseguirlo (sintassi)

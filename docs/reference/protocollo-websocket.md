@@ -128,6 +128,6 @@ Richiedono il token del messaggio `T<token>`, nell'header `X-Grillo-Token` o nel
 | --- | --- | --- |
 | `/api/file?path=&reveal=` | GET | Testo di un file per l'editor, fino a 64 KB (`413` oltre, `404` se manca o è una cartella). `/config.lua` arriva con i segreti sostituiti da `"<secret:N>"`, in chiaro solo con `reveal=1`. |
 | `/api/file?path=&overwrite=` | PUT | Il corpo è il contenuto del file (salvataggio e upload, di qualunque dimensione). Se il file esiste serve `overwrite=1`, altrimenti `409`. Per `/config.lua` i segnaposto `"<secret:N>"` tornano ai valori del file attuale; un N che il file non ha riceve `400` e il file non cambia. Risposta `ok`. |
-| `/api/download?path=&t=` | GET | Il file come allegato (`Content-Disposition` con il nome in UTF-8, RFC 5987). |
+| `/api/download?path=&t=` | GET | Il file come allegato (`Content-Disposition` con il nome in UTF-8, RFC 5987), con `Content-Length`: il browser mostra totale e tempo rimanente. Se la lettura si interrompe la connessione è chiusa prima della fine, e il browser segna il download come fallito. |
 | `/api/check?path=` | POST | Il corpo è il testo di uno script (fino a 64 KB), anche non salvato: lo compila senza eseguirlo. Risposta `{"t":"check","ok":...,"error":...,"line":...}`; per gli script in `/payloads` (esclusa `lib`) anche `header` con l'errore dell'intestazione, vuoto se è valida. |
 
