@@ -1,3 +1,5 @@
+[English](../../explanation/security.md) · **Italiano**
+
 # Sicurezza e rischi accettati
 
 Grillo è uno strumento personale per installare e configurare PC. Un dispositivo che digita sul computer a cui è collegato è, per costruzione, potente: questa pagina dice dove sono i confini e quali rischi sono stati accettati di proposito.

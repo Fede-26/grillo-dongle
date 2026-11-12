@@ -1,3 +1,5 @@
+[English](../../how-to/add-an-app.md) · **Italiano**
+
 # Aggiungere un'app
 
 Un'app è un componente in `apps/` che esporta un descrittore `app_desc_t`. Il contratto è in `components/appfw/include/app.h`, riassunto in [API C delle app](../reference/api-app.md).

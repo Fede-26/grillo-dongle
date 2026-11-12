@@ -1,71 +1,73 @@
-# Usare Netscan
+**English** · [Italiano](../it/how-to/netscan.md)
 
-Netscan è l'app per capire che rete hai davanti. Ha quattro schermate, che si scelgono dal menu iniziale. Gesti: click = giù, doppio click = su, pressione lunga = scegli, tenuto premuto 3 secondi = esci dall'app. In ogni elenco la riga `Back` chiude la schermata (dalla prima riga, un doppio click ci porta in fondo). Una riga selezionata troppo lunga per il display, per esempio un IP con il nome dell'host accanto, scorre da sola dopo un secondo.
+# Use Netscan
 
-Non fa scansioni di porte. Traffico che invia: richieste ARP alla /24, query NBNS (UDP 137) e mDNS (UDP 5353) agli host trovati per conoscerne il nome, un ping al gateway, una query DNS, una richiesta HTTP, un DHCPDISCOVER in broadcast (mai seguito da una richiesta: nessun indirizzo viene preso) e la sincronizzazione dell'ora via NTP (fatta a ogni collegamento a una rete, da qualunque app).
+Netscan is the app for figuring out what network you are facing. It has four screens, chosen from the start menu. Gestures: click = down, double click = up, long press = select, held for 3 seconds = exit the app. In every list the `Back` row closes the screen (from the first row, a double click jumps to it, at the bottom). A selected row too long for the display, for example an IP with the host name next to it, scrolls by itself after one second.
 
-## Reti WiFi
+It does not do port scans. Traffic it sends: ARP requests to the /24, NBNS (UDP 137) and mDNS (UDP 5353) queries to the hosts found to learn their names, a ping to the gateway, a DNS query, an HTTP request, a broadcast DHCPDISCOVER (never followed by a request: no address is taken) and time synchronization via NTP (done on every connection to a network, by any app).
 
-Cerca le reti visibili, la più forte per prima, con canale e RSSI (dBm: più vicino a 0 = più forte). Una pressione lunga su una rete mostra SSID, BSSID, vendor del produttore (se c'è `oui.bin`), canale, segnale e tipo di sicurezza. `Rescan` ripete la scansione.
+## WiFi networks
 
-Serve per scegliere un canale libero o per verificare che l'access point del cliente copra la zona. Non richiede una rete nota.
+Looks for visible networks, strongest first, with channel and RSSI (dBm: closer to 0 = stronger). A long press on a network shows SSID, BSSID, manufacturer vendor (if `oui.bin` is present), channel, signal and security type. `Rescan` repeats the scan.
+
+Useful for choosing a free channel or checking that the customer's access point covers the area. It does not require a known network.
 
 ## Network info
 
-Si collega a una delle reti di `wifi` in `config.lua` (con più reti visibili, scegli dal menu: vedi [Collegare il dongle al WiFi](wifi.md)) e controlla in sequenza:
+Connects to one of the `wifi` networks in `config.lua` (with several networks visible, choose from the menu: see [Connect the dongle to WiFi](wifi.md)) and checks in sequence:
 
-| Riga | Significato |
+| Row | Meaning |
 | --- | --- |
-| `WiFi` | Rete e segnale. |
-| `IP` | Indirizzo e prefisso assegnati dal DHCP. |
-| `GW` | Ultimi ottetti del gateway e tempo di risposta al ping. Giallo "no reply" non è un errore: molti router non rispondono al ping. |
-| `DNS` | Server DNS e tempo per risolvere un nome. |
-| `Web` | `Online`: internet raggiungibile. `Captive portal`: la rete intercetta la richiesta e serve una pagina di accesso (risposta 200 o 3xx). `HTTP nnn`: un'altra risposta inattesa. `No internet`: nessuna risposta entro 4 secondi, oppure la query DNS è fallita (in quel caso anche la riga `DNS` è rossa). |
+| `WiFi` | Network and signal. |
+| `IP` | Address and prefix assigned by DHCP. |
+| `GW` | Last octets of the gateway and ping response time. A yellow "no reply" is not an error: many routers do not answer pings. |
+| `DNS` | DNS server and time to resolve a name. |
+| `Web` | `Online`: internet reachable. `Captive portal`: the network intercepts the request and serves a login page (response 200 or 3xx). `HTTP nnn`: another unexpected response. `No internet`: no response within 4 seconds, or the DNS query failed (in that case the `DNS` row is red too). |
 
-Il controllo web è una `GET /generate_204` a `connectivitycheck.gstatic.com` (a memoria: l'endpoint di Google che risponde 204 senza corpo). Per usare un altro host imposta `netscan.probe_host`. Click = ripeti, doppio click = torna al menu.
+The web check is a `GET /generate_204` to `connectivitycheck.gstatic.com` (from memory: the Google endpoint that answers 204 with no body). To use another host, set `netscan.probe_host`. Click = repeat, double click = back to the menu.
 
 ## LAN hosts
 
-Si collega come sopra e cerca gli host della rete: una richiesta ARP per ogni indirizzo della /24 del dongle (o della rete, se più piccola), poi nome e produttore di quelli trovati. Dura circa 10 secondi. Ogni riga mostra l'IP e, a destra, il nome o il produttore; una pressione lunga apre il dettaglio con il MAC.
+Connects as above and looks for the hosts on the network: one ARP request for each address of the dongle's /24 (or of the network, if smaller), then the name and manufacturer of those found. It takes about 10 seconds. Each row shows the IP and, on the right, the name or the manufacturer; a long press opens the detail with the MAC.
 
-I nomi arrivano da NBNS (porta UDP 137, rispondono i Windows) e da mDNS (porta 5353, rispondono Mac, Linux e molte stampanti). Un host che non risponde a nessuno dei due resta senza nome.
+Names come from NBNS (UDP port 137, Windows machines answer) and from mDNS (port 5353, Macs, Linux and many printers answer). A host that answers neither stays without a name.
 
-Limiti da conoscere:
+Limits to be aware of:
 
-- Un access point con *client isolation* nasconde gli host agli altri client WiFi: la lista sarà quasi vuota. Non si può aggirare dal dongle.
-- Un dispositivo in risparmio energetico può non rispondere alla richiesta ARP e non comparire. Ripeti la scansione.
-- Un MAC con il secondo bit del primo byte a 1 è "privato" (casuale, tipico di telefoni e PC recenti): il produttore non si può ricavare e la riga mostra `(private MAC)`.
+- An access point with *client isolation* hides hosts from other WiFi clients: the list will be almost empty. This cannot be worked around from the dongle.
+- A device in power saving mode may not answer the ARP request and not show up. Repeat the scan.
+- A MAC with the second bit of the first byte set to 1 is "private" (random, typical of recent phones and PCs): the manufacturer cannot be derived and the row shows `(private MAC)`.
 
 ## DHCP servers
 
-Si collega come sopra, chiede un indirizzo a tutti i server DHCP della rete (un DHCPDISCOVER in broadcast, inviato tre volte) e per 5 secondi raccoglie le offerte. Ogni riga è un server: IP e, a destra, il produttore. La pressione lunga apre il dettaglio con MAC, produttore, indirizzo offerto con il prefisso, gateway, DNS e durata del lease.
+Connects as above, asks all DHCP servers on the network for an address (a broadcast DHCPDISCOVER, sent three times) and collects the offers for 5 seconds. Each row is a server: IP and, on the right, the manufacturer. A long press opens the detail with MAC, manufacturer, offered address with prefix, gateway, DNS and lease duration.
 
-Il dongle non accetta nessuna offerta: senza la richiesta successiva (DHCPREQUEST) il server non riserva l'indirizzo, e il dongle tiene quello che ha già.
+The dongle accepts no offer: without the following request (DHCPREQUEST) the server does not reserve the address, and the dongle keeps the one it already has.
 
-| Server trovati | Significato |
+| Servers found | Meaning |
 | --- | --- |
-| 1 | Normale. LED verde. |
-| 0 | Nessuno ha risposto: il DHCP è spento, oppure l'access point blocca i broadcast. Toast e LED rossi. |
-| più di 1 | C'è un server DHCP abusivo (*rogue*): un router collegato con la porta sbagliata, un PC con la condivisione della connessione, un attacco. I client prendono l'indirizzo da chi risponde prima, quindi alcuni finiscono su una rete sbagliata. Toast "More than one DHCP server!" e LED rossi. Il MAC e il produttore aiutano a trovare l'apparecchio. |
+| 1 | Normal. Green LED. |
+| 0 | Nobody answered: DHCP is off, or the access point blocks broadcasts. Red toast and LED. |
+| more than 1 | There is an unauthorized (*rogue*) DHCP server: a router plugged in on the wrong port, a PC with connection sharing, an attack. Clients take the address from whoever answers first, so some end up on a wrong network. Toast "More than one DHCP server!" and red LED. The MAC and the manufacturer help find the device. |
 
-Il MAC arriva da una richiesta ARP all'IP del server. Manca se il server sta in un'altra rete (risponde tramite un relay) o non risponde all'ARP.
+The MAC comes from an ARP request to the server's IP. It is missing if the server is on another network (it answers through a relay) or does not answer ARP.
 
-## Salvataggio
+## Saving
 
-Ogni scansione WiFi, LAN e DHCP viene salvata in `/scans/` sulla microSD, in CSV (`wifi-…csv`, `lan-<rete>-…csv`, `dhcp-<rete>-…csv`). Leggili con l'app USB disk. Il dongle non ha un orologio a batteria: l'ora viene da NTP appena il dongle si collega a una rete (o da `host.clock()` in uno script) e il nome del file contiene la data; senza ora il nome ha un numero progressivo.
+Every WiFi, LAN and DHCP scan is saved to `/scans/` on the microSD, as CSV (`wifi-…csv`, `lan-<network>-…csv`, `dhcp-<network>-…csv`). Read them with the USB disk app. The dongle has no battery-backed clock: the time comes from NTP as soon as the dongle connects to a network (or from `host.clock()` in a script) and the file name contains the date; without the time the name has a sequence number.
 
-Nel CSV i valori che inizierebbero con `=`, `+`, `-` o `@` (non numeri) hanno un apice davanti: un SSID o un nome host scelti da altri non devono diventare formule quando apri il file con un foglio di calcolo.
+In the CSV, values that would start with `=`, `+`, `-` or `@` (not numbers) get a leading apostrophe: an SSID or a host name chosen by others must not become a formula when you open the file with a spreadsheet.
 
-## Mostrare il produttore: `oui.bin`
+## Show the manufacturer: `oui.bin`
 
-Senza file, Netscan mostra solo il MAC. Per i produttori:
+Without the file, Netscan shows only the MAC. For manufacturers:
 
-1. Scarica a mano la lista dell'IEEE, `oui.csv`, da <https://standards-oui.ieee.org/oui/oui.csv> (o `oui.txt` dalla stessa cartella).
-2. Convertila: `tools/make_oui.py oui.csv oui.bin`.
-3. Copia `oui.bin` nella radice della microSD.
+1. Manually download the IEEE list, `oui.csv`, from <https://standards-oui.ieee.org/oui/oui.csv> (or `oui.txt` from the same folder).
+2. Convert it: `tools/make_oui.py oui.csv oui.bin`.
+3. Copy `oui.bin` to the root of the microSD.
 
-Il formato permette la ricerca binaria direttamente sulla scheda, senza caricarlo in RAM.
+The format allows binary search directly on the card, without loading it into RAM.
 
-## Chiavi di `config.lua`
+## `config.lua` keys
 
-Vedi la [reference](../reference/config-lua.md): `timezone`, `ntp`, `netscan.probe_host`.
+See the [reference](../reference/config-lua.md): `timezone`, `ntp`, `netscan.probe_host`.

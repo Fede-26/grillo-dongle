@@ -1,3 +1,5 @@
+[English](../../tutorials/02-first-script.md) · **Italiano**
+
 # Il tuo primo script
 
 In questo tutorial scrivi uno script Lua che apre il Blocco note su Windows e ci digita un testo, mostrando l'avanzamento sul display del dongle.

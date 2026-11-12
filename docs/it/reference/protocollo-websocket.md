@@ -1,3 +1,5 @@
+[English](../../reference/websocket-protocol.md) · **Italiano**
+
 # Protocollo WebSocket delle app web
 
 Il Web HID, il Web Injector e Web Files servono una pagina e un canale WebSocket che trasporta i comandi. Il server è il componente `websrv` (sopra `esp_http_server`); un solo client alla volta. Le rotte `/cfg` e `/ws`, l'accesso con `p<PIN>` e le risposte `ok`, `no`, `locked` e `busy` sono del componente e valgono per ogni app web; i comandi sono di ciascuna app (Web HID qui sotto, poi [Web Injector](#web-injector) e [Web Files](#web-files)).

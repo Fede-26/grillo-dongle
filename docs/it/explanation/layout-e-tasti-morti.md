@@ -1,3 +1,5 @@
+[English](../../explanation/layouts-and-dead-keys.md) · **Italiano**
+
 # Layout, sistema operativo e tasti morti
 
 ## Il problema

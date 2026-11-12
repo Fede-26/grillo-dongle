@@ -1,49 +1,51 @@
-<p align="center"><img src="docs/images/logo.png" width="128" alt="Logo di Grillo: un grillo in pixel art verde"></p>
+**English** · [Italiano](README.it.md)
+
+<p align="center"><img src="docs/images/logo.png" width="128" alt="Grillo logo: a green pixel-art cricket"></p>
 
 # Grillo
 
-Firmware modulare ad app per il LilyGO T-Dongle-S3 (variante con LCD 160x80, senza PSRAM).
+Modular, app-based firmware for the LilyGO T-Dongle-S3 (the variant with the 160x80 LCD, no PSRAM).
 
-Il nome viene dal grillo parlante: un piccolo aiutante da tenere in tasca. Il progetto nasce per l'installazione dei kiosk: si inserisce il dongle nel PC, si sceglie uno script e il dongle digita al posto di chi lo usa.
+The name comes from the talking cricket (*grillo parlante*): a small helper to keep in your pocket. The project was born for kiosk installation: you plug the dongle into the PC, pick a script, and the dongle types in place of the user.
 
-## Le app
+## The apps
 
-| App | Cosa fa | Stato |
+| App | What it does | Status |
 | --- | --- | --- |
-| Injector | Esegue script Lua dalla microSD che digitano testo, premono combinazioni di tasti e muovono il mouse. Ogni script dichiara layout della tastiera e sistema operativo del PC di destinazione. | funzionante |
-| Web Injector | Gli stessi script dell'Injector, scelti e seguiti da una pagina web protetta da PIN: elenco per cartelle, OS e tag, stato, dialoghi e abort dal telefono; cronologia della run anche dopo una riconnessione, esito che resta in pagina. | funzionante |
-| Web Files | La microSD da una pagina web protetta da PIN: sfoglia, carica, scarica, rinomina, sposta, copia, cestino ed eliminazione definitiva; editor per script Lua (con controllo della sintassi sul dongle) e CSV a tabella. | funzionante |
-| Web HID | Tastiera e touchpad comandati da una pagina web (PC o telefono), protetta da PIN. Layout e OS si scelgono dalla pagina. | funzionante |
-| USB disk | Espone la microSD al PC come disco. | funzionante |
-| Netscan | Scanner di rete: reti WiFi, controlli di connettività, host della LAN con produttore e nome, server DHCP (avviso se più di uno). Nessun port scan. Salva i risultati in CSV. | funzionante |
+| Injector | Runs Lua scripts from the microSD that type text, press key combinations and move the mouse. Each script declares the keyboard layout and operating system of the target PC. | working |
+| Web Injector | The same scripts as the Injector, chosen and followed from a PIN-protected web page: list by folder, OS and tag, status, dialogs and abort from the phone; run history even after a reconnection, outcome that stays on the page. | working |
+| Web Files | The microSD from a PIN-protected web page: browse, upload, download, rename, move, copy, trash and permanent deletion; editor for Lua scripts (with syntax check on the dongle) and CSV as a table. | working |
+| Web HID | Keyboard and touchpad driven from a web page (PC or phone), PIN-protected. Layout and OS are chosen from the page. | working |
+| USB disk | Exposes the microSD to the PC as a disk. | working |
+| Netscan | Network scanner: WiFi networks, connectivity checks, LAN hosts with vendor and name, DHCP servers (warning if more than one). No port scan. Saves results to CSV. | working |
 
-Il pulsante del dongle è l'unico ingresso: click, doppio click, pressione lunga; tenuto premuto 3 secondi esce da qualunque app. Ogni app ha un colore, usato dall'interfaccia e dal LED.
+The dongle's button is the only input: click, double click, long press; held for 3 seconds it exits any app. Each app has a color, used by the interface and by the LED.
 
-## Schermate
+## Screenshots
 
-Catture dal display (160x80, ingrandite 4 volte) fatte con `tools/grillo.py shot`.
+Captures from the display (160x80, scaled 4x) taken with `tools/grillo.py shot`.
 
 | | |
 | --- | --- |
 | ![Launcher: Injector](docs/images/launcher-injector.png) | ![Launcher: Web HID](docs/images/launcher-webhid.png) |
 | ![Launcher: Netscan](docs/images/launcher-netscan.png) | ![Launcher: USB Disk](docs/images/launcher-usbdisk.png) |
-| ![Injector: elenco degli script](docs/images/injector-list.png) | ![Injector: scheda dello script, la descrizione scorre da sola](docs/images/injector-card.png) |
-| ![Netscan: menu](docs/images/netscan-menu.png) | ![USB Disk: SD collegata al PC](docs/images/usbdisk-connected.png) |
-| ![USB Disk: conferma di uscita senza espulsione](docs/images/usbdisk-confirm.png) | |
+| ![Injector: script list](docs/images/injector-list.png) | ![Injector: script card, the description scrolls by itself](docs/images/injector-card.png) |
+| ![Netscan: menu](docs/images/netscan-menu.png) | ![USB Disk: SD connected to the PC](docs/images/usbdisk-connected.png) |
+| ![USB Disk: confirmation of exit without eject](docs/images/usbdisk-confirm.png) | |
 
-Le pagine web (Web HID, Web Injector, Web Files) hanno un tema comune in tre modalità, scelte dal pulsante in alto a destra. Qui il Web Injector durante uno script, su un telefono (dati di esempio):
+The web pages (Web HID, Web Injector, Web Files) share a common theme in three modes, chosen with the button at the top right. Here the Web Injector during a script, on a phone (sample data):
 
 | Plain | Arcade | Retro |
 | --- | --- | --- |
-| ![Web Injector, tema plain](docs/images/web-plain.png) | ![Web Injector, tema arcade](docs/images/web-arcade.png) | ![Web Injector, tema retro a fosfori ambra](docs/images/web-retro.png) |
+| ![Web Injector, plain theme](docs/images/web-plain.png) | ![Web Injector, arcade theme](docs/images/web-arcade.png) | ![Web Injector, amber phosphor retro theme](docs/images/web-retro.png) |
 
-## Requisiti
+## Requirements
 
-- ESP-IDF v6.1, installato in `~/esp/esp-idf`
-- microSD formattata FAT32 (exFAT non è supportato da ESP-IDF v6.1)
-- Python 3 per gli strumenti in `tools/`
+- ESP-IDF v6.1, installed in `~/esp/esp-idf`
+- microSD formatted FAT32 (exFAT is not supported by ESP-IDF v6.1)
+- Python 3 for the tools in `tools/`
 
-## Avvio rapido
+## Quick start
 
 ```sh
 . ~/esp/esp-idf/export.sh
@@ -51,63 +53,63 @@ idf.py build
 idf.py -p /dev/cu.usbmodemXXXX flash
 ```
 
-Poi copia il contenuto di `sd-template/` nella radice della microSD e inseriscila nel dongle. Il percorso completo, con il primo script, è in [Prima installazione](docs/tutorials/01-prima-installazione.md).
+Then copy the contents of `sd-template/` to the root of the microSD and insert it into the dongle. The full walkthrough, with the first script, is in [First install](docs/tutorials/01-first-install.md).
 
-Per flashare senza compilare, usando l'immagine di una [release](https://github.com/Fede-26/grillo-dongle/releases) pubblicata, vedi [Flashare una release](docs/how-to/flash-una-release.md).
+To flash without building, using the image of a published [release](https://github.com/Fede-26/grillo-dongle/releases), see [Flash a release](docs/how-to/flash-a-release.md).
 
-Per entrare in download mode, tieni premuto il pulsante mentre inserisci il dongle: quando il firmware usa la USB come tastiera o disco, la porta seriale di ESP-IDF non è disponibile.
+To enter download mode, hold the button while plugging in the dongle: when the firmware uses USB as a keyboard or disk, the ESP-IDF serial port is not available.
 
-## Documentazione
+## Documentation
 
-La documentazione in `docs/` segue il modello [Diátaxis](https://diataxis.fr/).
+The documentation in `docs/` follows the [Diátaxis](https://diataxis.fr/) model.
 
-- **Tutorial**: [Prima installazione](docs/tutorials/01-prima-installazione.md), [Il tuo primo script](docs/tutorials/02-primo-script.md)
-- **Guide pratiche**:
-  - [Flashare una release](docs/how-to/flash-una-release.md)
-  - [Collegare il dongle al WiFi](docs/how-to/wifi.md)
-  - [Usare il Web HID](docs/how-to/web-hid.md)
-  - [Usare il Web Injector](docs/how-to/web-injector.md)
-  - [Usare Web Files](docs/how-to/web-files.md)
-  - [Usare Netscan](docs/how-to/netscan.md)
-  - [Scegliere layout e sistema operativo](docs/how-to/layout-e-os.md)
-  - [Avviare uno script all'accensione](docs/how-to/autorun.md)
-  - [Digitare una password senza scriverla negli script](docs/how-to/password.md)
-  - [Copiare file sul PC con il disco USB](docs/how-to/copiare-file.md)
-  - [Aggiungere un layout](docs/how-to/aggiungere-un-layout.md)
-  - [Aggiungere un'app](docs/how-to/aggiungere-unapp.md)
-- **Riferimento**: [API Lua](docs/reference/lua-api.md), [Intestazione degli script](docs/reference/intestazione-script.md), [config.lua](docs/reference/config-lua.md), [Protocollo WebSocket](docs/reference/protocollo-websocket.md), [Console di debug](docs/reference/console-debug.md), [API C delle app](docs/reference/api-app.md)
-- **Spiegazioni**: [Architettura](docs/explanation/architettura.md), [Layout, sistema operativo e tasti morti](docs/explanation/layout-e-tasti-morti.md), [Sicurezza e rischi accettati](docs/explanation/sicurezza.md)
+- **Tutorials**: [First install](docs/tutorials/01-first-install.md), [Your first script](docs/tutorials/02-first-script.md)
+- **How-to guides**:
+  - [Flash a release](docs/how-to/flash-a-release.md)
+  - [Connect the dongle to WiFi](docs/how-to/wifi.md)
+  - [Use Web HID](docs/how-to/web-hid.md)
+  - [Use the Web Injector](docs/how-to/web-injector.md)
+  - [Use Web Files](docs/how-to/web-files.md)
+  - [Use Netscan](docs/how-to/netscan.md)
+  - [Choose layout and operating system](docs/how-to/layout-and-os.md)
+  - [Run a script at power-on](docs/how-to/autorun.md)
+  - [Type a password without writing it in scripts](docs/how-to/passwords.md)
+  - [Copy files to the PC with the USB disk](docs/how-to/copy-files.md)
+  - [Add a layout](docs/how-to/add-a-layout.md)
+  - [Add an app](docs/how-to/add-an-app.md)
+- **Reference**: [Lua API](docs/reference/lua-api.md), [Script header](docs/reference/script-header.md), [config.lua](docs/reference/config-lua.md), [WebSocket protocol](docs/reference/websocket-protocol.md), [Debug console](docs/reference/debug-console.md), [App C API](docs/reference/app-api.md)
+- **Explanation**: [Architecture](docs/explanation/architecture.md), [Layouts, operating systems and dead keys](docs/explanation/layouts-and-dead-keys.md), [Security and accepted risks](docs/explanation/security.md)
 
-## Struttura del repository
+## Repository layout
 
 ```
-apps/         le app (injector, webinjector, webhid, webfiles, netscan, usbdisk, launcher)
-components/   i servizi condivisi (hid, usbdev, net, display, gfx, ui, storage, config, luart, ...)
-main/         avvio, tabella delle app, console di debug
-sd-template/  contenuto iniziale della microSD (config.lua, esempi, libreria)
-tools/        generatori (layout, font), client della console di debug
-test/host/    test della logica pura sul PC: make -C test/host
-docs/         documentazione
+apps/         the apps (injector, webinjector, webhid, webfiles, netscan, usbdisk, launcher)
+components/   shared services (hid, usbdev, net, display, gfx, ui, storage, config, luart, ...)
+main/         startup, app table, debug console
+sd-template/  initial microSD contents (config.lua, examples, library)
+tools/        generators (layouts, fonts), debug console client
+test/host/    pure-logic tests on the PC: make -C test/host
+docs/         documentation
 ```
 
-## Strumenti
+## Tools
 
-- `make -C test/host` esegue sul PC i test di layout, gesti del pulsante e logica pura di Netscan.
-- `python3 tools/gen_layouts.py` rigenera `components/hid/layouts_data.c`.
-- `python3 tools/make_oui.py oui.csv oui.bin` converte la lista OUI dell'IEEE per Netscan (vedi [Usare Netscan](docs/how-to/netscan.md)).
-- `python3 tools/grillo.py cmd state` parla con la console di debug (vedi [riferimento](docs/reference/console-debug.md)).
-- `python3 tools/serial_log.py /dev/cu.usbmodemXXXX 10` mostra il log per 10 secondi.
+- `make -C test/host` runs on the PC the tests for layouts, button gestures and Netscan pure logic.
+- `python3 tools/gen_layouts.py` regenerates `components/hid/layouts_data.c`.
+- `python3 tools/make_oui.py oui.csv oui.bin` converts the IEEE OUI list for Netscan (see [Use Netscan](docs/how-to/netscan.md)).
+- `python3 tools/grillo.py cmd state` talks to the debug console (see [reference](docs/reference/debug-console.md)).
+- `python3 tools/serial_log.py /dev/cu.usbmodemXXXX 10` shows the log for 10 seconds.
 
 ## VS Code
 
-IntelliSense legge `build/compile_commands.json`. Esegui `idf.py build` (oppure `idf.py reconfigure`) almeno una volta: dopo, gli include si risolvono.
+IntelliSense reads `build/compile_commands.json`. Run `idf.py build` (or `idf.py reconfigure`) at least once: after that, includes resolve.
 
-## Licenza
+## License
 
-GPL-3.0-or-later, testo completo in [LICENSE](LICENSE). Fanno eccezione i componenti vendorizzati, ciascuno con la propria licenza originale: Lua ([MIT](components/lua/lua/lua.h)), i font Iosevka e Silkscreen (SIL OFL 1.1, testo in `components/webtheme/web/fonts/`) e il layout Colemak per Windows (pubblico dominio, vedi `tools/layouts/README.md`).
+GPL-3.0-or-later, full text in [LICENSE](LICENSE). The exceptions are the vendored components, each under its own original license: Lua ([MIT](components/lua/lua/lua.h)), the Iosevka and Silkscreen fonts (SIL OFL 1.1, text in `components/webtheme/web/fonts/`) and the Colemak layout for Windows (public domain, see `tools/layouts/README.md`).
 
-## Stato e limiti noti
+## Status and known limitations
 
-- Non c'è un'app Impostazioni: le impostazioni si modificano a mano in `config.lua` sulla microSD.
-- I ripieghi per i caratteri mancanti dal layout esistono solo per Windows (Alt + codice sul tastierino) e Linux (Ctrl+Shift+U); su macOS un carattere non digitabile con il layout è un errore.
-- Le password in `config.lua` sono in chiaro sulla microSD, e il Web HID senza PIN lascia il controllo del PC a chiunque sia sulla stessa rete: vedi [Sicurezza](docs/explanation/sicurezza.md).
+- There is no Settings app: settings are edited by hand in `config.lua` on the microSD.
+- Fallbacks for characters missing from the layout exist only for Windows (Alt + code on the numeric keypad) and Linux (Ctrl+Shift+U); on macOS a character that cannot be typed with the layout is an error.
+- Passwords in `config.lua` are in plain text on the microSD, and Web HID without a PIN hands control of the PC to anyone on the same network: see [Security](docs/explanation/security.md).

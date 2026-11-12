@@ -1,189 +1,191 @@
-# API Lua dell'injector
+**English** · [Italiano](../it/reference/lua-api.md)
 
-Riferimento delle funzioni disponibili negli script `.lua` eseguiti dall'injector. Per il formato dell'intestazione vedi [Intestazione degli script](intestazione-script.md).
+# Injector Lua API
 
-## Ambiente
+Reference for the functions available in the `.lua` scripts run by the injector. For the header format see [Script header](script-header.md).
 
-Lo script gira in una VM Lua 5.4 sandbox, un solo script alla volta.
+## Environment
 
-- Librerie standard presenti: `base`, `coroutine`, `table`, `string`, `math`, `utf8`. Mancano `io`, `os`, `package`, `debug`; `dofile` e `loadfile` sono rimossi.
-- `print(...)` scrive nel log (livello info), non sul display.
-- Memoria massima della VM: 96 KB. Oltre il limite lo script termina con un errore di memoria.
-- Si può interrompere tenendo premuto il pulsante 3 secondi: la prossima chiamata a una funzione del dongle (o 1000 istruzioni Lua) solleva l'errore `aborted`, e un `ui.menu` o `ui.confirm` aperto si chiude. Lo stesso vale per `@timeout`. Dopo l'interruzione il display mostra "Aborted" con il punto in cui lo script si è fermato; si resta nell'injector.
-- È accettato solo codice sorgente testuale, mai bytecode precompilato: anche `load()` accetta solo testo, e `string.dump` non esiste.
-- Le chiamate annidate che passano dal C (`pcall` dentro `pcall`, callback di `string.gsub` e `table.sort`, metamethod, `require`) hanno un limite di stack: oltre, lo script termina con `C stack overflow (too many nested calls)` invece di bloccare il dongle. Con `pcall` annidati il limite è circa 24 livelli (misurato il 2026-11-10). La ricorsione Lua pura non ha questo limite, solo quello della memoria.
-- Prima dell'esecuzione il dongle attende che il PC abbia montato la tastiera, poi attende `start_delay`.
+The script runs in a sandboxed Lua 5.4 VM, one script at a time.
 
-Un errore Lua non gestito termina lo script e viene mostrato sul display con nome file e riga; se il messaggio è lungo scorre da solo. Il messaggio va anche nel log sulla microSD (`/logs/grillo.log`).
+- Standard libraries available: `base`, `coroutine`, `table`, `string`, `math`, `utf8`. Missing: `io`, `os`, `package`, `debug`; `dofile` and `loadfile` are removed.
+- `print(...)` writes to the log (info level), not to the display.
+- Maximum VM memory: 96 KB. Beyond the limit the script ends with an out-of-memory error.
+- You can stop it by holding the button for 3 seconds: the next call to a dongle function (or 1000 Lua instructions) raises the `aborted` error, and an open `ui.menu` or `ui.confirm` closes. The same applies to `@timeout`. After the stop the display shows "Aborted" with the point where the script stopped; you stay in the injector.
+- Only textual source code is accepted, never precompiled bytecode: `load()` also accepts only text, and `string.dump` does not exist.
+- Nested calls that go through C (`pcall` inside `pcall`, `string.gsub` and `table.sort` callbacks, metamethods, `require`) have a stack limit: beyond it, the script ends with `C stack overflow (too many nested calls)` instead of hanging the dongle. With nested `pcall`s the limit is about 24 levels (measured on 2026-11-10). Pure Lua recursion does not have this limit, only the memory one.
+- Before running, the dongle waits for the PC to mount the keyboard, then waits `start_delay`.
 
-## `kb`: tastiera
+An unhandled Lua error ends the script and is shown on the display with file name and line; if the message is long it scrolls by itself. The message also goes to the log on the microSD (`/logs/grillo.log`).
 
-### `kb.type(testo [, variabili])`
+## `kb`: keyboard
 
-Digita una stringa UTF-8 con il layout e l'OS correnti. In `testo`, `${nome}` è sostituito dal valore di `variabili.nome` (se la tabella manca, dalla variabile globale `nome`). Una variabile non definita è un errore: digitare `${user}` alla lettera non è mai ciò che si voleva. `\n` preme Invio, `\t` preme Tab.
+### `kb.type(text [, vars])`
 
-Errori: `U+XXXX not typeable with layout NOME` se il carattere non esiste nel layout e non c'è un ripiego per l'OS; `USB host not responding` se il PC non risponde.
+Types a UTF-8 string with the current layout and OS. In `text`, `${name}` is replaced by the value of `vars.name` (if the table is missing, by the global variable `name`). An undefined variable is an error: typing `${user}` literally is never what you wanted. `\n` presses Enter, `\t` presses Tab.
+
+Errors: `U+XXXX not typeable with layout NAME` if the character does not exist in the layout and there is no fallback for the OS; `USB host not responding` if the PC does not respond.
 
 ```lua
 kb.type("Hello ${who}!\n", {who = "Grillo"})
 ```
 
-### `kb.type_secret(nome)`
+### `kb.type_secret(name)`
 
-Digita la stringa `secrets.nome` di `config.lua` senza mai passarla per una stringa Lua: lo script non può leggerla come valore. Errore se la chiave non esiste, oppure `secret 'nome' has a character not typeable with layout NOME` (il messaggio non dice quale carattere, per non rivelarlo). Vedi [Digitare una password](../how-to/password.md).
+Types the string `secrets.name` from `config.lua` without ever passing it through a Lua string: the script cannot read it as a value. Error if the key does not exist, or `secret 'name' has a character not typeable with layout NAME` (the message does not say which character, so as not to reveal it). See [Type a password](../how-to/passwords.md).
 
-### `kb.tap(tasto [, n])`
+### `kb.tap(key [, n])`
 
-Preme e rilascia un tasto `n` volte (default 1). `tasto` è un nome della tabella sotto oppure un singolo carattere UTF-8 del layout corrente (`"r"`, `"€"`). Una lettera maiuscola indica il tasto, non lo Shift.
+Presses and releases a key `n` times (default 1). `key` is a name from the table below or a single UTF-8 character of the current layout (`"r"`, `"€"`). An uppercase letter indicates the key, not Shift.
 
-### `kb.press(tasto, ...)`
+### `kb.press(key, ...)`
 
-Preme insieme fino a 6 tasti più i modificatori, poi rilascia tutto. Per le combinazioni.
+Presses up to 6 keys plus the modifiers together, then releases everything. For key combinations.
 
 ```lua
 kb.press("CTRL", "ALT", "DELETE")
-kb.press("GUI", "r")        -- Win+R su Windows, Cmd+R su macOS
+kb.press("GUI", "r")        -- Win+R on Windows, Cmd+R on macOS
 ```
 
-Nomi di tasto riconosciuti (maiuscole indifferenti):
+Recognized key names (case-insensitive):
 
-| Gruppo | Nomi |
+| Group | Names |
 | --- | --- |
-| Modificatori sinistri | `CTRL`/`CONTROL`, `SHIFT`, `ALT`/`OPTION`, `GUI`/`WIN`/`CMD`/`COMMAND`/`SUPER` |
-| Modificatori destri | `RCTRL`, `RSHIFT`, `RALT`/`ALTGR`, `RGUI` |
-| Controllo | `ENTER`/`RETURN`, `ESC`/`ESCAPE`, `BACKSPACE`, `TAB`, `SPACE`, `CAPSLOCK`, `MENU`/`APP` |
-| Navigazione | `HOME`, `END`, `PAGEUP`, `PAGEDOWN`, `INSERT`, `DELETE`/`DEL`, `UP`, `DOWN`, `LEFT`, `RIGHT` |
-| Altri | `PRINTSCREEN`, `SCROLLLOCK`, `PAUSE`/`BREAK`, `NUMLOCK` |
-| Funzione | `F1` … `F24` |
+| Left modifiers | `CTRL`/`CONTROL`, `SHIFT`, `ALT`/`OPTION`, `GUI`/`WIN`/`CMD`/`COMMAND`/`SUPER` |
+| Right modifiers | `RCTRL`, `RSHIFT`, `RALT`/`ALTGR`, `RGUI` |
+| Control | `ENTER`/`RETURN`, `ESC`/`ESCAPE`, `BACKSPACE`, `TAB`, `SPACE`, `CAPSLOCK`, `MENU`/`APP` |
+| Navigation | `HOME`, `END`, `PAGEUP`, `PAGEDOWN`, `INSERT`, `DELETE`/`DEL`, `UP`, `DOWN`, `LEFT`, `RIGHT` |
+| Other | `PRINTSCREEN`, `SCROLLLOCK`, `PAUSE`/`BREAK`, `NUMLOCK` |
+| Function | `F1` … `F24` |
 
-### `kb.layout([nome])` e `kb.os([nome])`
+### `kb.layout([name])` and `kb.os([name])`
 
-Con argomento impostano, senza leggono. Restituiscono il valore corrente. Layout: `us`, `it`, `colemak`. OS: `windows`, `linux`, `mac` (`win` e `macos` sono accettati in ingresso).
+With an argument they set, without one they read. They return the current value. Layout: `us`, `it`, `colemak`. OS: `windows`, `linux`, `mac` (`win` and `macos` are accepted as input).
 
-### Tempi: `kb.speed`, `kb.hold`, `kb.jitter`, `kb.line_delay`
+### Timing: `kb.speed`, `kb.hold`, `kb.jitter`, `kb.line_delay`
 
-Con argomento (millisecondi, 0..60000) impostano, senza leggono. Valgono per il resto dello script.
+With an argument (milliseconds, 0..60000) they set, without one they read. They apply to the rest of the script.
 
-| Funzione | Significato | Default |
+| Function | Meaning | Default |
 | --- | --- | --- |
-| `kb.speed` | pausa tra un tasto e il successivo | 8 |
-| `kb.hold` | durata della pressione di ogni tasto | 5 |
-| `kb.jitter` | ± ms casuali sulla pausa | 0 |
-| `kb.line_delay` | ms in più dopo ogni `\n` | 0 |
+| `kb.speed` | pause between one key and the next | 8 |
+| `kb.hold` | duration of each key press | 5 |
+| `kb.jitter` | random ± ms on the pause | 0 |
+| `kb.line_delay` | extra ms after each `\n` | 0 |
 
-I default possono venire da `config.lua` (sezione `keyboard`) o dall'intestazione dello script.
+The defaults can come from `config.lua` (`keyboard` section) or from the script header.
 
 ## `mouse`
 
-Non disponibile mentre il disco USB è collegato (`disk.attach`): errore `no mouse while the disk is attached`.
+Not available while the USB disk is attached (`disk.attach`): error `no mouse while the disk is attached`.
 
-- `mouse.move(dx, dy)`: spostamento relativo.
-- `mouse.click([tasto])`: `"left"` (default), `"right"`, `"middle"`.
-- `mouse.scroll(n)`: rotella, `n` da -127 a 127.
+- `mouse.move(dx, dy)`: relative movement.
+- `mouse.click([button])`: `"left"` (default), `"right"`, `"middle"`.
+- `mouse.scroll(n)`: wheel, `n` from -127 to 127.
 
-## `ui`: display e pulsante
+## `ui`: display and button
 
-- `ui.status(testo)`: stato nella schermata dell'esecuzione, su due righe; un testo più lungo scorre da solo.
-- `ui.progress(valore [, massimo])`: barra di avanzamento, massimo 100 se omesso.
-- `ui.menu(titolo, voci)`: menu a lista (da 1 a 32 stringhe); click = giù, doppio click = su, pressione lunga = scegli. Restituisce l'indice scelto (da 1). Se l'utente esce (hold 3 s) lo script termina con `aborted`.
-- `ui.confirm(testo [, predefinito_sì [, timeout_ms]])`: domanda sì/no, restituisce un booleano. Predefinito `true`. Con `timeout_ms` (fino a 3600000) il display mostra i secondi residui e, se non c'è alcun gesto entro la scadenza, la risposta è quella predefinita: serve con l'autorun, dove nessuno potrebbe premere nulla. Un click disattiva la scadenza.
-- `ui.wait_button()`: attende un gesto e restituisce `"click"`, `"double"` o `"long"`.
+- `ui.status(text)`: status in the run screen, on two lines; longer text scrolls by itself.
+- `ui.progress(value [, max])`: progress bar, max 100 if omitted.
+- `ui.menu(title, items)`: list menu (1 to 32 strings); click = down, double click = up, long press = choose. Returns the chosen index (from 1). If the user exits (3 s hold) the script ends with `aborted`.
+- `ui.confirm(text [, default_yes [, timeout_ms]])`: yes/no question, returns a boolean. Default `true`. With `timeout_ms` (up to 3600000) the display shows the remaining seconds and, if there is no gesture before the deadline, the answer is the default one: useful with autorun, where nobody might press anything. A click disables the deadline.
+- `ui.wait_button()`: waits for a gesture and returns `"click"`, `"double"` or `"long"`.
 
 ## `sys`
 
-- `sys.sleep(ms)`: pausa interrompibile.
-- `sys.wait_host([ms])`: attende che il PC abbia montato la tastiera; `true`, oppure `false` allo scadere (default: 24 ore, in pratica finché non si esce con 3 secondi di pressione).
-- `sys.log(testo)`: scrive nel log, anche sulla microSD (`/logs/grillo.log`, tag `script`). Con l'ora nota la riga sul file inizia con data e ora locali.
-- `sys.serial()`: numero di serie USB del dongle (12 cifre esadecimali, il MAC); identifica la sua porta seriale sul PC.
-- `sys.time()`: secondi UTC dal 1970, oppure `nil` se l'ora non è nota. Il dongle non ha batteria per l'orologio: l'ora la impostano NTP (quando un'app si collega a una rete) o `host.clock()`, e resta valida fino allo spegnimento.
-- `sys.date([formato])`: ora locale (fuso `timezone` di `config.lua`) formattata come `strftime`; default `"%Y-%m-%d %H:%M:%S"`. `nil` se l'ora non è nota; `""` se il risultato supera 63 caratteri.
-- `sys.set_time(secondi)`: imposta l'ora (secondi UTC dal 1970). Errore per un valore precedente al 2023. Di solito si usa `host.clock()`.
+- `sys.sleep(ms)`: interruptible pause.
+- `sys.wait_host([ms])`: waits for the PC to mount the keyboard; `true`, or `false` on timeout (default: 24 hours, in practice until you exit with a 3-second press).
+- `sys.log(text)`: writes to the log, also on the microSD (`/logs/grillo.log`, tag `script`). When the time is known, the line in the file starts with the local date and time.
+- `sys.serial()`: the dongle's USB serial number (12 hex digits, the MAC); identifies its serial port on the PC.
+- `sys.time()`: UTC seconds since 1970, or `nil` if the time is not known. The dongle has no clock battery: the time is set by NTP (when an app connects to a network) or by `host.clock()`, and stays valid until power-off.
+- `sys.date([format])`: local time (`timezone` from `config.lua`) formatted like `strftime`; default `"%Y-%m-%d %H:%M:%S"`. `nil` if the time is not known; `""` if the result exceeds 63 characters.
+- `sys.set_time(seconds)`: sets the time (UTC seconds since 1970). Error for a value before 2023. Usually you use `host.clock()`.
 
-Esempi: `payloads/examples/basics/clock.lua` (ora nota, formati, tempo trascorso) e `payloads/examples/host/clock-from-pc.lua` (ora dal PC con `host.clock()`).
+Examples: `payloads/examples/basics/clock.lua` (known time, formats, elapsed time) and `payloads/examples/host/clock-from-pc.lua` (time from the PC with `host.clock()`).
 
 ## `led`
 
-- `led.rgb(r, g, b)`: colore fisso, componenti 0..255.
-- `led.effect(nome [, colore [, periodo_ms]])`: `"off"`, `"solid"`, `"pulse"`, `"blink"`, `"rainbow"`. Colore come intero `0xRRGGBB` (default: il colore d'accento dell'app), periodo default 1000.
+- `led.rgb(r, g, b)`: fixed color, components 0..255.
+- `led.effect(name [, color [, period_ms]])`: `"off"`, `"solid"`, `"pulse"`, `"blink"`, `"rainbow"`. Color as an integer `0xRRGGBB` (default: the app's accent color), period default 1000.
 - `led.off()`.
 
-## `fs`: lettura di file (sola lettura)
+## `fs`: reading files (read-only)
 
-Solo sotto `/payloads` e `/data` della microSD; ogni altro percorso, o uno che contiene `..`, è un errore.
+Only under `/payloads` and `/data` on the microSD; any other path, or one containing `..`, is an error.
 
-- `fs.read(percorso)`: contenuto del file come stringa, oppure `nil, "cannot open"`. File oltre 16 KB: errore.
-- `fs.lines(percorso)`: iteratore sulle righe (senza `\r\n`). Una riga oltre 255 caratteri arriva divisa in più pezzi consecutivi, senza errore. Errore se il file non si apre.
-- `fs.list(percorso)`: tabella dei nomi (file nascosti esclusi), oppure `nil, "cannot open"`.
-- `fs.exists(percorso)`: booleano.
+- `fs.read(path)`: file contents as a string, or `nil, "cannot open"`. Files over 16 KB: error.
+- `fs.lines(path)`: iterator over the lines (without `\r\n`). A line over 255 characters arrives split into several consecutive pieces, without error. Error if the file cannot be opened.
+- `fs.list(path)`: table of names (hidden files excluded), or `nil, "cannot open"`.
+- `fs.exists(path)`: boolean.
 
-## `disk`: la microSD come disco sul PC
+## `disk`: the microSD as a disk on the PC
 
-Mentre il disco è collegato, il dongle espone tastiera e disco insieme (profilo HID+MSC) e la microSD è in sola lettura per il PC. Il dongle si ri-enumera, quindi `disk.attach` attende che il PC rimonti la tastiera.
+While the disk is attached, the dongle exposes keyboard and disk together (HID+MSC profile) and the microSD is read-only for the PC. The dongle re-enumerates, so `disk.attach` waits for the PC to remount the keyboard.
 
-- `disk.attach([timeout_ms])`: default 15000. Errore se la SD non è montata.
-- `disk.wait_eject([timeout_ms])`: default 120000. Restituisce `"eject"` se il PC ha espulso il disco, `"click"` se l'utente ha premuto il pulsante, `nil` allo scadere.
-- `disk.detach()`: torna al solo profilo tastiera.
+- `disk.attach([timeout_ms])`: default 15000. Error if the SD is not mounted.
+- `disk.wait_eject([timeout_ms])`: default 120000. Returns `"eject"` if the PC ejected the disk, `"click"` if the user pressed the button, `nil` on timeout.
+- `disk.detach()`: goes back to the keyboard-only profile.
 
-Se lo script termina con il disco ancora collegato, il dongle lo scollega comunque. I comandi per copiare ed espellere sul PC li digita lo script con `kb.type`: vedi [Copiare file sul PC](../how-to/copiare-file.md).
+If the script ends with the disk still attached, the dongle detaches it anyway. The commands to copy and eject on the PC are typed by the script with `kb.type`: see [Copy files to the PC](../how-to/copy-files.md).
 
-## `host`: risposta dal PC (primitive)
+## `host`: reply from the PC (primitives)
 
-Il PC può rispondere al dongle con una riga `@G<nonce>:<codice>` scritta sulla porta seriale CDC. Il dongle accetta solo quella riga, con il nonce atteso: dal PC arrivano "finito" e un numero, mai l'output dei comandi. Ogni altra riga è scartata. Di solito si usa la libreria `host` qui sotto, non queste primitive.
+The PC can reply to the dongle with a line `@G<nonce>:<code>` written to the CDC serial port. The dongle accepts only that line, with the expected nonce: from the PC come "finished" and a number, never the output of the commands. Every other line is discarded. Usually you use the `host` library below, not these primitives.
 
-- `host.expect(nonce)`: si aspetta una risposta con questo nonce (1..15 lettere o cifre). Va chiamata **prima** di digitare il comando, altrimenti una risposta rapida andrebbe persa.
-- `host.wait([timeout_ms [, on_click]])`: attende la risposta (default 60000 ms). Restituisce il codice di uscita e il testo ricevuto (max 256 byte; il dongle sostituisce con `_` tutto ciò che non è lettera, accentate comprese, cifra, `. _ : -` o spazio), oppure `nil` allo scadere. Con `on_click` vero, un click del pulsante restituisce `false` e l'attesa resta armata: si può chiamare di nuovo `host.wait` per la stessa risposta. Errore `call host.expect() first` se manca `expect`.
-- `host.append(id, data, etichetta, valore)`: aggiunge una riga `data,script,etichetta,valore` a `/logs/host/<id>.csv` sulla SD. `id` e `etichetta` sono ripuliti (solo `A-Z a-z 0-9 _ -`, 24 caratteri); massimo 64 file e 256 KB per file. Con il disco collegato (`disk.attach`) la riga aspetta in RAM (massimo 16) e viene scritta al `disk.detach`.
+- `host.expect(nonce)`: expects a reply with this nonce (1..15 letters or digits). It must be called **before** typing the command, otherwise a fast reply would be lost.
+- `host.wait([timeout_ms [, on_click]])`: waits for the reply (default 60000 ms). Returns the exit code and the received text (max 256 bytes; the dongle replaces with `_` everything that is not a letter, accented ones included, a digit, `. _ : -` or a space), or `nil` on timeout. With `on_click` true, a button click returns `false` and the wait stays armed: you can call `host.wait` again for the same reply. Error `call host.expect() first` if `expect` is missing.
+- `host.append(id, date, label, value)`: appends a line `date,script,label,value` to `/logs/host/<id>.csv` on the SD. `id` and `label` are sanitized (only `A-Z a-z 0-9 _ -`, 24 characters); at most 64 files and 256 KB per file. With the disk attached (`disk.attach`) the line waits in RAM (at most 16) and is written at `disk.detach`.
 
-## Libreria `host`
+## `host` library
 
-In `sd-template/payloads/lib/host.lua`. Digita un comando nel terminale del PC e dice quando è finito e con quale codice di uscita.
+In `sd-template/payloads/lib/host.lua`. Types a command in the PC terminal and tells when it has finished and with which exit code.
 
 ```lua
 local host = require("host")
-host.shell("powershell")      -- o "sh"; una volta, con il terminale in primo piano
+host.shell("powershell")      -- or "sh"; once, with the terminal in the foreground
 local code = host.run([[Start-Process notepad -Wait]])
 if code ~= 0 then error("notepad: " .. tostring(code)) end
 ```
 
-- `host.shell(tipo)`: `"powershell"` o `"sh"`. Avvia prima la shell nel terminale in primo piano: digita `powershell -NoProfile` (va anche da `cmd.exe`; da PowerShell è una sessione annidata) oppure `exec sh` (sh POSIX al posto di fish, zsh, bash), senza profilo né file rc, così alias e funzioni dell'utente non cambiano i comandi. Poi digita una volta il codice che trova la porta seriale del dongle dal suo numero di serie e verifica il canale; errore se il PC non risponde. Il terminale resta nella shell avviata. La shell si avvia una volta per script, anche se la chiedono sia `host` sia `pcdisk`.
-- `host.run(comando [, {timeout = ms}])`: digita il comando seguito da una coda che invia il codice di uscita. Restituisce il codice, o `nil` allo scadere (default 60000 ms).
-- `host.sync([opzioni])`: attende che la shell abbia eseguito tutto ciò che è stato digitato prima.
-- `host.get(espressione [, {timeout}])`: valuta l'espressione nella shell del PC e restituisce il risultato come stringa (max 256 byte ripuliti), o `nil`. Più righe sono unite con spazi.
-- `host.machine([espressione])`: imposta l'id della macchina per i log e la data del PC. Senza argomento usa il MAC della prima scheda di rete fisica (in ordine di indirizzo): è dell'hardware, quindi diverso anche tra PC clonati con Clonezilla, mentre `MachineGuid` e nome host si copiano con il disco. Restituisce l'id.
-- `host.clock([{timeout}])`: legge l'ora UTC dal PC (`[DateTimeOffset]::UtcNow` in PowerShell, `date +%s` in sh), imposta l'orologio del dongle e restituisce `sys.date()`. Da lì le righe di `/logs/grillo.log` e `sys.date()` hanno la data. Errore se il PC non risponde.
-- `host.input(prompt [, {timeout, status}])`: testo scritto dall'utente sulla tastiera del PC. Il dongle digita un comando che mostra `prompt` e legge una riga (`Read-Host` in PowerShell, `read` in sh), mostra `status` (default "Type on the PC, then click") e si ferma. L'utente scrive e preme il pulsante del dongle: il dongle preme Invio al suo posto e riparte. Va bene anche Invio dalla tastiera. Restituisce il testo (ripulito come in `host.get`: le lettere accentate restano in UTF-8, simboli come `,` `;` `"` `$` diventano `_`), o `nil` allo scadere (default 600000 ms). In sh le frecce non spostano il cursore e finirebbero nel testo; Backspace funziona.
-- `host.log(etichetta, espressione)`: come `host.get`, poi aggiunge la riga a `/logs/host/<id>.csv` e restituisce il valore. Senza `host.machine` il file è `unknown.csv`.
+- `host.shell(type)`: `"powershell"` or `"sh"`. First starts the shell in the foreground terminal: types `powershell -NoProfile` (also works from `cmd.exe`; from PowerShell it is a nested session) or `exec sh` (POSIX sh in place of fish, zsh, bash), with no profile or rc files, so the user's aliases and functions do not change the commands. Then types, once, the code that finds the dongle's serial port from its serial number and checks the channel; error if the PC does not respond. The terminal stays in the started shell. The shell is started once per script, even if both `host` and `pcdisk` ask for it.
+- `host.run(command [, {timeout = ms}])`: types the command followed by a tail that sends the exit code. Returns the code, or `nil` on timeout (default 60000 ms).
+- `host.sync([options])`: waits for the shell to have run everything typed before.
+- `host.get(expression [, {timeout}])`: evaluates the expression in the PC shell and returns the result as a string (max 256 sanitized bytes), or `nil`. Multiple lines are joined with spaces.
+- `host.machine([expression])`: sets the machine id for the logs and the PC's date. Without an argument it uses the MAC of the first physical network adapter (in address order): it belongs to the hardware, so it differs even between PCs cloned with Clonezilla, while `MachineGuid` and the host name are copied with the disk. Returns the id.
+- `host.clock([{timeout}])`: reads the UTC time from the PC (`[DateTimeOffset]::UtcNow` in PowerShell, `date +%s` in sh), sets the dongle's clock and returns `sys.date()`. From then on the lines of `/logs/grillo.log` and `sys.date()` have the date. Error if the PC does not respond.
+- `host.input(prompt [, {timeout, status}])`: text written by the user on the PC keyboard. The dongle types a command that shows `prompt` and reads a line (`Read-Host` in PowerShell, `read` in sh), shows `status` (default "Type on the PC, then click") and stops. The user types and presses the dongle's button: the dongle presses Enter for them and resumes. Enter on the keyboard works too. Returns the text (sanitized as in `host.get`: accented letters stay in UTF-8, symbols like `,` `;` `"` `$` become `_`), or `nil` on timeout (default 600000 ms). In sh the arrow keys do not move the cursor and would end up in the text; Backspace works.
+- `host.log(label, expression)`: like `host.get`, then appends the line to `/logs/host/<id>.csv` and returns the value. Without `host.machine` the file is `unknown.csv`.
 
 ```lua
 host.shell("powershell")
 host.machine()
-host.log("seriale", [[(Get-CimInstance Win32_BIOS).SerialNumber]])
+host.log("serial", [[(Get-CimInstance Win32_BIOS).SerialNumber]])
 host.log("uuid", [[(Get-CimInstance Win32_ComputerSystemProduct).UUID]])
 ```
 
-Non ridigitare mai un valore letto dal PC in un comando di shell senza controllarlo: può contenere ciò che ha scelto chi ha configurato la macchina.
+Never retype a value read from the PC into a shell command without checking it: it can contain whatever the person who configured the machine chose.
 
-Il comando deve essere bloccante: con `Start-Process` senza `-Wait`, o `open` su macOS, il codice arriva appena il programma parte. Non scrivere `${` nel comando. La porta si trova così: su Windows dal dispositivo padre della COM (che contiene il numero di serie), su Linux in `/dev/serial/by-id/*<serie>*`, su macOS in `/dev/cu.usbmodem<serie><n>`. Funziona anche con più dongle collegati. Su Windows e Linux non è stato verificato su un PC reale; il canale lato dongle sì (risposta con nonce giusto accettata, con nonce sbagliato scartata).
+The command must be blocking: with `Start-Process` without `-Wait`, or `open` on macOS, the code arrives as soon as the program starts. Do not write `${` in the command. The port is found like this: on Windows from the parent device of the COM port (which contains the serial number), on Linux in `/dev/serial/by-id/*<serial>*`, on macOS in `/dev/cu.usbmodem<serial><n>`. It also works with several dongles connected. On Windows and Linux it has not been verified on a real PC; the dongle side of the channel has (reply with the right nonce accepted, with a wrong nonce discarded).
 
-## Libreria `pcdisk`
+## `pcdisk` library
 
-Non è nel firmware ma in `sd-template/payloads/lib/pcdisk.lua`: `require("pcdisk")` dopo averla copiata sulla SD.
+It is not in the firmware but in `sd-template/payloads/lib/pcdisk.lua`: `require("pcdisk")` after copying it to the SD.
 
-- `pcdisk.run(corpo [, {timeout = ms}])`: avvia PowerShell o sh nel terminale aperto sul PC (come `host.shell`), collega la SD, digita una riga che trova il disco, esegue `corpo` ed espelle; poi attende l'espulsione (default 180000 ms) e scollega. Restituisce `"eject"` o `"click"`, errore se scade il tempo.
-- `corpo` è una riga di PowerShell (`kb.os()` = `windows`) o di shell POSIX (`linux`, `mac`); `$d` è la radice della SD senza barra finale. Non usare `${` nel corpo.
-- Il disco si riconosce dal file `.grillo` nella radice. Il supporto Linux (percorsi di automount di udisks) non è verificato.
-- `opzioni.mount`: `"auto"` (default) usa il montaggio automatico del sistema; `"sudo"` (solo Linux) monta la SD a mano in `/mnt/grillo`, in sola lettura, e la smonta ed espelle alla fine. Il default si può impostare in `config.lua` con `pcdisk = { mount = "sudo" }`.
-- Con `mount = "sudo"` la password è presa da `secrets.sudo` di `config.lua` (altro nome con `opzioni.secret`) e digitata con `kb.type_secret`. Prima il dongle esegue `sudo -k; sudo -v`, così il prompt compare sempre. Il volume si riconosce dall'etichetta `GRILLO-SD`, non da `.grillo`, che prima del mount non si può leggere. Se la password è sbagliata, i comandi successivi finiscono nel prompt di sudo: controlla `secrets.sudo`. Non verificato su una distribuzione reale.
+- `pcdisk.run(body [, {timeout = ms}])`: starts PowerShell or sh in the terminal open on the PC (like `host.shell`), attaches the SD, types a line that finds the disk, runs `body` and ejects; then waits for the eject (default 180000 ms) and detaches. Returns `"eject"` or `"click"`, error if the time runs out.
+- `body` is a line of PowerShell (`kb.os()` = `windows`) or POSIX shell (`linux`, `mac`); `$d` is the SD root without a trailing slash. Do not use `${` in the body.
+- The disk is recognized by the `.grillo` file in the root. Linux support (udisks automount paths) is not verified.
+- `options.mount`: `"auto"` (default) uses the system's automatic mounting; `"sudo"` (Linux only) mounts the SD manually at `/mnt/grillo`, read-only, and unmounts and ejects it at the end. The default can be set in `config.lua` with `pcdisk = { mount = "sudo" }`.
+- With `mount = "sudo"` the password is taken from `secrets.sudo` in `config.lua` (another name with `options.secret`) and typed with `kb.type_secret`. First the dongle runs `sudo -k; sudo -v`, so the prompt always appears. The volume is recognized by the `GRILLO-SD` label, not by `.grillo`, which cannot be read before mounting. If the password is wrong, the following commands end up in the sudo prompt: check `secrets.sudo`. Not verified on a real distribution.
 
-## `cfg(chiave [, predefinito])`
+## `cfg(key [, default])`
 
-Legge un valore di `config.lua` come stringa (es. `cfg("keyboard.layout")`). Restituisce `predefinito` se la chiave manca. Le chiavi `secrets.*` non sono leggibili da qui.
+Reads a value from `config.lua` as a string (e.g. `cfg("keyboard.layout")`). Returns `default` if the key is missing. `secrets.*` keys cannot be read from here.
 
-## `require(nome)`
+## `require(name)`
 
-Carica `/payloads/lib/nome.lua` una volta sola (le chiamate successive restituiscono lo stesso valore). `nome` può contenere solo lettere, cifre, `_` e `-`. Due moduli che si richiedono a vicenda danno l'errore `require loop on module 'nome'`.
+Loads `/payloads/lib/name.lua` only once (subsequent calls return the same value). `name` can contain only letters, digits, `_` and `-`. Two modules that require each other give the error `require loop on module 'name'`.
 
 ```lua
 local common = require("common")
-common.pause("Premi quando sei pronto")
+common.pause("Press when ready")
 ```

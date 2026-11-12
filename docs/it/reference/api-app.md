@@ -1,3 +1,5 @@
+[English](../../reference/app-api.md) · **Italiano**
+
 # API C delle app
 
 Il contratto completo, con i commenti, è in `components/appfw/include/app.h` e `appmgr.h`. Qui un riassunto per chi scrive un'app; il procedimento è in [Aggiungere un'app](../how-to/aggiungere-unapp.md).

@@ -1,3 +1,5 @@
+[English](../../reference/debug-console.md) · **Italiano**
+
 # Console di debug
 
 `components/devcon` espone una console a righe sulla porta seriale del dongle, usata da `tools/grillo.py`. Serve a sviluppare: pilotare il pulsante, vedere lo schermo, leggere file della microSD.

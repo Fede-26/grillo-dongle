@@ -1,3 +1,5 @@
+[English](../../how-to/add-a-layout.md) · **Italiano**
+
 # Aggiungere un layout
 
 I layout sono in `components/hid/layouts_data.c`, generato da `tools/gen_layouts.py`. Non modificare a mano il file generato.

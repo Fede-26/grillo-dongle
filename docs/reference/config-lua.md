@@ -1,58 +1,60 @@
+**English** · [Italiano](../it/reference/config-lua.md)
+
 # config.lua
 
-`/config.lua` sulla microSD è uno script Lua che restituisce una tabella. Tutte le chiavi sono facoltative: se il file manca o contiene un errore valgono i default (l'errore, con file e riga, è nel log e sulla console di debug).
+`/config.lua` on the microSD is a Lua script that returns a table. All keys are optional: if the file is missing or contains an error, the defaults apply (the error, with file and line, is in the log and on the debug console).
 
-Il file è eseguito in una VM sandbox, poi appiattito in coppie chiave/valore (`keyboard.layout`, `wifi.1.ssid`) e la VM è chiusa. Viene riletto, con luminosità, rotazione e LED riapplicati:
+The file is run in a sandboxed VM, then flattened into key/value pairs (`keyboard.layout`, `wifi.1.ssid`) and the VM is closed. It is read again, with brightness, rotation and LED reapplied:
 
-- all'avvio;
-- all'uscita da USB Disk, perché dal PC lo si può aver modificato;
-- con `config reload` dalla [console di debug](console-debug.md), solo mentre è aperto il launcher.
+- at startup;
+- on exit from USB Disk, because it may have been modified from the PC;
+- with `config reload` from the [debug console](debug-console.md), only while the launcher is open.
 
-Un errore all'avvio è mostrato sul display (il testo lungo scorre); in seguito compare un avviso nella barra di stato. In ogni caso la configurazione resta vuota e valgono i default.
+An error at startup is shown on the display (long text scrolls); later, a warning appears in the status bar. In either case the configuration stays empty and the defaults apply.
 
-Il modello è `sd-template/config.lua`: elenca tutte le chiavi, commentate, con il valore predefinito. Per cambiarne una togli il `--` iniziale.
+The template is `sd-template/config.lua`: it lists all the keys, commented out, with their default value. To change one, remove the leading `--`.
 
-## Chiavi
+## Keys
 
-| Chiave | Tipo | Default | Significato |
+| Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `wifi` | elenco di `{ssid, pass, trusted}` | vuoto | Reti note. L'ordine non conta: con più reti visibili si sceglie dal display, altrimenti vale la più forte (vedi [WiFi](../how-to/wifi.md)). Solo WPA2/WPA3-Personal: una voce senza `pass` è ignorata. `trusted = true` (default `false`) marca la rete come sicura: le app web non chiedono il PIN (vedi [Reti sicure](../how-to/wifi.md#reti-sicure-niente-pin)). |
-| `hotspot.ssid` | testo | `Grillo-XXXX` | Nome dell'hotspot creato se nessuna rete nota è raggiungibile (XXXX = ultime cifre del MAC). |
-| `hotspot.pass` | testo | `grillo-dongle` | Password dell'hotspot. Se manca o è più corta di 8 caratteri si usa il default. |
-| `hotspot.trusted` | booleano | `false` | `true`: sull'hotspot le app web non chiedono il PIN. Ha senso solo con una `hotspot.pass` tua: con quella di default chiunque conosca il firmware entra. |
-| `autorun.app` | id app | nessuna | App da avviare all'accensione. Vedi [Autorun](../how-to/autorun.md). |
-| `autorun.payload` | percorso | nessuno | Script da passare all'app (es. `kiosk/setup.lua`). |
-| `autorun.delay` | secondi | 3 | Durata del conto alla rovescia annullabile. |
-| `keyboard.layout` | `us`/`it`/`colemak` | `us` | Layout di default della tastiera del PC. |
-| `keyboard.os` | `windows`/`linux`/`mac` | `windows` | OS di default del PC. |
-| `keyboard.key_delay` | ms, 0..60000 | 8 | Pausa tra i tasti. |
-| `keyboard.hold` | ms, 0..60000 | 5 | Durata della pressione di ogni tasto. |
-| `keyboard.jitter` | ms, 0..60000 | 0 | Variazione casuale della pausa. |
-| `keyboard.line_delay` | ms, 0..60000 | 0 | Pausa in più dopo ogni `\n`. |
-| `keyboard.start_delay` | ms, 0..60000 | 1000 | Attesa prima di far partire uno script (solo injector). |
-| `secrets` | tabella nome → testo | vuota | Password per `kb.type_secret` (`secrets.sudo` è quella usata da `pcdisk` con `mount = "sudo"`). Vedi [Password](../how-to/password.md). |
-| `pcdisk.mount` | `auto`/`sudo` | `auto` | Come la libreria `pcdisk` monta la SD sul PC Linux. Vedi [API Lua](lua-api.md#libreria-pcdisk). |
-| `ui.brightness` | 0..100 | 80 | Luminosità del display. |
-| `ui.rotation` | 0 o 180 | 0 | Rotazione del display (90 e 270 non sono supportati). |
-| `webhid.pin` | booleano | `true` | `false`: il Web HID non chiede il PIN su nessuna rete. Con `true` il PIN è chiesto solo sulle reti non marcate `trusted`. Vedi [Sicurezza](../explanation/sicurezza.md). |
-| `webinjector.pin` | booleano | `true` | Come `webhid.pin`, per il Web Injector. |
-| `webfiles.pin` | booleano | `true` | Come `webhid.pin`, per Web Files. |
-| `timezone` | stringa POSIX | `CET-1CEST,M3.5.0,M10.5.0/3` | Fuso orario (il default è Europe/Rome, con l'ora legale) per le date di `/logs/grillo.log`, `sys.date()` e i nomi dei file di Netscan. |
-| `ntp` | host | `pool.ntp.org` | Server NTP da cui il dongle prende l'ora quando è collegato a una rete come client. |
-| `netscan.probe_host` | host | `connectivitycheck.gstatic.com` | Host contattato dal controllo "Web" di Network info (deve rispondere 204 a `/generate_204`). |
-| `led.brightness` | 0..100 | 30 | Luminosità del LED. |
+| `wifi` | list of `{ssid, pass, trusted}` | empty | Known networks. Order does not matter: with several networks visible you choose from the display, otherwise the strongest wins (see [WiFi](../how-to/wifi.md)). WPA2/WPA3-Personal only: an entry without `pass` is ignored. `trusted = true` (default `false`) marks the network as trusted: web apps do not ask for the PIN (see [Trusted networks](../how-to/wifi.md#trusted-networks-no-pin)). |
+| `hotspot.ssid` | text | `Grillo-XXXX` | Name of the hotspot created if no known network is reachable (XXXX = last digits of the MAC). |
+| `hotspot.pass` | text | `grillo-dongle` | Hotspot password. If missing or shorter than 8 characters, the default is used. |
+| `hotspot.trusted` | boolean | `false` | `true`: on the hotspot web apps do not ask for the PIN. Makes sense only with your own `hotspot.pass`: with the default one, anyone who knows the firmware gets in. |
+| `autorun.app` | app id | none | App to start at power-on. See [Autorun](../how-to/autorun.md). |
+| `autorun.payload` | path | none | Script to pass to the app (e.g. `kiosk/setup.lua`). |
+| `autorun.delay` | seconds | 3 | Length of the cancelable countdown. |
+| `keyboard.layout` | `us`/`it`/`colemak` | `us` | Default layout of the PC keyboard. |
+| `keyboard.os` | `windows`/`linux`/`mac` | `windows` | Default OS of the PC. |
+| `keyboard.key_delay` | ms, 0..60000 | 8 | Pause between keys. |
+| `keyboard.hold` | ms, 0..60000 | 5 | Duration of each key press. |
+| `keyboard.jitter` | ms, 0..60000 | 0 | Random variation of the pause. |
+| `keyboard.line_delay` | ms, 0..60000 | 0 | Extra pause after each `\n`. |
+| `keyboard.start_delay` | ms, 0..60000 | 1000 | Wait before starting a script (injector only). |
+| `secrets` | table name → text | empty | Passwords for `kb.type_secret` (`secrets.sudo` is the one used by `pcdisk` with `mount = "sudo"`). See [Passwords](../how-to/passwords.md). |
+| `pcdisk.mount` | `auto`/`sudo` | `auto` | How the `pcdisk` library mounts the SD on the Linux PC. See [Lua API](lua-api.md#pcdisk-library). |
+| `ui.brightness` | 0..100 | 80 | Display brightness. |
+| `ui.rotation` | 0 or 180 | 0 | Display rotation (90 and 270 are not supported). |
+| `webhid.pin` | boolean | `true` | `false`: the Web HID does not ask for the PIN on any network. With `true` the PIN is asked only on networks not marked `trusted`. See [Security](../explanation/security.md). |
+| `webinjector.pin` | boolean | `true` | Like `webhid.pin`, for the Web Injector. |
+| `webfiles.pin` | boolean | `true` | Like `webhid.pin`, for Web Files. |
+| `timezone` | POSIX string | `CET-1CEST,M3.5.0,M10.5.0/3` | Time zone (the default is Europe/Rome, with daylight saving time) for the dates in `/logs/grillo.log`, `sys.date()` and the Netscan file names. |
+| `ntp` | host | `pool.ntp.org` | NTP server the dongle gets the time from when it is connected to a network as a client. |
+| `netscan.probe_host` | host | `connectivitycheck.gstatic.com` | Host contacted by the "Web" check of Network info (must answer 204 to `/generate_204`). |
+| `led.brightness` | 0..100 | 30 | LED brightness. |
 
-Le impostazioni `keyboard.*` sono i default degli script dell'injector e del Web HID; un'[intestazione di script](intestazione-script.md) le sovrascrive per quello script. Un valore fuori dall'intervallo è riportato al limite più vicino.
+The `keyboard.*` settings are the defaults for injector and Web HID scripts; a [script header](script-header.md) overrides them for that script. An out-of-range value is clamped to the nearest limit.
 
-## Esempio
+## Example
 
 ```lua
 return {
   wifi = {
-    { ssid = "Casa", pass = "password", trusted = true },
-    { ssid = "Ufficio", pass = "altra-password" },
+    { ssid = "Home", pass = "password", trusted = true },
+    { ssid = "Office", pass = "other-password" },
   },
-  hotspot = { pass = "cambiami123" },
+  hotspot = { pass = "changeme123" },
   autorun = { app = "injector", payload = "kiosk/setup.lua", delay = 3 },
   keyboard = { layout = "it", os = "windows", key_delay = 8 },
   secrets = { admin = "..." },

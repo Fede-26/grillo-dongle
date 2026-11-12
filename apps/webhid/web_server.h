@@ -7,7 +7,7 @@
 //
 // GET /     control page (gzip, embedded in the firmware)
 // GET /ws   WebSocket: after PIN authentication, text commands
-//           that become HID reports (see docs/reference/protocollo-websocket.md).
+//           that become HID reports (see docs/reference/websocket-protocol.md).
 //
 // Only one client at a time can control the PC: its IP is websrv_client_ip().
 esp_err_t web_start(const char *pin);

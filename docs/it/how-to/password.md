@@ -1,3 +1,5 @@
+[English](../../how-to/passwords.md) · **Italiano**
+
 # Digitare una password senza scriverla negli script
 
 Gli script stanno in chiaro sulla microSD e si copiano facilmente. Le password vanno quindi in `config.lua` e si digitano con `kb.type_secret`, che non le restituisce mai allo script come valore.

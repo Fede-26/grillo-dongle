@@ -1,39 +1,41 @@
-# Usare il Web Injector
+**English** · [Italiano](../it/how-to/web-injector.md)
 
-Il Web Injector esegue gli script dell'injector scelti da una pagina web, dal telefono o da un altro computer. Gli script sono gli stessi di `/payloads` sulla microSD e girano come nell'Injector: stesse impostazioni, stessa intestazione, stesso esito. La pagina non carica né modifica script.
+# Use the Web Injector
 
-## Avviare
+The Web Injector runs injector scripts chosen from a web page, from a phone or another computer. The scripts are the same ones in `/payloads` on the microSD and run as in the Injector: same settings, same header, same outcome. The page does not upload or edit scripts.
 
-1. Collega il dongle al PC su cui far girare lo script.
-2. Nel launcher scegli **Web Injector**. Il dongle si collega al WiFi (o crea l'hotspot): vedi [Collegare il dongle al WiFi](wifi.md).
-3. Sul display compaiono un QR, il nome della rete, l'indirizzo IP e un PIN di 6 cifre, come nel [Web HID](web-hid.md). Con l'hotspot si parte dal QR delle credenziali WiFi e, appena un dispositivo si collega, il display passa da solo a quello dell'indirizzo; un click alterna i due.
-4. Apri l'indirizzo dal telefono (o inquadra il QR) e inserisci il PIN.
+## Start
 
-Tieni premuto il pulsante 3 secondi per uscire.
+1. Plug the dongle into the PC that should run the script.
+2. In the launcher choose **Web Injector**. The dongle connects to WiFi (or creates the hotspot): see [Connect the dongle to WiFi](wifi.md).
+3. The display shows a QR code, the network name, the IP address and a 6-digit PIN, as in [Web HID](web-hid.md). With the hotspot it starts from the WiFi credentials QR and, as soon as a device connects, the display switches by itself to the address QR; a click toggles between the two.
+4. Open the address from the phone (or scan the QR) and enter the PIN.
 
-## La pagina
+Hold the button for 3 seconds to exit.
 
-- **Folders**: le cartelle di `/payloads`, come sul display. A destra di ogni script, layout e sistema operativo effettivi (intestazione, altrimenti `config.lua`).
-- **By OS** e **By tag**: gli script raggruppati per sistema operativo o per tag (`@tags`), come le viste "/By OS" e "/By tag" dell'Injector.
+## The page
 
-Toccando uno script si apre la scheda (nome, descrizione, layout, OS, tag, timeout); **Run** lo avvia. Un'intestazione non valida mostra l'errore e non si può eseguire.
+- **Folders**: the folders of `/payloads`, as on the display. To the right of each script, the effective layout and operating system (from the header, otherwise from `config.lua`).
+- **By OS** and **By tag**: the scripts grouped by operating system or by tag (`@tags`), like the Injector's "/By OS" and "/By tag" views.
 
-Durante l'esecuzione la pagina mostra nome, stato (`ui.status`), barra di avanzamento (`ui.progress`) e la cronologia della run, una voce per riga con l'ora (quella del dongle se la conosce, altrimenti il tempo dall'avvio): avvio, righe di `sys.log`, ogni stato nuovo, i dialoghi con la risposta data (e se è arrivata dalla pagina), l'esito. I soli avanzamenti della barra non entrano. Se stai rileggendo più su, la lista non scorre da sola. **Abort** interrompe lo script come i 3 secondi di pressione. I dialoghi dello script compaiono anche sulla pagina:
+Tapping a script opens its card (name, description, layout, OS, tags, timeout); **Run** starts it. An invalid header shows the error and cannot be run.
 
-- `ui.menu`: le voci come pulsanti;
-- `ui.confirm`: No e Yes, con evidenziata la risposta predefinita (il timeout dello script vale anche qui);
-- `ui.wait_button`: Click, Double e Long, come i gesti del pulsante.
+While running, the page shows the name, status (`ui.status`), progress bar (`ui.progress`) and the run history, one entry per line with the time (the dongle's clock if it knows it, otherwise the time since start): start, `sys.log` lines, each new status, dialogs with the answer given (and whether it came from the page), the outcome. Progress bar updates alone are not included. If you are reading further up, the list does not scroll by itself. **Abort** stops the script like the 3-second press. The script's dialogs also appear on the page:
 
-Display e pulsante restano attivi: si può rispondere da entrambi, e vale la prima risposta.
+- `ui.menu`: the items as buttons;
+- `ui.confirm`: No and Yes, with the default answer highlighted (the script's timeout applies here too);
+- `ui.wait_button`: Click, Double and Long, like the button gestures.
 
-Alla fine la pagina resta sull'esecuzione: l'esito (Done, Error con il messaggio, Aborted, Timeout) compare sopra la cronologia. Sul display l'esito resta finché non si preme **OK** sulla pagina o il pulsante del dongle. **Back** torna all'elenco e **Run again** riavvia lo stesso script; entrambi chiudono anche l'esito sul display. Dall'elenco, **Last run** riapre l'ultima esecuzione.
+Display and button stay active: you can answer from either, and the first answer wins.
 
-Il pulsante in alto a destra cambia l'aspetto della pagina: **Plain** (sobrio), **Arcade** (pixel art, righe di scansione) e **Retro** (monitor a fosfori ambra). Il browser ricorda la scelta.
+At the end the page stays on the run: the outcome (Done, Error with the message, Aborted, Timeout) appears above the history. On the display the outcome stays until **OK** is pressed on the page or the dongle's button is pressed. **Back** returns to the list and **Run again** restarts the same script; both also dismiss the outcome on the display. From the list, **Last run** reopens the last run.
 
-## Se la pagina si chiude
+The button at the top right changes the page's look: **Plain** (understated), **Arcade** (pixel art, scan lines) and **Retro** (amber phosphor monitor). The browser remembers the choice.
 
-Lo script continua. Quando la pagina si ricollega (da sola, finché il PIN è valido) riceve tutta la cronologia della run, anche le voci scritte a pagina chiusa, lo stato attuale, l'eventuale dialogo aperto e, a run finita, l'esito. Il dongle tiene le ultime 100 voci, ognuna fino a 200 byte; quando ne ha scartate la pagina lo dice in cima. La cronologia dell'ultima run resta finché non ne parte un'altra o non si esce dall'app.
+## If the page closes
 
-## Senza PIN
+The script keeps running. When the page reconnects (by itself, as long as the PIN is valid) it receives the whole run history, including entries written while the page was closed, the current status, any open dialog and, once the run has finished, the outcome. The dongle keeps the last 100 entries, each up to 200 bytes; when it has dropped some, the page says so at the top. The last run's history stays until another one starts or you exit the app.
 
-In `config.lua`, `webinjector = { pin = false }`. Chiunque sulla stessa rete potrebbe allora avviare gli script della microSD sul PC collegato. Vedi [Sicurezza](../explanation/sicurezza.md).
+## Without a PIN
+
+In `config.lua`, `webinjector = { pin = false }`. Anyone on the same network could then start the microSD's scripts on the connected PC. See [Security](../explanation/security.md).

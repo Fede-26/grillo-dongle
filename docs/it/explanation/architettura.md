@@ -1,3 +1,5 @@
+[English](../../explanation/architecture.md) · **Italiano**
+
 # Architettura
 
 Grillo è un firmware ESP-IDF v6.1 (C, FreeRTOS) per un dispositivo con vincoli stretti: ESP32-S3 senza PSRAM, uno schermo 160x80, un solo pulsante. Le scelte seguenti derivano da questi vincoli.

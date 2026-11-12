@@ -1,3 +1,5 @@
+[English](../../tutorials/01-first-install.md) · **Italiano**
+
 # Prima installazione
 
 Alla fine di questo tutorial avrai il firmware sul dongle, una microSD preparata e un esempio eseguito su un PC. Serve un T-Dongle-S3 con LCD, una microSD e un Mac o Linux con ESP-IDF v6.1.

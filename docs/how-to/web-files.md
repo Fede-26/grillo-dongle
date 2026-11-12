@@ -1,73 +1,75 @@
-# Usare Web Files
+**English** · [Italiano](../it/how-to/web-files.md)
 
-Web Files apre la microSD del dongle in una pagina web, dal telefono o da un computer: sfogliare le cartelle, caricare e scaricare file, rinominarli e spostarli, eliminarli (con un cestino) e modificare i testi, con un editor per gli script Lua e uno a tabella per i CSV. La pagina vede tutta la scheda, `config.lua` e i log compresi.
+# Use Web Files
 
-## Avviare
+Web Files opens the dongle's microSD in a web page, from a phone or a computer: browse folders, upload and download files, rename and move them, delete them (with a trash) and edit text files, with an editor for Lua scripts and a table editor for CSVs. The page sees the whole card, `config.lua` and the logs included.
 
-1. Alimenta il dongle: Web Files non usa la USB, basta una qualunque presa (vedi [Telefono Android](#telefono-android) per il collegamento a un telefono).
-2. Nel launcher scegli **Web Files**. Il dongle si collega al WiFi (o crea l'hotspot): vedi [Collegare il dongle al WiFi](wifi.md).
-3. Sul display compaiono un QR, il nome della rete, l'indirizzo IP e un PIN di 6 cifre, come nel [Web HID](web-hid.md). Con l'hotspot si parte dal QR delle credenziali WiFi e, appena un dispositivo si collega, il display passa da solo a quello dell'indirizzo; un click alterna i due.
-4. Apri l'indirizzo (o inquadra il QR) e inserisci il PIN.
+## Start
 
-Tieni premuto il pulsante 3 secondi per uscire.
+1. Power the dongle: Web Files does not use USB, any outlet will do (see [Android phone](#android-phone) for connecting it to a phone).
+2. In the launcher choose **Web Files**. The dongle connects to WiFi (or creates the hotspot): see [Connect the dongle to WiFi](wifi.md).
+3. The display shows a QR code, the network name, the IP address and a 6-digit PIN, as in the [Web HID](web-hid.md). With the hotspot it starts with the WiFi credentials QR and, as soon as a device connects, the display switches by itself to the address QR; a click toggles between the two.
+4. Open the address (or scan the QR) and enter the PIN.
 
-## Sfogliare
+Hold the button for 3 seconds to exit.
 
-In alto il percorso (**SD / payloads / lib**): ogni pezzo riporta a quella cartella. L'elenco si ordina per nome, dimensione o data; **Hidden** mostra anche i file nascosti (quelli che iniziano con `.`, come i `._*` che macOS lascia sulla scheda, e `System Volume Information`). A destra, lo spazio libero della scheda.
+## Browse
 
-Toccare una cartella la apre; toccare un file di testo (`.lua`, `.csv`, `.txt`, `.md`, `.json`, `.log` e simili) lo apre nell'editor. Il pulsante **⋯** di ogni riga mostra le azioni:
+At the top is the path (**SD / payloads / lib**): each part leads back to that folder. The list sorts by name, size or date; **Hidden** also shows hidden files (those starting with `.`, such as the `._*` files macOS leaves on the card, and `System Volume Information`). On the right, the card's free space.
 
-- **Edit**: solo per i file di testo fino a 64 KB.
-- **Download**: scarica il file.
-- **Rename / move**: il percorso completo è modificabile, quindi lo stesso campo serve a rinominare e a spostare (`/payloads/a.lua` → `/payloads/old/a.lua`). La cartella di destinazione deve esistere. Si può anche cambiare solo maiuscole e minuscole (`readme.txt` → `README.txt`).
-- **Copy**: solo file.
-- **Move to trash**: vedi [Cestino](#cestino).
-- **Delete permanently**: dopo una conferma; una cartella viene eliminata con tutto il contenuto.
+Tapping a folder opens it; tapping a text file (`.lua`, `.csv`, `.txt`, `.md`, `.json`, `.log` and similar) opens it in the editor. The **⋯** button on each row shows the actions:
 
-**+ Folder** e **+ File** creano una cartella o un file vuoto (il file di testo si apre subito nell'editor).
+- **Edit**: only for text files up to 64 KB.
+- **Download**: downloads the file.
+- **Rename / move**: the full path is editable, so the same field serves to rename and to move (`/payloads/a.lua` → `/payloads/old/a.lua`). The destination folder must exist. You can also change only the letter case (`readme.txt` → `README.txt`).
+- **Copy**: files only.
+- **Move to trash**: see [Trash](#trash).
+- **Delete permanently**: after a confirmation; a folder is deleted with all its contents.
 
-## Caricare file
+**+ Folder** and **+ File** create a folder or an empty file (the text file opens right away in the editor).
 
-**Upload** sceglie uno o più file, che vanno nella cartella aperta; da un computer si possono anche trascinare sulla pagina. La barra mostra l'avanzamento. Se un file con lo stesso nome esiste già, la pagina chiede se sostituirlo. Il file arriva prima in `<nome>.part` e prende il nome vero solo alla fine: se la connessione cade a metà, il file di prima resta intatto. Se a non riuscire è proprio il cambio di nome finale, il contenuto nuovo resta in `<nome>.part`.
+## Upload files
 
-La velocità misurata sul dispositivo è di circa 90 KB/s in upload e 130 KB/s in download (file di 1,5 MB, WiFi a −50 dBm): adatta a script, CSV e log, lenta per file grandi. Per copiare molti dati usa [USB disk](copiare-file.md).
+**Upload** picks one or more files, which go into the open folder; from a computer you can also drag them onto the page. The bar shows the progress. If a file with the same name already exists, the page asks whether to replace it. The file first lands in `<name>.part` and takes its real name only at the end: if the connection drops halfway, the previous file stays intact. If the final rename itself fails, the new content stays in `<name>.part`.
+
+The speed measured on the device is about 90 KB/s upload and 130 KB/s download (1.5 MB file, WiFi at −50 dBm): fine for scripts, CSVs and logs, slow for large files. To copy a lot of data use [USB disk](copy-files.md).
 
 ## Editor
 
-L'editor apre i file di testo fino a 64 KB.
+The editor opens text files up to 64 KB.
 
-- **Save** (o Ctrl+S, Cmd+S sul Mac) salva; un pallino accanto al nome segnala le modifiche non salvate, e chiudere la pagina o l'editor con modifiche chiede conferma.
-- **Find** (o Ctrl+F, Cmd+F) cerca senza distinguere le maiuscole; Invio passa al risultato successivo.
-- Tab e Shift+Tab rientrano e tolgono il rientro (4 spazi), anche su più righe selezionate; Invio mantiene il rientro della riga. Esc lascia la casella di testo, così Tab torna a spostarsi tra i pulsanti. Annulla (Ctrl+Z) funziona anche dopo questi inserimenti.
-- Negli script Lua parole chiave, stringhe, commenti, numeri e moduli del dongle (`kb`, `ui`, `sys`, ...) hanno colori diversi.
-- **Check** (solo `.lua`) manda il testo al dongle, che lo compila senza eseguirlo: un errore di sintassi compare sopra l'editor con il numero di riga evidenziato, e il cursore va su quella riga. Per gli script dell'injector (in `/payloads`, non in `lib`) controlla anche l'intestazione `--- @chiave` (vedi [Intestazione degli script](../reference/intestazione-script.md)). Il testo non deve essere già salvato.
+- **Save** (or Ctrl+S, Cmd+S on the Mac) saves; a dot next to the name marks unsaved changes, and closing the page or the editor with changes asks for confirmation.
+- **Find** (or Ctrl+F, Cmd+F) searches case-insensitively; Enter moves to the next match.
+- Tab and Shift+Tab indent and unindent (4 spaces), also on several selected lines; Enter keeps the line's indentation. Esc leaves the text box, so Tab goes back to moving between buttons. Undo (Ctrl+Z) works after these insertions too.
+- In Lua scripts, keywords, strings, comments, numbers and the dongle modules (`kb`, `ui`, `sys`, ...) have different colors.
+- **Check** (`.lua` only) sends the text to the dongle, which compiles it without running it: a syntax error appears above the editor with the line number highlighted, and the cursor moves to that line. For injector scripts (in `/payloads`, not in `lib`) it also checks the `--- @key` header (see [Script header](../reference/script-header.md)). The text does not need to be saved first.
 
 ### CSV
 
-I file `.csv` e `.tsv` si aprono come tabella: ogni cella è modificabile, **+ Row** e **− Row** aggiungono una riga sotto quella della cella selezionata o la tolgono, **+ Col** e **− Col** fanno lo stesso con le colonne. Il separatore (virgola, punto e virgola o tabulazione) è riconosciuto dalla prima riga; se è sbagliato si cambia dal menu, e il file viene riletto. Campi con separatori, virgolette o a capo sono scritti tra virgolette (RFC 4180); le virgolette superflue spariscono al salvataggio. **Text** passa al testo grezzo, **Table** torna alla tabella.
+`.csv` and `.tsv` files open as a table: every cell is editable, **+ Row** and **− Row** add a row below the selected cell's row or remove it, **+ Col** and **− Col** do the same with columns. The separator (comma, semicolon or tab) is detected from the first line; if it is wrong you change it from the menu, and the file is read again. Fields containing separators, quotes or line breaks are written in quotes (RFC 4180); unnecessary quotes disappear on save. **Text** switches to raw text, **Table** goes back to the table.
 
 ### config.lua
 
-`config.lua` si apre con le password nascoste: al posto dei valori di `pass`/`password` (reti WiFi, hotspot) e di tutto ciò che sta in `secrets` compare `"<secret:1>"`, `"<secret:2>"`, ... Lascia i segnaposto dove sono (o spostali): al salvataggio il dongle rimette i valori veri presi dal file attuale. Per cambiare una password scrivi il valore nuovo al posto del segnaposto. I numeri seguono l'ordine delle password nel file: dopo il salvataggio l'editor ricarica il testo rinumerato, così anche i salvataggi successivi rimettono i valori giusti. Un segnaposto che il file non ha più (per esempio dopo aver modificato `config.lua` da [USB disk](copiare-file.md) con la pagina aperta) blocca il salvataggio: riapri il file. **Show secrets** ricarica il file con i valori in chiaro.
+`config.lua` opens with the passwords hidden: in place of the values of `pass`/`password` (WiFi networks, hotspot) and of everything in `secrets` appears `"<secret:1>"`, `"<secret:2>"`, ... Leave the placeholders where they are (or move them): on save the dongle puts back the real values taken from the current file. To change a password, write the new value in place of the placeholder. The numbers follow the order of the passwords in the file: after saving, the editor reloads the renumbered text, so later saves also restore the right values. A placeholder the file no longer has (for example after editing `config.lua` from [USB disk](copy-files.md) with the page open) blocks the save: reopen the file. **Show secrets** reloads the file with the values in plaintext.
 
-La configurazione nuova entra in funzione quando esci da Web Files, perché le app in corso stanno usando quella vecchia. Prima di salvarlo la pagina controlla la sintassi e, se trova un errore, chiede conferma: un `config.lua` che non si carica fa comparire "config.lua error" all'uscita e lascia il dongle con i valori predefiniti, quindi senza reti note (crea l'hotspot con la password di default, `grillo-dongle`). Da lì puoi correggere il file con Web Files sull'hotspot. Il controllo trova gli errori di sintassi, non un valore sbagliato.
+The new configuration takes effect when you exit Web Files, because the running apps are using the old one. Before saving it the page checks the syntax and, if it finds an error, asks for confirmation: a `config.lua` that does not load shows "config.lua error" on exit and leaves the dongle with the default values, so with no known networks (it creates the hotspot with the default password, `grillo-dongle`). From there you can fix the file with Web Files on the hotspot. The check finds syntax errors, not a wrong value.
 
-## Cestino
+## Trash
 
-**Move to trash** sposta l'elemento in `/.trash` sulla scheda, insieme al percorso da cui veniva e alla data (se il dongle conosce l'ora). **Trash** mostra il contenuto:
+**Move to trash** moves the item to `/.trash` on the card, together with the path it came from and the date (if the dongle knows the time). **Trash** shows the contents:
 
-- **Restore** lo rimette al suo posto. Se nel frattempo lì è comparso un elemento con lo stesso nome, quello ripristinato prende un suffisso (`a (2).lua`); se la cartella d'origine non c'è più viene ricreata.
-- **Delete permanently** lo elimina dal cestino.
-- **Empty trash** elimina tutto il cestino.
+- **Restore** puts it back in its place. If in the meantime an item with the same name has appeared there, the restored one gets a suffix (`a (2).lua`); if the original folder no longer exists it is recreated.
+- **Delete permanently** deletes it from the trash.
+- **Empty trash** deletes the whole trash.
 
-Il cestino è una cartella normale della scheda: occupa spazio finché non lo svuoti, e si vede anche dal PC con [USB disk](copiare-file.md).
+The trash is a normal folder on the card: it takes up space until you empty it, and it is also visible from the PC with [USB disk](copy-files.md).
 
-## Telefono Android
+## Android phone
 
-Collegato alla porta USB-C di un telefono Android, il dongle viene alimentato e Web Files funziona: per leggere la scheda dal telefono apri la pagina sul WiFi (o sull'hotspot del dongle). Web Files non espone la scheda sulla USB.
+Plugged into the USB-C port of an Android phone, the dongle is powered and Web Files works: to read the card from the phone, open the page over WiFi (or on the dongle's hotspot). Web Files does not expose the card over USB.
 
-Nelle impostazioni USB Android indica quale dei due dispositivi controlla il collegamento. Non cambiare l'impostazione: il dongle fa solo da periferica USB, e provando a invertire i ruoli il dongle si riavvia. La causa più probabile è che durante il cambio di ruolo il telefono tolga per un attimo l'alimentazione alla porta (ricostruzione, non misurata).
+In the USB settings, Android shows which of the two devices controls the connection. Do not change the setting: the dongle acts only as a USB peripheral, and when you try to swap the roles the dongle reboots. The most likely cause is that during the role change the phone briefly cuts power to the port (a reconstruction, not measured).
 
-## Senza PIN
+## Without a PIN
 
-In `config.lua`, `webfiles = { pin = false }`. Chiunque sulla stessa rete potrebbe allora leggere, modificare ed eliminare tutto ciò che è sulla microSD, password di `config.lua` comprese. Vedi [Sicurezza](../explanation/sicurezza.md).
+In `config.lua`, `webfiles = { pin = false }`. Anyone on the same network could then read, modify and delete everything on the microSD, `config.lua` passwords included. See [Security](../explanation/security.md).

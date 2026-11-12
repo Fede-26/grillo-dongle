@@ -1,3 +1,5 @@
+[English](../../how-to/copy-files.md) · **Italiano**
+
 # Copiare file sul PC con il disco USB
 
 Uno script può far apparire la microSD come disco sul PC (in sola lettura), digitare i comandi che copiano i file, e poi scollegarla. Il PC deve avere una shell raggiungibile da tastiera.

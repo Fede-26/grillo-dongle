@@ -1,3 +1,5 @@
+[English](../../how-to/layout-and-os.md) · **Italiano**
+
 # Scegliere layout e sistema operativo
 
 Il dongle invia posizioni di tasti, non caratteri: il PC li interpreta con il proprio layout. Per digitare `@` o `è` giusti, il dongle deve sapere quale layout e quale sistema operativo ha il PC.

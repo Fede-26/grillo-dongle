@@ -1,3 +1,5 @@
+[English](../../reference/script-header.md) · **Italiano**
+
 # Intestazione degli script
 
 Ogni script `.lua` in `/payloads` può iniziare con un blocco di commenti che lo descrive e ne imposta i parametri. L'injector lo legge senza eseguire lo script, per mostrarlo nell'elenco e applicare le impostazioni prima della partenza.
