@@ -14,7 +14,13 @@
 
 // In release la CDC appartiene solo al canale con l'host: niente log né
 // comandi di debug, che finirebbero mescolati alle risposte di host.ask.
-#define CDC_CONSOLE CONFIG_GRILLO_USB_DEBUG_CDC
+// Un'opzione Kconfig bool disattivata non è definita affatto: usarla come
+// valore non compilava con sdkconfig.release.
+#ifdef CONFIG_GRILLO_USB_DEBUG_CDC
+#define CDC_CONSOLE 1
+#else
+#define CDC_CONSOLE 0
+#endif
 
 #define MAX_CMDS 32
 // Anche le righe "@G<nonce>:<valore>" del canale host (valore fino a 256 caratteri)

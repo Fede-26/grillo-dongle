@@ -20,6 +20,14 @@
 
 static const char *TAG = "usbdev";
 
+// Un'opzione Kconfig bool disattivata non è definita affatto: usarla come
+// valore non compilava con sdkconfig.release.
+#ifdef CONFIG_GRILLO_USB_DEBUG_CDC
+#define DEBUG_CDC 1
+#else
+#define DEBUG_CDC 0
+#endif
+
 static usb_profile_t s_profile = USB_PROFILE_NONE;
 static uint32_t s_features;
 static usbdev_event_cb_t s_cb;
@@ -350,7 +358,7 @@ esp_err_t usbdev_apply(usb_profile_t profile, sdmmc_card_t *msc_card)
     }
     // La seriale di debug si aggiunge a ogni profilo; la tiene il profilo
     // attivo (s_profile), così il confronto con quello richiesto resta esatto.
-    uint32_t f = profile | (CONFIG_GRILLO_USB_DEBUG_CDC ? USB_F_CDC : 0);
+    uint32_t f = profile | (DEBUG_CDC ? USB_F_CDC : 0);
     ESP_RETURN_ON_FALSE((f & USB_F_DISK) != USB_F_DISK, ESP_ERR_INVALID_ARG, TAG, "disco RW e RO insieme");
     ESP_RETURN_ON_FALSE(in_endpoints(f) <= MAX_IN_ENDPOINTS, ESP_ERR_NOT_SUPPORTED, TAG, "troppi endpoint IN (0x%x)",
                         (unsigned)f);
